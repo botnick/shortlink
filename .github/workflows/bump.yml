@@ -1,8 +1,7 @@
 name: Bump version
 
-# Auto-increments the patch version in package.json on each push to main,
-# committing the change back as `chore: bump version … [skip ci]` so it does
-# not re-trigger itself.
+# Auto-increments the patch version in package.json on each push to main and
+# commits it back. The bot's own commit carries [skip ci], so it does not loop.
 
 on:
   push:
@@ -17,7 +16,6 @@ concurrency:
 
 jobs:
   bump:
-    if: ${{ !startsWith(github.event.head_commit.message, 'chore: bump version') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
