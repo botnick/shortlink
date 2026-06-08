@@ -1,7 +1,8 @@
 name: Bump version
 
-# Auto-increments the patch version in package.json on every push to main,
-# then commits the change back with [skip ci] so it doesn't re-trigger itself.
+# Auto-increments the patch version in package.json on each push to main,
+# committing the change back as `chore: bump version … [skip ci]` so it does
+# not re-trigger itself.
 
 on:
   push:
@@ -16,15 +17,16 @@ concurrency:
 
 jobs:
   bump:
-    # Skip the bot's own commits, and skip the very first push (branch creation),
-    # so a freshly initialised repo stays at a single commit.
-    if: ${{ !startsWith(github.event.head_commit.message, 'chore: bump version') && github.event.before != '0000000000000000000000000000000000000000' }}
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore: bump version') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Bump patch version
         run: |
@@ -32,6 +34,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           npm version patch --no-git-tag-version
           VERSION=$(node -p "require('./package.json').version")
-          git add package.json package-lock.json
-          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git commit -am "chore: bump version to ${VERSION} [skip ci]"
           git push
