@@ -4,8 +4,14 @@ A fast, clean, self-hosted **URL shortener** with accounts and detailed analytic
 Runs fully serverless on **Cloudflare Workers**; short links live on your own
 domain, e.g. **`links.example.com/<slug>`**.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/botnick/shortlink)
+
+> The button clones the repo and deploys the Worker. You still complete the
+> one-time setup below (database, KV, R2, secrets) before the app is usable —
+> on D1 that's the fastest path since no external database is needed.
+
 - **Stack:** Cloudflare Workers · [Hono](https://hono.dev) · React 19 + Vite + Tailwind v4 (shadcn-style UI)
-- **Database:** your Postgres, reached via **Cloudflare Hyperdrive** (edge pooling + caching) with **Drizzle ORM** (`postgres.js`)
+- **Database:** **Postgres** (via **Cloudflare Hyperdrive**) or **Cloudflare D1** — pick the driver at deploy time; both use **Drizzle ORM**
 - **Auth:** email + password, server-side sessions, signed `__Host-` cookie
 - **Analytics:** per-click time, country, referrer, device/browser/OS — IPs hashed, never stored raw
 - **Speed:** redirects resolve from a global **KV** edge cache; clicks are logged off the response path (`waitUntil`)
@@ -13,7 +19,8 @@ domain, e.g. **`links.example.com/<slug>`**.
 ## Features
 
 - **Accounts** — email + password; registration is closed by default and toggled from `/admin`. Team management with multiple admins (the first/primary admin can't be removed by others).
-- **Links** — random or custom slugs, optional title, expiry, and active/paused toggle; keyset-paginated dashboard.
+- **Links** — random or custom slugs, optional title, expiry, and active/paused toggle; the dashboard is searchable and keyset-paginated ("load more"), so it stays smooth with thousands of links.
+- **Admin console** — a tabbed `/admin`: an **Overview** (total links/clicks/members, active links, 7-day activity chart, top links, active DB), all-user **Links** management (search, pause, delete), **Team** management, and **Settings**. Every list is searchable + paginated.
 - **Analytics** — per-link dashboard (Overview / Location / Sources / Share): total & unique clicks, a click-count table with rates, best day, a clicks-over-time chart, top countries (with flags), referrers, device/browser/OS, and a direct-vs-referrer split.
 - **Branding & SEO — all from `/admin`, no redeploy** — app name, brand color (drives the whole accent), logo, description, social/OG image, and a search-engine indexing toggle. Injected into the page `<head>` server-side (HTMLRewriter) with a dynamic `robots.txt`, so social unfurls and crawlers see it.
 - **QR code studio** (per link) — 11 frame styles with caption + scan icon + rounded/sharp corners; dot, eye-frame and eye-centre shapes & colors; solid or gradient fill; one-click **auto-match** color schemes; **extract a palette from an image**; a reusable **logo library** (stored in R2); per-user **saved presets**; export **PNG / SVG / JPEG** or copy to clipboard.
@@ -74,11 +81,28 @@ Copy the returned **ids** into `wrangler.jsonc`, replacing `REPLACE_WITH_HYPERDR
 and `REPLACE_WITH_KV_ID`. (These ids are not secrets — commit them.) The R2 bucket is
 bound by **name** (`shortlink-logos`), so there's no id to paste.
 
-## 3. Database
+## 3. Database — choose Postgres or D1
+
+The driver is selected at deploy time by the `DB_DRIVER` var in `wrangler.jsonc`.
+The active database is shown (read-only) on the admin **Overview** tab.
+
+**Option A — Postgres (default).** Keep `DB_DRIVER: "postgres"` and the Hyperdrive
+binding, then apply the schema:
 
 ```bash
-npm run db:migrate   # apply schema (reads .dev.vars; connects directly, not via Hyperdrive)
+npm run db:migrate   # reads .dev.vars; connects directly, not via Hyperdrive
 ```
+
+**Option B — Cloudflare D1.** No external database needed:
+
+```bash
+npx wrangler d1 create shortlink-db          # paste the database_id into wrangler.jsonc
+npm run db:generate:sqlite                    # already committed; only needed after schema changes
+npx wrangler d1 migrations apply shortlink-db --remote
+```
+
+Then set `DB_DRIVER: "d1"` and uncomment the `d1_databases` block in `wrangler.jsonc`.
+(Local dev simulates D1 automatically — use `--local` instead of `--remote` to migrate it.)
 
 ## 4. Run & first-run setup
 

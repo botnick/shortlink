@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
 import type { AppEnv, SessionUser } from "../env";
-import { users } from "../db/schema";
 import { createSession, invalidateSession } from "../lib/auth";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { clearSessionCookie, setSessionCookie } from "../lib/cookies";
@@ -18,7 +17,9 @@ function toUserDTO(u: SessionUser): UserDTO {
 
 auth.post("/register", zValidator("json", registerSchema), async (c) => {
   const db = c.var.db;
-  if (!(await getRegistrationEnabled(db))) {
+  const schema = c.var.schema;
+  const { users } = schema;
+  if (!(await getRegistrationEnabled(db, schema))) {
     return c.json({ error: "Registration is currently closed" }, 403);
   }
 
@@ -43,13 +44,14 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
     .returning({ id: users.id, email: users.email, role: users.role });
 
   const user = inserted[0];
-  const session = await createSession(db, user.id);
+  const session = await createSession(db, schema, user.id);
   await setSessionCookie(c, session.id, session.expiresAt);
   return c.json({ user: toUserDTO(user) }, 201);
 });
 
 auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const db = c.var.db;
+  const { users } = c.var.schema;
   const { email, password } = c.req.valid("json");
 
   const rows = await db
@@ -73,13 +75,14 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) return c.json({ error: "Invalid email or password" }, 401);
 
-  const session = await createSession(db, user.id);
+  const session = await createSession(db, c.var.schema, user.id);
   await setSessionCookie(c, session.id, session.expiresAt);
   return c.json({ user: toUserDTO(user) });
 });
 
 auth.post("/logout", async (c) => {
-  if (c.var.sessionId) await invalidateSession(c.var.db, c.var.sessionId);
+  if (c.var.sessionId)
+    await invalidateSession(c.var.db, c.var.schema, c.var.sessionId);
   clearSessionCookie(c);
   return c.json({ ok: true });
 });

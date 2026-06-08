@@ -17,8 +17,18 @@
     "mode": "smart"
   },
   "vars": {
-    "APP_URL": "https://links.example.com"
+    "APP_URL": "https://links.example.com",
+    // Database driver: "postgres" (Hyperdrive, below) or "d1". To use D1, set
+    // this to "d1", uncomment the d1_databases block, and run the D1 migrations
+    // (see README). Default keeps the existing Postgres setup.
+    "DB_DRIVER": "postgres"
   },
+  // Uncomment to run on Cloudflare D1 (set DB_DRIVER="d1" above):
+  //   npx wrangler d1 create shortlink-db   → paste the database_id here
+  //   npx wrangler d1 migrations apply shortlink-db --remote
+  // "d1_databases": [
+  //   { "binding": "DB", "database_name": "shortlink-db", "database_id": "REPLACE_WITH_D1_ID", "migrations_dir": "drizzle/sqlite" }
+  // ],
   // --- Provision these, then replace the placeholder ids (see README) ---
   // npx wrangler hyperdrive create shortlink-db --connection-string="postgres://USER:PASSWORD@YOUR_DB_HOST:5432/YOUR_DB?sslmode=require"
   // Local dev reads the connection string from the env var

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, count, desc, eq } from "drizzle-orm";
 import type { AppEnv } from "../env";
-import { qrPresets, type QrPresetRow } from "../db/schema";
+import type { QrPresetRow } from "../db/schema";
 import { qrPresetSchema } from "../lib/validators";
 import { requireAuth } from "../middleware/auth";
 import type { QrPresetDTO } from "@shared/types";
@@ -24,6 +24,7 @@ function toDTO(row: QrPresetRow): QrPresetDTO {
 
 // LIST — the signed-in user's presets, newest first.
 route.get("/", async (c) => {
+  const { qrPresets } = c.var.schema;
   const rows = await c.var.db
     .select()
     .from(qrPresets)
@@ -35,6 +36,7 @@ route.get("/", async (c) => {
 // CREATE
 route.post("/", zValidator("json", qrPresetSchema), async (c) => {
   const db = c.var.db;
+  const { qrPresets } = c.var.schema;
   const user = c.var.user!;
   const input = c.req.valid("json");
 
@@ -59,6 +61,7 @@ route.post("/", zValidator("json", qrPresetSchema), async (c) => {
 route.patch("/:id", zValidator("json", qrPresetSchema), async (c) => {
   const id = c.req.param("id");
   if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
+  const { qrPresets } = c.var.schema;
   const input = c.req.valid("json");
   const rows = await c.var.db
     .update(qrPresets)
@@ -73,6 +76,7 @@ route.patch("/:id", zValidator("json", qrPresetSchema), async (c) => {
 route.delete("/:id", async (c) => {
   const id = c.req.param("id");
   if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
+  const { qrPresets } = c.var.schema;
   await c.var.db
     .delete(qrPresets)
     .where(and(eq(qrPresets.id, id), eq(qrPresets.userId, c.var.user!.id)));

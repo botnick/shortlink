@@ -1,4 +1,4 @@
-import { getDb } from "../db";
+import { getDbHandle } from "../db";
 import type { AppBindings } from "../env";
 import {
   appNameFrom,
@@ -27,9 +27,9 @@ export async function getSeoBundle(env: AppBindings): Promise<SeoBundle> {
   const cached = await env.LINKS_KV.get<SeoBundle>(KEY, "json");
   if (cached) return cached;
 
-  const db = getDb(env);
+  const { db, schema, close } = getDbHandle(env);
   try {
-    const map = await getAllSettings(db);
+    const map = await getAllSettings(db, schema);
     const bundle: SeoBundle = {
       appName: appNameFrom(map),
       description: descriptionFrom(map),
@@ -42,7 +42,7 @@ export async function getSeoBundle(env: AppBindings): Promise<SeoBundle> {
     await env.LINKS_KV.put(KEY, JSON.stringify(bundle), { expirationTtl: 3600 });
     return bundle;
   } finally {
-    await db.$client.end({ timeout: 5 }).catch(() => {});
+    await close().catch(() => {});
   }
 }
 

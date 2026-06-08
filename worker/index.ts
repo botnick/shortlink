@@ -2,8 +2,7 @@ import { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { eq, sql } from "drizzle-orm";
 import type { AppContext, AppEnv } from "./env";
-import { getDb } from "./db";
-import { clicks, links } from "./db/schema";
+import { getDbHandle } from "./db";
 import { dbMiddleware } from "./middleware/db";
 import { loadSession } from "./middleware/auth";
 import { requireSameOrigin, securityHeaders } from "./middleware/security";
@@ -47,7 +46,9 @@ api.route("/admin", adminRoutes);
 api.route("/setup", setupRoutes);
 api.route("/qr-presets", qrPresetRoutes);
 api.route("/assets", assetRoutes);
-api.get("/config", async (c) => c.json(await getPublicConfig(c.var.db)));
+api.get("/config", async (c) =>
+  c.json(await getPublicConfig(c.var.db, c.var.schema)),
+);
 api.get("/health", (c) => c.json({ ok: true }));
 app.route("/api", api);
 
@@ -68,9 +69,10 @@ app.get("/:slug", async (c) => {
   const kv = c.env.LINKS_KV;
   let cached = await getCachedLink(kv, slug);
 
-  // KV miss → Postgres is the source of truth; warm the cache for next time.
+  // KV miss → the database is the source of truth; warm the cache for next time.
   if (!cached) {
-    const db = getDb(c.env);
+    const { db, schema, close } = getDbHandle(c.env);
+    const { links } = schema;
     try {
       const rows = await db
         .select({
@@ -93,7 +95,7 @@ app.get("/:slug", async (c) => {
         c.executionCtx.waitUntil(putCachedLink(kv, slug, cached));
       }
     } finally {
-      c.executionCtx.waitUntil(db.$client.end({ timeout: 5 }));
+      c.executionCtx.waitUntil(close());
     }
   }
 
@@ -140,7 +142,8 @@ async function spa(c: AppContext, status: number): Promise<Response> {
 }
 
 async function logClick(c: AppContext, linkId: string): Promise<void> {
-  const db = getDb(c.env);
+  const { db, schema, close } = getDbHandle(c.env);
+  const { clicks, links } = schema;
   try {
     const { browser, os, deviceType } = parseUserAgent(
       c.req.header("user-agent") ?? null,
@@ -164,7 +167,7 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
   } catch (err) {
     console.error("logClick failed:", err);
   } finally {
-    await db.$client.end({ timeout: 5 });
+    await close();
   }
 }
 

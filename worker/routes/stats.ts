@@ -7,11 +7,11 @@ import {
   eq,
   gte,
   isNotNull,
+  isNull,
   sql,
 } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { clicks } from "../db/schema";
-import type { DB } from "../db";
+import type { DB, DbSchema, Dialect } from "../db";
 import type { NameCount, StatsDTO } from "@shared/types";
 
 export type Range = "24h" | "7d" | "30d" | "90d" | "all";
@@ -40,13 +40,14 @@ function rangeStart(range: Range): Date | null {
 
 async function topList(
   db: DB,
+  table: DbSchema["clicks"],
   base: SQL,
   col: AnyPgColumn,
   limit = 12,
 ): Promise<NameCount[]> {
   const rows = await db
     .select({ name: col, value: count() })
-    .from(clicks)
+    .from(table)
     .where(and(base, isNotNull(col)))
     .groupBy(col)
     .orderBy(desc(count()))
@@ -59,23 +60,30 @@ async function topList(
 
 export async function computeStats(
   db: DB,
+  schema: DbSchema,
+  dialect: Dialect,
   linkId: string,
   range: Range,
   createdAt: Date,
 ): Promise<StatsDTO> {
+  const { clicks } = schema;
   const start = rangeStart(range);
-  const base: SQL = start
-    ? (and(eq(clicks.linkId, linkId), gte(clicks.createdAt, start)) as SQL)
-    : eq(clicks.linkId, linkId);
+  const link = eq(clicks.linkId, linkId);
+  const base: SQL = start ? (and(link, gte(clicks.createdAt, start)) as SQL) : link;
 
-  const dayExpr = sql<string>`to_char(date_trunc('day', ${clicks.createdAt}), 'YYYY-MM-DD')`;
-  const now = Date.now();
-  // postgres.js can't serialize a bare Date param inside a raw `sql` fragment
-  // (no type info → ERR_INVALID_ARG_TYPE). Pass an ISO string + explicit cast.
-  const since = (ms: number) =>
-    sql<number>`count(*) filter (where ${clicks.createdAt} >= ${new Date(now - ms).toISOString()}::timestamptz)`.mapWith(
-      Number,
-    );
+  // Day bucket is the only dialect-specific bit. Comparisons use the query
+  // builder (gte/isNull) so Drizzle serialises Dates correctly per driver.
+  const dayExpr =
+    dialect === "sqlite"
+      ? sql<string>`strftime('%Y-%m-%d', ${clicks.createdAt}, 'unixepoch')`
+      : sql<string>`to_char(date_trunc('day', ${clicks.createdAt}), 'YYYY-MM-DD')`;
+
+  const windowCount = (ms: number) =>
+    db
+      .select({ v: count() })
+      .from(clicks)
+      .where(and(link, gte(clicks.createdAt, new Date(Date.now() - ms))))
+      .then((r) => Number(r[0]?.v ?? 0));
 
   const [
     totals,
@@ -85,9 +93,13 @@ export async function computeStats(
     devices,
     browsers,
     operatingSystems,
-    windows,
+    last24h,
+    last7d,
+    last30d,
+    allTime,
     best,
-    split,
+    directRows,
+    referrerRows,
   ] = await Promise.all([
     db
       .select({ total: count(), unique: countDistinct(clicks.ipHash) })
@@ -99,58 +111,45 @@ export async function computeStats(
       .where(base)
       .groupBy(dayExpr)
       .orderBy(dayExpr),
-    topList(db, base, clicks.country),
-    topList(db, base, clicks.referrer),
-    topList(db, base, clicks.deviceType),
-    topList(db, base, clicks.browser),
-    topList(db, base, clicks.os),
-    db
-      .select({
-        last24h: since(DAY_MS),
-        last7d: since(7 * DAY_MS),
-        last30d: since(30 * DAY_MS),
-        allTime: count(),
-      })
-      .from(clicks)
-      .where(eq(clicks.linkId, linkId)),
+    topList(db, clicks, base, clicks.country),
+    topList(db, clicks, base, clicks.referrer),
+    topList(db, clicks, base, clicks.deviceType),
+    topList(db, clicks, base, clicks.browser),
+    topList(db, clicks, base, clicks.os),
+    windowCount(DAY_MS),
+    windowCount(7 * DAY_MS),
+    windowCount(30 * DAY_MS),
+    db.select({ v: count() }).from(clicks).where(link).then((r) => Number(r[0]?.v ?? 0)),
     db
       .select({ day: dayExpr, value: count() })
       .from(clicks)
-      .where(eq(clicks.linkId, linkId))
+      .where(link)
       .groupBy(dayExpr)
       .orderBy(desc(count()))
       .limit(1),
     db
-      .select({
-        direct: sql<number>`count(*) filter (where ${clicks.referrer} is null)`.mapWith(
-          Number,
-        ),
-        referrer: sql<number>`count(*) filter (where ${clicks.referrer} is not null)`.mapWith(
-          Number,
-        ),
-      })
+      .select({ v: count() })
       .from(clicks)
-      .where(base),
+      .where(and(base, isNull(clicks.referrer)))
+      .then((r) => Number(r[0]?.v ?? 0)),
+    db
+      .select({ v: count() })
+      .from(clicks)
+      .where(and(base, isNotNull(clicks.referrer)))
+      .then((r) => Number(r[0]?.v ?? 0)),
   ]);
 
-  const w = windows[0];
   const b = best[0];
-  const s = split[0];
 
   return {
     range,
     createdAt: createdAt.toISOString(),
     totalClicks: Number(totals[0]?.total ?? 0),
     uniqueVisitors: Number(totals[0]?.unique ?? 0),
-    windows: {
-      last24h: Number(w?.last24h ?? 0),
-      last7d: Number(w?.last7d ?? 0),
-      last30d: Number(w?.last30d ?? 0),
-      allTime: Number(w?.allTime ?? 0),
-    },
+    windows: { last24h, last7d, last30d, allTime },
     bestDay: b ? { day: b.day, count: Number(b.value) } : null,
-    directClicks: Number(s?.direct ?? 0),
-    referrerClicks: Number(s?.referrer ?? 0),
+    directClicks: directRows,
+    referrerClicks: referrerRows,
     timeseries: series.map((r) => ({ day: r.day, count: Number(r.value) })),
     countries,
     referrers,

@@ -14,7 +14,7 @@ export const loadSession = createMiddleware<AppEnv>(async (c, next) => {
 
   const token = await readSessionCookie(c);
   if (token) {
-    const result = await validateSession(c.var.db, token);
+    const result = await validateSession(c.var.db, c.var.schema, token);
     if (result) {
       c.set("user", result.user);
       c.set("sessionId", token);

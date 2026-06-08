@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import type { AppEnv } from "../env";
-import { settings, users } from "../db/schema";
 import { hashPassword } from "../lib/password";
 import { createSession } from "../lib/auth";
 import { setSessionCookie } from "../lib/cookies";
@@ -37,44 +36,45 @@ setup.post("/", zValidator("json", setupSchema), async (c) => {
   }
 
   const passwordHash = await hashPassword(input.password);
+  const db = c.var.db;
+  const { settings, users } = c.var.schema;
 
   try {
-    const user = await c.var.db.transaction(async (tx) => {
-      // Atomically claim setup via the settings primary key — a second racing
-      // request gets no row back and is rejected.
-      const claim = await tx
+    // Atomically claim setup via the settings primary key — a second racing
+    // request gets no row back and is rejected. (No interactive transaction so
+    // the same path works on D1, which doesn't support them; the claim insert
+    // is itself the race guard.)
+    const claim = await db
+      .insert(settings)
+      .values({ key: SETTING_KEYS.setupCompleted, value: true })
+      .onConflictDoNothing()
+      .returning();
+    if (claim.length === 0) throw new SetupAlreadyDone();
+
+    const existing = await db.select({ id: users.id }).from(users).limit(1);
+    if (existing.length > 0) throw new SetupAlreadyDone();
+
+    const inserted = await db
+      .insert(users)
+      .values({ email: input.email, passwordHash, role: "admin", isPrimary: true })
+      .returning({ id: users.id, email: users.email, role: users.role });
+
+    const initial: [string, unknown][] = [
+      [SETTING_KEYS.appName, input.appName],
+      [SETTING_KEYS.shortDomain, input.shortDomain],
+      [SETTING_KEYS.brandColor, input.brandColor],
+      [SETTING_KEYS.registration, input.registrationEnabled],
+    ];
+    for (const [key, value] of initial) {
+      await db
         .insert(settings)
-        .values({ key: SETTING_KEYS.setupCompleted, value: true })
-        .onConflictDoNothing()
-        .returning();
-      if (claim.length === 0) throw new SetupAlreadyDone();
+        .values({ key, value })
+        .onConflictDoUpdate({ target: settings.key, set: { value } });
+    }
 
-      const existing = await tx.select({ id: users.id }).from(users).limit(1);
-      if (existing.length > 0) throw new SetupAlreadyDone();
-
-      const inserted = await tx
-        .insert(users)
-        .values({ email: input.email, passwordHash, role: "admin", isPrimary: true })
-        .returning({ id: users.id, email: users.email, role: users.role });
-
-      const initial: [string, unknown][] = [
-        [SETTING_KEYS.appName, input.appName],
-        [SETTING_KEYS.shortDomain, input.shortDomain],
-        [SETTING_KEYS.brandColor, input.brandColor],
-        [SETTING_KEYS.registration, input.registrationEnabled],
-      ];
-      for (const [key, value] of initial) {
-        await tx
-          .insert(settings)
-          .values({ key, value })
-          .onConflictDoUpdate({ target: settings.key, set: { value } });
-      }
-
-      return inserted[0];
-    });
-
+    const user = inserted[0];
     await invalidateSeo(c.env.LINKS_KV);
-    const session = await createSession(c.var.db, user.id);
+    const session = await createSession(db, c.var.schema, user.id);
     await setSessionCookie(c, session.id, session.expiresAt);
     const dto: UserDTO = user;
     return c.json({ user: dto }, 201);

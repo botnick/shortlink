@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq, lt } from "drizzle-orm";
+import { type SQL, and, desc, eq, lt, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "../env";
-import { links, type LinkRow } from "../db/schema";
+import type { LinkRow } from "../db/schema";
 import { createLinkSchema, updateLinkSchema } from "../lib/validators";
 import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink, type CachedLink } from "../lib/cache";
+import { searchCondition } from "../lib/query";
 import { requireAuth } from "../middleware/auth";
 import { computeStats, parseRange } from "./stats";
 import type { LinkDTO, LinkListDTO } from "@shared/types";
@@ -49,6 +50,7 @@ function isUniqueViolation(e: unknown): boolean {
 async function getOwnedLink(c: AppContext): Promise<LinkRow | null> {
   const id = c.req.param("id");
   if (!id || !UUID_RE.test(id)) return null;
+  const { links } = c.var.schema;
   const rows = await c.var.db
     .select()
     .from(links)
@@ -60,11 +62,22 @@ async function getOwnedLink(c: AppContext): Promise<LinkRow | null> {
 // LIST — keyset pagination, newest first.
 route.get("/", async (c) => {
   const user = c.var.user!;
+  const { links } = c.var.schema;
   const cursor = c.req.query("cursor");
-  const where =
+  const q = c.req.query("q") ?? "";
+
+  const search = searchCondition(
+    [sql`${links.slug}`, sql`${links.destination}`, sql`${links.title}`],
+    q,
+  );
+  const cursorCond =
     cursor && !Number.isNaN(Date.parse(cursor))
-      ? and(eq(links.userId, user.id), lt(links.createdAt, new Date(cursor)))
-      : eq(links.userId, user.id);
+      ? lt(links.createdAt, new Date(cursor))
+      : undefined;
+  const where = and(
+    eq(links.userId, user.id),
+    ...([search, cursorCond].filter(Boolean) as SQL[]),
+  );
 
   const rows = await c.var.db
     .select()
@@ -85,6 +98,7 @@ route.get("/", async (c) => {
 // CREATE
 route.post("/", zValidator("json", createLinkSchema), async (c) => {
   const db = c.var.db;
+  const { links } = c.var.schema;
   const user = c.var.user!;
   const input = c.req.valid("json");
   const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
@@ -145,6 +159,7 @@ route.get("/:id/stats", async (c) => {
   const id = c.req.param("id");
   if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
   const user = c.var.user!;
+  const { links } = c.var.schema;
 
   const rows = await c.var.db
     .select({
@@ -163,6 +178,8 @@ route.get("/:id/stats", async (c) => {
 
   const stats = await computeStats(
     c.var.db,
+    c.var.schema,
+    c.var.dialect,
     id,
     parseRange(c.req.query("range")),
     link.createdAt,
@@ -173,6 +190,7 @@ route.get("/:id/stats", async (c) => {
 // UPDATE
 route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   const db = c.var.db;
+  const { links } = c.var.schema;
   const existing = await getOwnedLink(c);
   if (!existing) return c.json({ error: "Not found" }, 404);
 
@@ -194,6 +212,7 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
 
 // DELETE
 route.delete("/:id", async (c) => {
+  const { links } = c.var.schema;
   const existing = await getOwnedLink(c);
   if (!existing) return c.json({ error: "Not found" }, 404);
   await c.var.db.delete(links).where(eq(links.id, existing.id));

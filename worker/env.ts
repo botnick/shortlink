@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import type { DB } from "./db";
+import type { DB, DbSchema, Dialect } from "./db";
 import type { Role } from "@shared/types";
 
 /**
@@ -11,6 +11,10 @@ export interface AppBindings extends Env {
   IP_HASH_SALT: string;
   /** One-time bootstrap token gating the first-run installer (`POST /api/setup`). */
   SETUP_TOKEN: string;
+  /** Cloudflare D1 binding, present only when DB_DRIVER="d1" (otherwise absent
+   *  from the generated Env, so it's declared optional here). DB_DRIVER itself
+   *  comes from the generated Env (a wrangler var). */
+  DB?: D1Database;
 }
 
 export interface SessionUser {
@@ -21,6 +25,8 @@ export interface SessionUser {
 
 export interface AppVariables {
   db: DB;
+  schema: DbSchema;
+  dialect: Dialect;
   user: SessionUser | null;
   sessionId: string | null;
 }

@@ -1,6 +1,5 @@
 import { count, eq } from "drizzle-orm";
-import { settings, users } from "../db/schema";
-import type { DB } from "../db";
+import type { DB, DbSchema } from "../db";
 import type { AppConfigDTO } from "@shared/types";
 
 export const SETTING_KEYS = {
@@ -18,23 +17,32 @@ export const SETTING_KEYS = {
 const DEFAULT_APP_NAME = "Shortlink";
 const DEFAULT_BRAND_COLOR = "#e5392e";
 
-export async function getAllSettings(db: DB): Promise<Record<string, unknown>> {
-  const rows = await db.select().from(settings);
+export async function getAllSettings(
+  db: DB,
+  schema: DbSchema,
+): Promise<Record<string, unknown>> {
+  const rows = await db.select().from(schema.settings);
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
 export async function setSetting(
   db: DB,
+  schema: DbSchema,
   key: string,
   value: unknown,
 ): Promise<void> {
+  const { settings } = schema;
   await db
     .insert(settings)
     .values({ key, value })
     .onConflictDoUpdate({ target: settings.key, set: { value } });
 }
 
-export async function getRegistrationEnabled(db: DB): Promise<boolean> {
+export async function getRegistrationEnabled(
+  db: DB,
+  schema: DbSchema,
+): Promise<boolean> {
+  const { settings } = schema;
   const rows = await db
     .select({ value: settings.value })
     .from(settings)
@@ -79,12 +87,15 @@ export function indexableFrom(map: Record<string, unknown>): boolean {
 }
 
 /** Public, unauthenticated app config used by the SPA at startup. */
-export async function getPublicConfig(db: DB): Promise<AppConfigDTO> {
-  const map = await getAllSettings(db);
+export async function getPublicConfig(
+  db: DB,
+  schema: DbSchema,
+): Promise<AppConfigDTO> {
+  const map = await getAllSettings(db, schema);
 
   let needsSetup = map[SETTING_KEYS.setupCompleted] !== true;
   if (needsSetup) {
-    const [row] = await db.select({ c: count() }).from(users);
+    const [row] = await db.select({ c: count() }).from(schema.users);
     needsSetup = Number(row?.c ?? 0) === 0;
   }
 

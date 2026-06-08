@@ -68,6 +68,44 @@ export interface AdminUserDTO {
   linkCount: number;
 }
 
+export interface AdminUserListDTO {
+  users: AdminUserDTO[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface AdminLinkDTO {
+  id: string;
+  slug: string;
+  shortUrl: string;
+  destination: string;
+  title: string | null;
+  isActive: boolean;
+  clickCount: number;
+  createdAt: string;
+  ownerEmail: string;
+}
+
+export interface AdminLinkListDTO {
+  links: AdminLinkDTO[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface AdminOverviewDTO {
+  totals: {
+    links: number;
+    clicks: number;
+    users: number;
+    activeLinks: number;
+  };
+  clicks7d: number;
+  newLinks7d: number;
+  topLinks: { slug: string; clickCount: number; ownerEmail: string }[];
+  timeseries: TimePoint[];
+  dbDriver: "postgres" | "sqlite";
+}
+
 export interface SettingsDTO {
   registrationEnabled: boolean;
   appName: string;

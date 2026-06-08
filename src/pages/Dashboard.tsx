@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
   BarChart3,
@@ -9,6 +9,7 @@ import {
   Plus,
   Power,
   QrCode,
+  Search,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -36,25 +37,48 @@ export function Dashboard() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<LinkDTO | null>(null);
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const reqId = useRef(0);
 
-  const load = useCallback(async (cur?: string) => {
-    const query = cur ? `?cursor=${encodeURIComponent(cur)}` : "";
-    const data = await api.get<LinkListDTO>(`/links${query}`);
-    setLinks((prev) => (cur ? [...prev, ...data.links] : data.links));
-    setCursor(data.nextCursor);
+  const fetchPage = useCallback(async (q: string, cur: string | null) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (cur) params.set("cursor", cur);
+    return api.get<LinkListDTO>(`/links?${params}`);
   }, []);
 
+  // Debounce the search box.
   useEffect(() => {
-    load()
-      .catch(() => toast.error("Couldn't load your links"))
-      .finally(() => setLoading(false));
-  }, [load]);
+    const t = setTimeout(() => setSearch(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Reload from scratch whenever the (debounced) search changes.
+  useEffect(() => {
+    const id = ++reqId.current;
+    setLoading(true);
+    fetchPage(search, null)
+      .then((data) => {
+        if (id !== reqId.current) return;
+        setLinks(data.links);
+        setCursor(data.nextCursor);
+      })
+      .catch(() => {
+        if (id === reqId.current) toast.error("Couldn't load your links");
+      })
+      .finally(() => {
+        if (id === reqId.current) setLoading(false);
+      });
+  }, [search, fetchPage]);
 
   async function loadMore() {
     if (!cursor) return;
     setLoadingMore(true);
     try {
-      await load(cursor);
+      const data = await fetchPage(search, cursor);
+      setLinks((prev) => [...prev, ...data.links]);
+      setCursor(data.nextCursor);
     } catch {
       toast.error("Couldn't load more");
     } finally {
@@ -109,6 +133,16 @@ export function Dashboard() {
         </Button>
       </div>
 
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search your links…"
+          className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </div>
+
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -116,7 +150,13 @@ export function Dashboard() {
           ))}
         </div>
       ) : links.length === 0 ? (
-        <EmptyState onCreate={() => setCreateOpen(true)} />
+        search ? (
+          <p className="rounded-xl border border-dashed py-16 text-center text-sm text-muted-foreground">
+            No links match “{search}”.
+          </p>
+        ) : (
+          <EmptyState onCreate={() => setCreateOpen(true)} />
+        )
       ) : (
         <ul className="space-y-3">
           {links.map((link) => (

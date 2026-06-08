@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
-import { sessions, users } from "../db/schema";
-import type { DB } from "../db";
+import type { DB, DbSchema } from "../db";
 import type { SessionUser } from "../env";
 import { randomHex } from "./encoding";
 
@@ -13,11 +12,12 @@ export function generateSessionId(): string {
 
 export async function createSession(
   db: DB,
+  schema: DbSchema,
   userId: string,
 ): Promise<{ id: string; expiresAt: Date }> {
   const id = generateSessionId();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-  await db.insert(sessions).values({ id, userId, expiresAt });
+  await db.insert(schema.sessions).values({ id, userId, expiresAt });
   return { id, expiresAt };
 }
 
@@ -29,8 +29,10 @@ export interface ValidatedSession {
 
 export async function validateSession(
   db: DB,
+  schema: DbSchema,
   id: string,
 ): Promise<ValidatedSession | null> {
+  const { sessions, users } = schema;
   const rows = await db
     .select({
       sessionExpiresAt: sessions.expiresAt,
@@ -67,6 +69,10 @@ export async function validateSession(
   };
 }
 
-export async function invalidateSession(db: DB, id: string): Promise<void> {
-  await db.delete(sessions).where(eq(sessions.id, id));
+export async function invalidateSession(
+  db: DB,
+  schema: DbSchema,
+  id: string,
+): Promise<void> {
+  await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
 }
