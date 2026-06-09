@@ -8,6 +8,8 @@ export interface UserDTO {
   role: Role;
 }
 
+export type PreviewMode = "off" | "custom" | "destination";
+
 export interface LinkDTO {
   id: string;
   slug: string;
@@ -17,6 +19,10 @@ export interface LinkDTO {
   isActive: boolean;
   expiresAt: string | null;
   clickCount: number;
+  previewMode: PreviewMode;
+  ogTitle: string | null;
+  ogDescription: string | null;
+  ogImage: string | null;
   createdAt: string;
 }
 

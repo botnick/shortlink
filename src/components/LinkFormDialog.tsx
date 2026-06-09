@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import type { LinkDTO } from "@shared/types";
+import type { LinkDTO, PreviewMode } from "@shared/types";
 import {
   Dialog,
   DialogClose,
@@ -32,6 +32,10 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
   const [alias, setAlias] = useState("");
   const [title, setTitle] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("off");
+  const [ogTitle, setOgTitle] = useState("");
+  const [ogDescription, setOgDescription] = useState("");
+  const [ogImage, setOgImage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -40,8 +44,29 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
       setAlias("");
       setTitle(link?.title ?? "");
       setIsActive(link?.isActive ?? true);
+      setPreviewMode(link?.previewMode ?? "off");
+      setOgTitle(link?.ogTitle ?? "");
+      setOgDescription(link?.ogDescription ?? "");
+      setOgImage(link?.ogImage ?? "");
     }
   }, [open, link]);
+
+  function previewPayload() {
+    return {
+      previewMode,
+      ogTitle: previewMode === "custom" ? ogTitle.trim() || null : null,
+      ogDescription: previewMode === "custom" ? ogDescription.trim() || null : null,
+      ogImage: previewMode === "custom" ? ogImage.trim() || null : null,
+    };
+  }
+
+  function pickOgImage(file: File | undefined) {
+    if (!file) return;
+    if (file.size > 300_000) return toast.error("Keep the image under ~300KB");
+    const reader = new FileReader();
+    reader.onload = () => setOgImage(String(reader.result));
+    reader.readAsDataURL(file);
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -50,7 +75,7 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
       if (isEdit && link) {
         const { link: updated } = await api.patch<{ link: LinkDTO }>(
           `/links/${link.id}`,
-          { destination, title: title.trim() || null, isActive },
+          { destination, title: title.trim() || null, isActive, ...previewPayload() },
         );
         toast.success("Link updated");
         onSaved(updated);
@@ -59,6 +84,7 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
           destination,
           slug: alias.trim() || undefined,
           title: title.trim() || undefined,
+          ...previewPayload(),
         });
         toast.success("Short link created");
         onSaved(created);
@@ -142,6 +168,78 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
               <Switch checked={isActive} onCheckedChange={setIsActive} />
             </label>
           )}
+
+          <div className="space-y-2">
+            <Label>
+              Social preview{" "}
+              <span className="font-normal text-muted-foreground">
+                (card shown when shared)
+              </span>
+            </Label>
+            <div className="flex gap-1 rounded-lg bg-muted p-1">
+              {(
+                [
+                  ["off", "Off"],
+                  ["destination", "From page"],
+                  ["custom", "Custom"],
+                ] as [PreviewMode, string][]
+              ).map(([m, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPreviewMode(m)}
+                  className={
+                    previewMode === m
+                      ? "flex-1 rounded-md bg-card px-2.5 py-1.5 text-xs font-medium shadow-sm"
+                      : "flex-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground"
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {previewMode === "destination" && (
+              <p className="text-xs text-muted-foreground">
+                We’ll show the destination page’s own title, description and image.
+              </p>
+            )}
+            {previewMode === "custom" && (
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                <Input
+                  placeholder="Preview title"
+                  value={ogTitle}
+                  onChange={(e) => setOgTitle(e.target.value)}
+                  maxLength={120}
+                />
+                <textarea
+                  placeholder="Preview description"
+                  value={ogDescription}
+                  onChange={(e) => setOgDescription(e.target.value)}
+                  rows={2}
+                  maxLength={300}
+                  className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <div className="flex items-center gap-3">
+                  {ogImage ? (
+                    <img src={ogImage} alt="" className="h-11 w-20 rounded border object-cover" />
+                  ) : (
+                    <span className="flex h-11 w-20 items-center justify-center rounded border bg-muted text-xs text-muted-foreground">
+                      image
+                    </span>
+                  )}
+                  <label className="cursor-pointer rounded-lg border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent">
+                    Upload
+                    <input type="file" accept="image/*" className="sr-only" onChange={(e) => pickOgImage(e.target.files?.[0])} />
+                  </label>
+                  {ogImage && (
+                    <button type="button" onClick={() => setOgImage("")} className="text-sm text-muted-foreground hover:text-foreground">
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           <DialogFooter>
             <DialogClose asChild>

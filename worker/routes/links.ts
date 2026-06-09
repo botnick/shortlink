@@ -7,6 +7,7 @@ import { createLinkSchema, updateLinkSchema } from "../lib/validators";
 import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink, type CachedLink } from "../lib/cache";
 import { searchCondition } from "../lib/query";
+import { invalidateLinkPreview } from "../lib/social";
 import {
   blockedDomainsFrom,
   extraReservedFrom,
@@ -34,6 +35,10 @@ function toLinkDTO(env: AppBindings, row: LinkRow): LinkDTO {
     isActive: row.isActive,
     expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     clickCount: row.clickCount,
+    previewMode: (row.previewMode as LinkDTO["previewMode"]) ?? "off",
+    ogTitle: row.ogTitle,
+    ogDescription: row.ogDescription,
+    ogImage: row.ogImage,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -141,6 +146,10 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
           userId: user.id,
           title: input.title ?? null,
           expiresAt,
+          previewMode: input.previewMode ?? "off",
+          ogTitle: input.ogTitle ?? null,
+          ogDescription: input.ogDescription ?? null,
+          ogImage: input.ogImage ?? null,
         })
         .returning()
     )[0];
@@ -230,11 +239,17 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   if (input.expiresAt !== undefined) {
     patch.expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
   }
+  if (input.previewMode !== undefined) patch.previewMode = input.previewMode;
+  if (input.ogTitle !== undefined) patch.ogTitle = input.ogTitle;
+  if (input.ogDescription !== undefined) patch.ogDescription = input.ogDescription;
+  if (input.ogImage !== undefined) patch.ogImage = input.ogImage;
 
   const row = (
     await db.update(links).set(patch).where(eq(links.id, existing.id)).returning()
   )[0];
   await putCachedLink(c.env.LINKS_KV, row.slug, cachePayload(row));
+  // Drop any cached destination preview so changes show on the next share.
+  await invalidateLinkPreview(c.env, row.id);
   return c.json({ link: toLinkDTO(c.env, row) });
 });
 

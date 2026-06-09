@@ -121,11 +121,20 @@ export const assetUploadSchema = z.object({
     .max(800_000),
 });
 
+const previewMode = z.enum(["off", "custom", "destination"]);
+const ogTitle = z.string().trim().max(120).nullable();
+const ogDescription = z.string().trim().max(300).nullable();
+const ogImage = longText.nullable();
+
 export const createLinkSchema = z.object({
   destination: httpUrl,
   slug: slugField.optional(),
   title: z.string().trim().max(120).optional(),
   expiresAt: isoDate.optional(),
+  previewMode: previewMode.optional(),
+  ogTitle: ogTitle.optional(),
+  ogDescription: ogDescription.optional(),
+  ogImage: ogImage.optional(),
 });
 
 export const updateLinkSchema = z.object({
@@ -133,4 +142,8 @@ export const updateLinkSchema = z.object({
   title: z.string().trim().max(120).nullable().optional(),
   isActive: z.boolean().optional(),
   expiresAt: isoDate.nullable().optional(),
+  previewMode: previewMode.optional(),
+  ogTitle: ogTitle.optional(),
+  ogDescription: ogDescription.optional(),
+  ogImage: ogImage.optional(),
 });

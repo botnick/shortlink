@@ -22,6 +22,7 @@ import {
   serveBrandImage,
 } from "./lib/seo";
 import { isValidCustomSlug } from "./lib/slug";
+import { destinationPreview, isCrawler, previewHtml } from "./lib/social";
 import {
   getClientIp,
   getCountry,
@@ -68,6 +69,14 @@ app.get("/:slug", async (c) => {
   // Only well-formed, non-reserved slugs get a DB lookup. Everything else —
   // app routes, /favicon.ico, and dev module paths like /@react-refresh — is an asset.
   if (!isValidCustomSlug(slug)) return serveAssets(c);
+
+  // Social crawlers (FB/X/IG/Slack/…) get an OG-tagged preview instead of the
+  // redirect, so a shared link can show a branded card. Bots don't run JS and
+  // aren't counted as clicks; humans always fall through to the fast path.
+  if (isCrawler(c.req.header("user-agent") ?? null)) {
+    const preview = await serveSocialPreview(c, slug);
+    if (preview) return preview;
+  }
 
   const kv = c.env.LINKS_KV;
   let cached = await getCachedLink(kv, slug);
@@ -142,6 +151,40 @@ async function serveAssets(c: AppContext): Promise<Response> {
 async function spa(c: AppContext, status: number): Promise<Response> {
   const res = await c.env.ASSETS.fetch(c.req.raw);
   return new Response(res.body, { status, headers: res.headers });
+}
+
+/**
+ * For social crawlers: return an OG-card HTML when the link opts into a preview,
+ * else null (so the caller continues to the normal redirect path). Does a DB
+ * lookup — fine because crawler hits are infrequent (once per share).
+ */
+async function serveSocialPreview(
+  c: AppContext,
+  slug: string,
+): Promise<Response | null> {
+  const { db, schema, close } = getDbHandle(c.env);
+  const { links } = schema;
+  try {
+    const rows = await db.select().from(links).where(eq(links.slug, slug)).limit(1);
+    const l = rows[0];
+    if (!l) return null;
+    const expired = l.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
+    if (!l.isActive || expired || l.previewMode === "off") return null;
+
+    const preview =
+      l.previewMode === "destination"
+        ? await destinationPreview(c.env, l.id, l.destination)
+        : {
+            title: l.ogTitle ?? l.title ?? "",
+            description: l.ogDescription ?? "",
+            image: l.ogImage ?? "",
+          };
+    if (!preview.title) preview.title = l.title ?? l.slug;
+    const bundle = await getSeoBundle(c.env);
+    return c.html(previewHtml(preview, l.destination, bundle.appName));
+  } finally {
+    c.executionCtx.waitUntil(close());
+  }
 }
 
 async function logClick(c: AppContext, linkId: string): Promise<void> {

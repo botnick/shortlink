@@ -56,6 +56,11 @@ export const links = pgTable(
     isActive: boolean().notNull().default(true),
     expiresAt: timestamp({ withTimezone: true }),
     clickCount: integer().notNull().default(0),
+    // Social preview: "off" (plain redirect) | "custom" | "destination".
+    previewMode: text().notNull().default("off"),
+    ogTitle: text(),
+    ogDescription: text(),
+    ogImage: text(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
