@@ -3,7 +3,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { OG_TEMPLATES, ogDataUrl, renderOg } from "@/lib/ogTemplates";
+import { ogDataUrl, renderOg } from "@/lib/ogTemplates";
 import type { LinkDTO, PreviewMode } from "@shared/types";
 import {
   Dialog,
@@ -40,9 +40,9 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
   const [ogDescription, setOgDescription] = useState("");
   const [ogImage, setOgImage] = useState("");
   const [ogSource, setOgSource] = useState<"generate" | "upload">("generate");
-  const [ogTemplate, setOgTemplate] = useState("minimal");
   const [submitting, setSubmitting] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ogTemplate = config.ogTemplate; // system default, set by admin
 
   useEffect(() => {
     if (open) {
@@ -55,7 +55,6 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
       setOgDescription(link?.ogDescription ?? "");
       setOgImage(link?.ogImage ?? "");
       setOgSource(link?.ogImage ? "upload" : "generate");
-      setOgTemplate("minimal");
     }
   }, [open, link]);
 
@@ -272,29 +271,10 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
                 </div>
 
                 {ogSource === "generate" ? (
-                  <>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {OG_TEMPLATES.map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => setOgTemplate(t.id)}
-                          className={cn(
-                            "rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
-                            ogTemplate === t.id
-                              ? "border-primary bg-primary/5"
-                              : "hover:bg-accent",
-                          )}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                    <canvas
-                      ref={canvasRef}
-                      className="aspect-[1.91/1] w-full rounded-lg border"
-                    />
-                  </>
+                  <canvas
+                    ref={canvasRef}
+                    className="aspect-[1.91/1] w-full rounded-lg border"
+                  />
                 ) : (
                   <div className="space-y-2">
                     <div className="flex items-center gap-3">

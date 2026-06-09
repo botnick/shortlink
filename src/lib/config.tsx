@@ -18,6 +18,7 @@ const DEFAULT: AppConfigDTO = {
   description: "",
   indexable: true,
   registrationEnabled: false,
+  ogTemplate: "minimal",
 };
 
 function upsertMeta(key: "name" | "property", keyName: string, content: string) {

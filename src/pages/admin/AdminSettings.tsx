@@ -1,9 +1,44 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { useConfig } from "@/lib/config";
+import { cn } from "@/lib/utils";
+import { OG_TEMPLATES, renderOg } from "@/lib/ogTemplates";
 import type { SettingsDTO } from "@shared/types";
+
+function TemplateThumb({
+  template,
+  brandColor,
+  appName,
+  selected,
+  onSelect,
+}: {
+  template: string;
+  brandColor: string;
+  appName: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (ref.current) {
+      renderOg(ref.current, { template, title: "Your headline", appName, brandColor });
+    }
+  }, [template, brandColor, appName]);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "overflow-hidden rounded-lg border transition-all",
+        selected ? "border-primary ring-2 ring-primary" : "hover:border-foreground/30",
+      )}
+    >
+      <canvas ref={ref} className="block aspect-[1.91/1] w-full" />
+    </button>
+  );
+}
 import {
   Card,
   CardContent,
@@ -69,6 +104,7 @@ export function AdminSettings() {
   const [description, setDescription] = useState("");
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [indexable, setIndexable] = useState(true);
+  const [ogTemplate, setOgTemplate] = useState("minimal");
 
   const [blockedDomains, setBlockedDomains] = useState("");
   const [extraReserved, setExtraReserved] = useState("");
@@ -93,6 +129,7 @@ export function AdminSettings() {
         setDescription(s.description);
         setOgImageUrl(s.ogImageUrl);
         setIndexable(s.indexable);
+        setOgTemplate(s.ogTemplate);
         setBlockedDomains(s.blockedDomains.join("\n"));
         setExtraReserved(s.extraReserved.join("\n"));
         setMaxLinks(s.maxLinksPerUser);
@@ -126,7 +163,7 @@ export function AdminSettings() {
     e.preventDefault();
     setSavingApp(true);
     try {
-      await patch({ appName, shortDomain, brandColor, logoUrl, description, ogImageUrl, indexable });
+      await patch({ appName, shortDomain, brandColor, logoUrl, description, ogImageUrl, indexable, ogTemplate });
       toast.success("Branding saved");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
@@ -252,6 +289,30 @@ export function AdminSettings() {
                 <span className="text-sm">Allow search engines to index</span>
                 <Switch checked={indexable} onCheckedChange={setIndexable} />
               </label>
+
+              <div className="space-y-2">
+                <Label>
+                  Social card template{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (auto-generated preview image for links)
+                  </span>
+                </Label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {OG_TEMPLATES.map((t) => (
+                    <div key={t.id} className="space-y-1">
+                      <TemplateThumb
+                        template={t.id}
+                        brandColor={brandColor}
+                        appName={appName || "Shortlink"}
+                        selected={ogTemplate === t.id}
+                        onSelect={() => setOgTemplate(t.id)}
+                      />
+                      <div className="text-center text-[11px] text-muted-foreground">{t.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <Button type="submit" disabled={savingApp}>
                 {savingApp && <Loader2 className="animate-spin" />}
                 Save

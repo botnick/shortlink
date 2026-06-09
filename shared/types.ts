@@ -157,6 +157,7 @@ export interface SettingsDTO {
   cfZoneId: string;
   cfFallbackHost: string;
   cfConfigured: boolean;
+  ogTemplate: string;
 }
 
 export interface AppConfigDTO {
@@ -168,6 +169,7 @@ export interface AppConfigDTO {
   description: string;
   indexable: boolean;
   registrationEnabled: boolean;
+  ogTemplate: string;
 }
 
 export interface QrPresetDTO {

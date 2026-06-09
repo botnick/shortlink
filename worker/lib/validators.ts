@@ -88,6 +88,9 @@ export const settingsSchema = z
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),
+    ogTemplate: z
+      .enum(["minimal", "gradient", "bold", "dark", "split", "frame"])
+      .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "No settings provided");
 

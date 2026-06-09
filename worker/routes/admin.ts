@@ -33,6 +33,7 @@ import {
   logoFrom,
   maxLinksPerUserFrom,
   ogImageFrom,
+  ogTemplateFrom,
   setSetting,
   shortDomainFrom,
 } from "../lib/settings";
@@ -83,6 +84,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
+    ogTemplate: ogTemplateFrom(map),
   };
 }
 
@@ -144,6 +146,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.cfFallbackHost !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.cfFallbackHost, input.cfFallbackHost);
+  }
+  if (input.ogTemplate !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.ogTemplate, input.ogTemplate);
   }
   await invalidateSeo(c.env.LINKS_KV);
   await invalidatePublicConfig(c.env.LINKS_KV);

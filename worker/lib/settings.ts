@@ -17,6 +17,7 @@ export const SETTING_KEYS = {
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
+  ogTemplate: "og_template",
   setupCompleted: "setup_completed",
 } as const;
 
@@ -90,6 +91,12 @@ export function ogImageFrom(map: Record<string, unknown>): string {
 
 export function indexableFrom(map: Record<string, unknown>): boolean {
   return map[SETTING_KEYS.indexable] !== false; // default: indexable
+}
+
+const OG_TEMPLATE_IDS = ["minimal", "gradient", "bold", "dark", "split", "frame"];
+export function ogTemplateFrom(map: Record<string, unknown>): string {
+  const v = map[SETTING_KEYS.ogTemplate];
+  return typeof v === "string" && OG_TEMPLATE_IDS.includes(v) ? v : "minimal";
 }
 
 function asStringArray(value: unknown): string[] {
@@ -193,5 +200,6 @@ export async function getPublicConfig(
     description: descriptionFrom(map),
     indexable: indexableFrom(map),
     registrationEnabled: map[SETTING_KEYS.registration] === true,
+    ogTemplate: ogTemplateFrom(map),
   };
 }
