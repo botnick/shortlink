@@ -130,3 +130,103 @@ export async function destinationPreview(
 export async function invalidateLinkPreview(env: AppBindings, linkId: string) {
   await env.LINKS_KV.delete(`linkog:${linkId}`);
 }
+
+export interface UrlMeta {
+  title: string;
+  description: string;
+  image: string;
+  siteName: string;
+  favicon: string;
+  domain: string;
+}
+
+function absolutize(href: string, base: URL): string {
+  if (!href) return "";
+  try {
+    return new URL(href, base).toString();
+  } catch {
+    return "";
+  }
+}
+
+function pickFavicon(html: string): string {
+  const tag = /<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*>/i.exec(html);
+  if (!tag) return "";
+  return /href=["']([^"']+)["']/i.exec(tag[0])?.[1] ?? "";
+}
+
+function emptyMeta(rawUrl: string): UrlMeta {
+  let domain = "";
+  try {
+    domain = new URL(rawUrl).hostname.replace(/^www\./, "");
+  } catch {
+    /* keep empty */
+  }
+  return {
+    title: "",
+    description: "",
+    image: "",
+    siteName: domain,
+    favicon: domain ? `https://${domain}/favicon.ico` : "",
+    domain,
+  };
+}
+
+/**
+ * Fetch a destination URL's own metadata (title / description / og:image /
+ * site name / favicon) for the rich link-preview card. Cached in KV by URL for
+ * a day. Same fetch surface as `destinationPreview`, keyed by URL not link id.
+ */
+export async function fetchMeta(env: AppBindings, rawUrl: string): Promise<UrlMeta> {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return emptyMeta(rawUrl);
+  }
+  const key = `meta:${u.host}${u.pathname}`.slice(0, 480);
+  const cached = await env.LINKS_KV.get<UrlMeta>(key, "json");
+  if (cached) return cached;
+
+  let meta = emptyMeta(rawUrl);
+  try {
+    const res = await fetch(u.toString(), {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; LinkPreview/1.0)" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.ok && (res.headers.get("content-type") ?? "").includes("text/html")) {
+      const html = (await res.text()).slice(0, 200_000);
+      const fav = pickFavicon(html);
+      meta = {
+        title: pick(html, [
+          /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+          /<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']/i,
+          /<title[^>]*>([^<]+)<\/title>/i,
+        ]),
+        description: pick(html, [
+          /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
+          /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
+        ]),
+        image: absolutize(
+          pick(html, [
+            /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+            /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
+          ]),
+          u,
+        ),
+        siteName:
+          pick(html, [
+            /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i,
+          ]) || u.hostname.replace(/^www\./, ""),
+        favicon: fav ? absolutize(fav, u) : `${u.origin}/favicon.ico`,
+        domain: u.hostname.replace(/^www\./, ""),
+      };
+      if (!meta.title) meta.title = meta.domain;
+    }
+  } catch {
+    // ignore — fall back to the domain-only meta
+  }
+  await env.LINKS_KV.put(key, JSON.stringify(meta), { expirationTtl: 86_400 });
+  return meta;
+}

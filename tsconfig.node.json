@@ -16,5 +16,7 @@
       "@shared/*": ["./shared/*"]
     }
   },
-  "include": ["vite.config.ts", "drizzle.config.ts", "scripts", "shared"]
+  "include": ["vite.config.ts", "drizzle.config.ts", "scripts", "shared"],
+  "comment": "og-preview is a tsx-run dev tool that imports browser (DOM) modules.",
+  "exclude": ["scripts/og-preview.ts"]
 }

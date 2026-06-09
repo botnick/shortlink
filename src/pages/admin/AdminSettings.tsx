@@ -5,16 +5,19 @@ import { api, ApiError } from "@/lib/api";
 import { useConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { OG_TEMPLATES, renderOg } from "@/lib/ogTemplates";
+import { OG_FONTS, loadOgFont } from "@/lib/ogFonts";
 import type { SettingsDTO } from "@shared/types";
 
 function TemplateThumb({
   template,
+  fontId,
   brandColor,
   appName,
   selected,
   onSelect,
 }: {
   template: string;
+  fontId: string;
   brandColor: string;
   appName: string;
   selected: boolean;
@@ -22,10 +25,23 @@ function TemplateThumb({
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (ref.current) {
-      renderOg(ref.current, { template, title: "Your headline", appName, brandColor });
-    }
-  }, [template, brandColor, appName]);
+    let cancelled = false;
+    void loadOgFont(fontId).then((family) => {
+      if (cancelled || !ref.current) return;
+      renderOg(ref.current, {
+        template,
+        font: family,
+        title: "Your headline goes here",
+        description: "Share links with a clean, branded card.",
+        appName,
+        brandColor,
+        url: "go.brand.co/abc",
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [template, fontId, brandColor, appName]);
   return (
     <button
       type="button"
@@ -105,6 +121,7 @@ export function AdminSettings() {
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [indexable, setIndexable] = useState(true);
   const [ogTemplate, setOgTemplate] = useState("minimal");
+  const [ogFont, setOgFont] = useState("ibm-plex-thai");
 
   const [blockedDomains, setBlockedDomains] = useState("");
   const [extraReserved, setExtraReserved] = useState("");
@@ -130,6 +147,7 @@ export function AdminSettings() {
         setOgImageUrl(s.ogImageUrl);
         setIndexable(s.indexable);
         setOgTemplate(s.ogTemplate);
+        setOgFont(s.ogFont);
         setBlockedDomains(s.blockedDomains.join("\n"));
         setExtraReserved(s.extraReserved.join("\n"));
         setMaxLinks(s.maxLinksPerUser);
@@ -163,7 +181,7 @@ export function AdminSettings() {
     e.preventDefault();
     setSavingApp(true);
     try {
-      await patch({ appName, shortDomain, brandColor, logoUrl, description, ogImageUrl, indexable, ogTemplate });
+      await patch({ appName, shortDomain, brandColor, logoUrl, description, ogImageUrl, indexable, ogTemplate, ogFont });
       toast.success("Branding saved");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
@@ -302,6 +320,7 @@ export function AdminSettings() {
                     <div key={t.id} className="space-y-1">
                       <TemplateThumb
                         template={t.id}
+                        fontId={ogFont}
                         brandColor={brandColor}
                         appName={appName || "Shortlink"}
                         selected={ogTemplate === t.id}
@@ -311,6 +330,27 @@ export function AdminSettings() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ogFont">
+                  Card font{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (Thai + Latin)
+                  </span>
+                </Label>
+                <select
+                  id="ogFont"
+                  value={ogFont}
+                  onChange={(e) => setOgFont(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {OG_FONTS.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <Button type="submit" disabled={savingApp}>

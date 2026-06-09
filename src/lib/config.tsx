@@ -19,6 +19,7 @@ const DEFAULT: AppConfigDTO = {
   indexable: true,
   registrationEnabled: false,
   ogTemplate: "minimal",
+  ogFont: "ibm-plex-thai",
 };
 
 function upsertMeta(key: "name" | "property", keyName: string, content: string) {

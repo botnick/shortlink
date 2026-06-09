@@ -18,6 +18,7 @@ export const SETTING_KEYS = {
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
   ogTemplate: "og_template",
+  ogFont: "og_font",
   setupCompleted: "setup_completed",
 } as const;
 
@@ -93,10 +94,35 @@ export function indexableFrom(map: Record<string, unknown>): boolean {
   return map[SETTING_KEYS.indexable] !== false; // default: indexable
 }
 
-const OG_TEMPLATE_IDS = ["minimal", "gradient", "bold", "dark", "split", "frame"];
+const OG_TEMPLATE_IDS = [
+  "minimal",
+  "dark",
+  "brand",
+  "split",
+  "grid",
+  "editorial",
+  "glow",
+  "sidebar",
+  "footer",
+  "frame",
+  "card",
+  "mono",
+];
 export function ogTemplateFrom(map: Record<string, unknown>): string {
   const v = map[SETTING_KEYS.ogTemplate];
   return typeof v === "string" && OG_TEMPLATE_IDS.includes(v) ? v : "minimal";
+}
+
+const OG_FONT_IDS = [
+  "ibm-plex-thai",
+  "ibm-plex-thai-looped",
+  "kanit",
+  "noto-sans-thai",
+  "sarabun",
+];
+export function ogFontFrom(map: Record<string, unknown>): string {
+  const v = map[SETTING_KEYS.ogFont];
+  return typeof v === "string" && OG_FONT_IDS.includes(v) ? v : "ibm-plex-thai";
 }
 
 function asStringArray(value: unknown): string[] {
@@ -201,5 +227,6 @@ export async function getPublicConfig(
     indexable: indexableFrom(map),
     registrationEnabled: map[SETTING_KEYS.registration] === true,
     ogTemplate: ogTemplateFrom(map),
+    ogFont: ogFontFrom(map),
   };
 }

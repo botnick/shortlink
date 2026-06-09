@@ -7,7 +7,7 @@ import { createLinkSchema, updateLinkSchema } from "../lib/validators";
 import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink, type CachedLink } from "../lib/cache";
 import { searchCondition } from "../lib/query";
-import { invalidateLinkPreview } from "../lib/social";
+import { fetchMeta, invalidateLinkPreview } from "../lib/social";
 
 /**
  * Store a link's OG image in R2 (cheap blob storage) instead of bloating the DB
@@ -222,6 +222,20 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     }
   }
   return c.json({ error: "Could not generate a unique slug, please retry" }, 500);
+});
+
+// META — the destination's own title/description/image/favicon, for the rich
+// link-preview card shown in the form (and served as-is to crawlers in
+// "destination" mode). Registered before "/:id" so it isn't read as an id.
+route.get("/meta", async (c) => {
+  const url = c.req.query("url") ?? "";
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("scheme");
+  } catch {
+    return c.json({ error: "Enter a valid URL first" }, 400);
+  }
+  return c.json({ meta: await fetchMeta(c.env, url) });
 });
 
 // READ one

@@ -32,6 +32,7 @@ import {
   indexableFrom,
   logoFrom,
   maxLinksPerUserFrom,
+  ogFontFrom,
   ogImageFrom,
   ogTemplateFrom,
   setSetting,
@@ -85,6 +86,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
     ogTemplate: ogTemplateFrom(map),
+    ogFont: ogFontFrom(map),
   };
 }
 
@@ -149,6 +151,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.ogTemplate !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.ogTemplate, input.ogTemplate);
+  }
+  if (input.ogFont !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.ogFont, input.ogFont);
   }
   await invalidateSeo(c.env.LINKS_KV);
   await invalidatePublicConfig(c.env.LINKS_KV);

@@ -158,6 +158,7 @@ export interface SettingsDTO {
   cfFallbackHost: string;
   cfConfigured: boolean;
   ogTemplate: string;
+  ogFont: string;
 }
 
 export interface AppConfigDTO {
@@ -170,6 +171,17 @@ export interface AppConfigDTO {
   indexable: boolean;
   registrationEnabled: boolean;
   ogTemplate: string;
+  ogFont: string;
+}
+
+/** A destination URL's own metadata, for the rich link-preview card. */
+export interface UrlMetaDTO {
+  title: string;
+  description: string;
+  image: string;
+  siteName: string;
+  favicon: string;
+  domain: string;
 }
 
 export interface QrPresetDTO {

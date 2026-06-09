@@ -89,7 +89,29 @@ export const settingsSchema = z
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),
     ogTemplate: z
-      .enum(["minimal", "gradient", "bold", "dark", "split", "frame"])
+      .enum([
+        "minimal",
+        "dark",
+        "brand",
+        "split",
+        "grid",
+        "editorial",
+        "glow",
+        "sidebar",
+        "footer",
+        "frame",
+        "card",
+        "mono",
+      ])
+      .optional(),
+    ogFont: z
+      .enum([
+        "ibm-plex-thai",
+        "ibm-plex-thai-looped",
+        "kanit",
+        "noto-sans-thai",
+        "sarabun",
+      ])
       .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "No settings provided");

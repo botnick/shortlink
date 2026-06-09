@@ -3,8 +3,9 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { ogDataUrl, renderOg } from "@/lib/ogTemplates";
-import type { LinkDTO, PreviewMode } from "@shared/types";
+import { compressUpload, ogToPng, renderOg } from "@/lib/ogTemplates";
+import { loadOgFont } from "@/lib/ogFonts";
+import type { LinkDTO, PreviewMode, UrlMetaDTO } from "@shared/types";
 import {
   Dialog,
   DialogClose,
@@ -27,6 +28,53 @@ interface Props {
   onSaved: (link: LinkDTO) => void;
 }
 
+/** Standard rich link-preview card (favicon · domain · title · description ·
+ *  image) — mirrors how Slack/X/iMessage render a shared link's destination. */
+function DestinationPreview({
+  meta,
+  loading,
+  fallbackDomain,
+}: {
+  meta: UrlMetaDTO | null;
+  loading: boolean;
+  fallbackDomain: string;
+}) {
+  const domain = meta?.domain || fallbackDomain;
+  const hide = (e: { currentTarget: HTMLImageElement }) => {
+    e.currentTarget.style.display = "none";
+  };
+  return (
+    <div className="overflow-hidden rounded-xl border bg-card">
+      {meta?.image ? (
+        <img
+          src={meta.image}
+          alt=""
+          className="aspect-[1.91/1] w-full border-b object-cover"
+          onError={hide}
+        />
+      ) : null}
+      <div className="flex items-start gap-3 p-3">
+        {meta?.favicon ? (
+          <img src={meta.favicon} alt="" className="mt-0.5 size-5 rounded" onError={hide} />
+        ) : (
+          <div className="mt-0.5 size-5 shrink-0 rounded bg-muted" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xs text-muted-foreground">{domain}</div>
+          <div className="line-clamp-2 text-sm font-medium">
+            {loading && !meta ? "Loading preview…" : meta?.title || domain}
+          </div>
+          {meta?.description ? (
+            <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+              {meta.description}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
   const isEdit = Boolean(link);
   const shortHost = useShortHost();
@@ -41,8 +89,16 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
   const [ogImage, setOgImage] = useState("");
   const [ogSource, setOgSource] = useState<"generate" | "upload">("generate");
   const [submitting, setSubmitting] = useState(false);
+  const [destMeta, setDestMeta] = useState<UrlMetaDTO | null>(null);
+  const [destLoading, setDestLoading] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ogTemplate = config.ogTemplate; // system default, set by admin
+  // Short URL shown on the generated card (its own link once saved, else a preview).
+  const ogCardUrl = link?.shortUrl
+    ? link.shortUrl.replace(/^https?:\/\//, "")
+    : alias.trim()
+      ? `${shortHost}/${alias.trim()}`
+      : shortHost;
 
   useEffect(() => {
     if (open) {
@@ -58,24 +114,61 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
     }
   }, [open, link]);
 
-  // Re-draw the generated card whenever its inputs change.
+  // Re-draw the generated card whenever its inputs (or the system font) change.
   useEffect(() => {
-    if (previewMode === "custom" && ogSource === "generate" && canvasRef.current) {
+    if (previewMode !== "custom" || ogSource !== "generate") return;
+    let cancelled = false;
+    void loadOgFont(config.ogFont).then((family) => {
+      if (cancelled || !canvasRef.current) return;
       renderOg(canvasRef.current, {
         template: ogTemplate,
+        font: family,
         title: ogTitle || title,
+        description: ogDescription,
         appName: config.appName,
         brandColor: config.brandColor,
+        url: ogCardUrl,
       });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewMode, ogSource, ogTemplate, config.ogFont, ogTitle, ogDescription, title, config.appName, config.brandColor, ogCardUrl, open]);
+
+  // In "destination" mode, fetch the destination's own metadata (debounced) so
+  // the form shows the exact rich card a platform will render when shared.
+  useEffect(() => {
+    if (previewMode !== "destination" || !/^https?:\/\//i.test(destination.trim())) {
+      setDestMeta(null);
+      return;
     }
-  }, [previewMode, ogSource, ogTemplate, ogTitle, title, config.appName, config.brandColor, open]);
+    let active = true;
+    setDestLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const { meta } = await api.get<{ meta: UrlMetaDTO }>(
+          `/links/meta?url=${encodeURIComponent(destination.trim())}`,
+        );
+        if (active) setDestMeta(meta);
+      } catch {
+        if (active) setDestMeta(null);
+      } finally {
+        if (active) setDestLoading(false);
+      }
+    }, 600);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [previewMode, destination]);
 
   function previewPayload() {
     let image: string | null = null;
     if (previewMode === "custom") {
       image =
         ogSource === "generate" && canvasRef.current
-          ? ogDataUrl(canvasRef.current)
+          ? ogToPng(canvasRef.current)
           : ogImage.trim() || null;
     }
     return {
@@ -86,12 +179,18 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
     };
   }
 
-  function pickOgImage(file: File | undefined) {
+  async function pickOgImage(file: File | undefined) {
     if (!file) return;
-    if (file.size > 300_000) return toast.error("Keep the image under ~300KB");
-    const reader = new FileReader();
-    reader.onload = () => setOgImage(String(reader.result));
-    reader.readAsDataURL(file);
+    if (file.size > 10_000_000) {
+      toast.error("Image is too large (max ~10MB)");
+      return;
+    }
+    // Downscale + re-encode to JPEG so the stored image stays small and sharp.
+    try {
+      setOgImage(await compressUpload(file));
+    } catch {
+      toast.error("Couldn't read that image");
+    }
   }
 
   const previewDomain = (() => {
@@ -233,9 +332,17 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
               ))}
             </div>
             {previewMode === "destination" && (
-              <p className="text-xs text-muted-foreground">
-                We’ll show the destination page’s own title, description and image.
-              </p>
+              <div className="space-y-2">
+                <DestinationPreview
+                  meta={destMeta}
+                  loading={destLoading}
+                  fallbackDomain={previewDomain}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Pulled from the destination page automatically — this is what
+                  shows when the link is shared.
+                </p>
+              </div>
             )}
             {previewMode === "custom" && (
               <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
@@ -280,7 +387,7 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
                     <div className="flex items-center gap-3">
                       <label className="cursor-pointer rounded-lg border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent">
                         {ogImage ? "Replace image" : "Upload image"}
-                        <input type="file" accept="image/*" className="sr-only" onChange={(e) => pickOgImage(e.target.files?.[0])} />
+                        <input type="file" accept="image/*" className="sr-only" onChange={(e) => void pickOgImage(e.target.files?.[0])} />
                       </label>
                       {ogImage && (
                         <button type="button" onClick={() => setOgImage("")} className="text-sm text-muted-foreground hover:text-foreground">
