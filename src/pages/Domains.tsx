@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import type { DomainDTO, DomainListDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,6 +61,18 @@ function NoticeBox({ children }: { children: ReactNode }) {
     <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
       <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
       <p>{children}</p>
+    </div>
+  );
+}
+
+function HowStep({ n, title, desc }: { n: number; title: string; desc: string }) {
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+        {n}
+      </span>
+      <p className="mt-2.5 text-sm font-semibold">{title}</p>
+      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{desc}</p>
     </div>
   );
 }
@@ -137,27 +150,55 @@ export function Domains() {
       <div className="space-y-1">
         <h1 className="display text-3xl">Custom domains</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          Serve your short links from your own domain like{" "}
-          <span className="font-medium text-foreground">go.yourbrand.com</span> instead of the
-          default one. Add a domain below, point one DNS record at us, and you're set
-          {mode === "saas" ? " — TLS is issued automatically." : "."}
+          Serve short links from a domain you own — like{" "}
+          <span className="font-medium text-foreground">go.yourbrand.com/abc</span> — instead of the
+          default one.
         </p>
       </div>
 
-      <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row">
-        <div className="relative flex-1">
-          <Globe className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={hostname}
-            onChange={(e) => setHostname(e.target.value)}
-            placeholder="go.yourbrand.com"
-            className="pl-9"
-          />
-        </div>
-        <Button type="submit" disabled={adding} className="sm:w-auto">
-          {adding ? <Loader2 className="animate-spin" /> : <Plus />} Add domain
-        </Button>
-      </form>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <HowStep n={1} title="Add your domain" desc="Enter a subdomain you own in the box below." />
+        <HowStep
+          n={2}
+          title="Add one DNS record"
+          desc={
+            mode === "saas"
+              ? "We give you a CNAME + TXT to paste into your domain's DNS settings."
+              : "We give you a TXT record to paste into your domain's DNS settings."
+          }
+        />
+        <HowStep
+          n={3}
+          title="It goes live"
+          desc={
+            mode === "saas"
+              ? "Once it resolves, it connects with TLS automatically."
+              : "Once verified, an admin connects it and your links work on it."
+          }
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="domain">Your domain</Label>
+        <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <Globe className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="domain"
+              value={hostname}
+              onChange={(e) => setHostname(e.target.value)}
+              placeholder="go.yourbrand.com"
+              className="pl-9"
+            />
+          </div>
+          <Button type="submit" disabled={adding} className="sm:w-auto">
+            {adding ? <Loader2 className="animate-spin" /> : <Plus />} Add domain
+          </Button>
+        </form>
+        <p className="text-xs text-muted-foreground">
+          A domain or subdomain you control — we'll show the exact DNS record to add next.
+        </p>
+      </div>
 
       {domains === null ? (
         <div className="space-y-3">
