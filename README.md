@@ -104,6 +104,24 @@ npx wrangler d1 migrations apply shortlink-db --remote
 Then set `DB_DRIVER: "d1"` and uncomment the `d1_databases` block in `wrangler.jsonc`.
 (Local dev simulates D1 automatically — use `--local` instead of `--remote` to migrate it.)
 
+### Custom domains (optional)
+
+Members (and admins) can serve their short links from their own domain — e.g.
+`go.theirbrand.com` — entirely self-serve from the **Domains** page. It uses
+[Cloudflare for SaaS](https://developers.cloudflare.com/cloudflare-for-saas/) custom
+hostnames: the first **100 are free**, then ~$0.10/hostname/month, and TLS is issued
+automatically. To enable it, set three values (custom domains stay disabled until all
+three are present):
+
+```bash
+npx wrangler secret put CF_API_TOKEN     # token with "SSL and Certificates: Edit" on the zone
+```
+
+In `wrangler.jsonc` `vars`, add `CF_ZONE_ID` (the Cloudflare for SaaS zone) and
+`CF_FALLBACK_HOST` (the hostname members CNAME to — usually your app's domain). When a
+member adds a domain, the app registers the hostname and shows the exact DNS records to
+create; pressing **Check** re-validates and flips it to *Active* once TLS is issued.
+
 ## 4. Run & first-run setup
 
 ```bash

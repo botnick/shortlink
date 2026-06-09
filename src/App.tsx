@@ -26,6 +26,9 @@ const Admin = lazy(() =>
 const QrPage = lazy(() =>
   import("@/pages/QrPage").then((m) => ({ default: m.QrPage })),
 );
+const Domains = lazy(() =>
+  import("@/pages/Domains").then((m) => ({ default: m.Domains })),
+);
 
 function AppRoutes() {
   const { config, loading } = useConfig();
@@ -50,6 +53,7 @@ function AppRoutes() {
               <Route path="/register" element={<Register />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/domains" element={<Domains />} />
                 <Route path="/links/:id" element={<LinkStats />} />
                 <Route path="/links/:id/qr" element={<QrPage />} />
               </Route>

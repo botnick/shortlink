@@ -144,6 +144,26 @@ export interface AssetDTO {
   url: string;
 }
 
+export interface DomainDnsRecord {
+  type: string;
+  name: string;
+  value: string;
+}
+
+export interface DomainDTO {
+  id: string;
+  hostname: string;
+  status: string;
+  records: DomainDnsRecord[];
+  createdAt: string;
+}
+
+export interface DomainListDTO {
+  enabled: boolean;
+  fallbackHost: string;
+  domains: DomainDTO[];
+}
+
 export interface ApiError {
   error: string;
 }

@@ -12,6 +12,7 @@ import adminRoutes from "./routes/admin";
 import setupRoutes from "./routes/setup";
 import qrPresetRoutes from "./routes/qr-presets";
 import assetRoutes from "./routes/assets";
+import domainRoutes from "./routes/domains";
 import { getPublicConfig } from "./lib/settings";
 import { getCachedLink, putCachedLink } from "./lib/cache";
 import {
@@ -46,6 +47,7 @@ api.route("/admin", adminRoutes);
 api.route("/setup", setupRoutes);
 api.route("/qr-presets", qrPresetRoutes);
 api.route("/assets", assetRoutes);
+api.route("/domains", domainRoutes);
 api.get("/config", async (c) =>
   c.json(await getPublicConfig(c.var.db, c.var.schema)),
 );

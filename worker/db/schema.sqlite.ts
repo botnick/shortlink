@@ -104,3 +104,22 @@ export const qrPresets = sqliteTable(
   },
   (t) => [index("qr_presets_user_idx").on(t.userId, t.createdAt)],
 );
+
+export const domains = sqliteTable(
+  "domains",
+  {
+    id: text().primaryKey().$defaultFn(uuid),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    hostname: text().notNull(),
+    status: text().notNull().default("pending"),
+    cfHostnameId: text(),
+    verification: text({ mode: "json" }),
+    createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex("domains_hostname_idx").on(t.hostname),
+    index("domains_user_idx").on(t.userId, t.createdAt),
+  ],
+);

@@ -102,7 +102,27 @@ export const qrPresets = pgTable(
   (t) => [index("qr_presets_user_idx").on(t.userId, t.createdAt)],
 );
 
+export const domains = pgTable(
+  "domains",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    hostname: text().notNull(),
+    status: text().notNull().default("pending"),
+    cfHostnameId: text(),
+    verification: jsonb(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("domains_hostname_idx").on(t.hostname),
+    index("domains_user_idx").on(t.userId, t.createdAt),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
 export type ClickRow = typeof clicks.$inferSelect;
 export type QrPresetRow = typeof qrPresets.$inferSelect;
+export type DomainRow = typeof domains.$inferSelect;

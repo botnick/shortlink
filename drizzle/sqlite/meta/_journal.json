@@ -8,6 +8,13 @@
       "when": 1780945723933,
       "tag": "0000_shiny_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1780977396226,
+      "tag": "0001_cool_gertrude_yorkes",
+      "breakpoints": true
     }
   ]
 }

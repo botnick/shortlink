@@ -80,6 +80,18 @@ export const qrPresetSchema = z.object({
     .refine((c) => JSON.stringify(c).length < 600_000, "Preset is too large"),
 });
 
+export const domainSchema = z.object({
+  hostname: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(253)
+    .regex(
+      /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/,
+      "Enter a valid domain like go.example.com (no http://)",
+    ),
+});
+
 export const assetUploadSchema = z.object({
   name: z.string().trim().max(60).optional(),
   dataUrl: z
