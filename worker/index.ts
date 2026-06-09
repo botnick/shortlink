@@ -62,6 +62,43 @@ api.route("/projects", projectRoutes);
 // KV (no DB round-trip on a hit), which is the hottest endpoint under traffic.
 app.get("/api/config", async (c) => c.json(await getCachedPublicConfig(c.env)));
 app.get("/api/health", (c) => c.json({ ok: true }));
+
+// Public QR payload for the standalone `/qr/<slug>` page (anyone can open it,
+// like lnk.ua/qr/…). Active links only, and it returns nothing the redirect
+// doesn't already reveal: the short URL plus the project's brand colour/logo.
+app.get("/api/qr/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  if (!isValidCustomSlug(slug)) return c.json({ error: "Not found" }, 404);
+  const { db, schema, close } = getDbHandle(c.env);
+  const { links, projects } = schema;
+  try {
+    const rows = await db
+      .select({
+        slug: links.slug,
+        isActive: links.isActive,
+        expiresAt: links.expiresAt,
+        color: projects.color,
+        logo: projects.logo,
+      })
+      .from(links)
+      .leftJoin(projects, eq(links.projectId, projects.id))
+      .where(eq(links.slug, slug))
+      .limit(1);
+    const l = rows[0];
+    const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
+    if (!l || !l.isActive || expired) return c.json({ error: "Not found" }, 404);
+    const logo =
+      l.logo && (l.logo.startsWith("data:") || l.logo.startsWith("http")) ? l.logo : null;
+    return c.json(
+      { shortUrl: `${c.env.APP_URL}/${l.slug}`, color: l.color ?? null, logo },
+      200,
+      { "cache-control": "public, max-age=300" },
+    );
+  } finally {
+    c.executionCtx.waitUntil(close());
+  }
+});
+
 app.route("/api", api);
 
 // --- Dynamic branding / SEO endpoints ---------------------------------------

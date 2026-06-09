@@ -34,6 +34,9 @@ const Terms = lazy(() => import("@/pages/Legal").then((m) => ({ default: m.Terms
 const Privacy = lazy(() =>
   import("@/pages/Legal").then((m) => ({ default: m.Privacy })),
 );
+const QrLinkPage = lazy(() =>
+  import("@/pages/QrLinkPage").then((m) => ({ default: m.QrLinkPage })),
+);
 
 function AppRoutes() {
   const { config, loading } = useConfig();
@@ -58,6 +61,8 @@ function AppRoutes() {
               <Route path="/register" element={<Register />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
+              {/* Public standalone QR for any link (like lnk.ua/qr/<slug>). */}
+              <Route path="/qr/:slug" element={<QrLinkPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/domains" element={<Domains />} />
