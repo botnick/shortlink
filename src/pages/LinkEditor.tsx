@@ -210,6 +210,7 @@ export function LinkEditor() {
   const [ogDescription, setOgDescription] = useState("");
   const [ogImage, setOgImage] = useState("");
   const [ogSource, setOgSource] = useState<"generate" | "upload">("generate");
+  const [genDataUrl, setGenDataUrl] = useState(""); // live snapshot of the generated card
   const [submitting, setSubmitting] = useState(false);
   const [destMeta, setDestMeta] = useState<UrlMetaDTO | null>(null);
   const [destLoading, setDestLoading] = useState(false);
@@ -282,8 +283,10 @@ export function LinkEditor() {
         ? destMeta?.description || ""
         : "";
   const pvImage =
-    previewMode === "custom" && ogSource === "upload"
-      ? ogImage
+    previewMode === "custom"
+      ? ogSource === "upload"
+        ? ogImage
+        : genDataUrl
       : previewMode === "destination"
         ? destMeta?.image || ""
         : "";
@@ -315,6 +318,7 @@ export function LinkEditor() {
         url: ogCardUrl,
         logo: brandLogo,
       });
+      setGenDataUrl(canvasRef.current.toDataURL("image/png"));
     });
     return () => {
       cancelled = true;
@@ -883,40 +887,64 @@ export function LinkEditor() {
           <section className="space-y-3 rounded-2xl border bg-card p-4">
             <span className="text-xs font-medium text-muted-foreground">Your short link</span>
             <CopyRow value={shortUrlText} label="Copy short link" />
-            {destValid && (
-              <p className="truncate text-[11px] text-muted-foreground" title={destination}>
-                → {previewDomain}
-              </p>
-            )}
           </section>
 
           <section className="space-y-3 rounded-2xl border bg-card p-4">
-            <span className="text-xs font-medium text-muted-foreground">Link preview</span>
-            <div className="overflow-hidden rounded-lg border">
-              {pvImage ? (
-                <img
-                  src={pvImage}
-                  alt=""
-                  className="aspect-[1.91/1] w-full border-b object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              ) : (
-                <div className="flex aspect-[1.91/1] w-full items-center justify-center border-b bg-muted/40 text-muted-foreground">
-                  <Share2 className="size-5" />
-                </div>
-              )}
-              <div className="space-y-0.5 p-2.5">
-                <div className="truncate text-[11px] text-muted-foreground">{shortHost}</div>
-                <div className="line-clamp-2 text-sm font-medium">{pvTitle || "No title yet"}</div>
-                {pvDesc ? (
-                  <div className="line-clamp-2 text-xs text-muted-foreground">{pvDesc}</div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">No description</div>
-                )}
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Link preview</span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                {previewMode === "off"
+                  ? "Plain link"
+                  : previewMode === "destination"
+                    ? "From page"
+                    : "Custom card"}
+              </span>
             </div>
+
+            {previewMode === "off" ? (
+              <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3">
+                <div className="truncate text-sm font-medium text-sky-600">{shortUrlText}</div>
+                <p className="text-[11px] text-muted-foreground">
+                  No preview card — shares as a plain link.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+                {pvImage ? (
+                  <img
+                    src={pvImage}
+                    alt=""
+                    className="aspect-[1.91/1] w-full border-b object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="aspect-[1.91/1] w-full animate-pulse border-b bg-muted" />
+                )}
+                <div className="flex items-start gap-2 p-3">
+                  {config.logoUrl ? (
+                    <img src={config.logoUrl} alt="" className="mt-0.5 size-4 rounded" />
+                  ) : (
+                    <div
+                      className="mt-0.5 size-4 shrink-0 rounded"
+                      style={{ backgroundColor: config.brandColor }}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[11px] text-muted-foreground">{shortHost}</div>
+                    <div className="line-clamp-2 text-[13px] font-medium leading-snug">
+                      {pvTitle || (destLoading ? "Loading…" : "Add a title")}
+                    </div>
+                    {pvDesc ? (
+                      <div className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
+                        {pvDesc}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
 
           {isEdit && link ? (
