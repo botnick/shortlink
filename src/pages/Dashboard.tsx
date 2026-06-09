@@ -136,16 +136,23 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <ProjectSwitcher
-          projects={projects}
-          selected={selected}
-          onSelect={setSelectedId}
-          onNew={() => setProjectDialog({ open: true, project: null })}
-          onManage={() => selected && setProjectDialog({ open: true, project: selected })}
-        />
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus /> New link
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <ProjectSwitcher
+            projects={projects}
+            selected={selected}
+            onSelect={setSelectedId}
+            onNew={() => setProjectDialog({ open: true, project: null })}
+            onManage={() => selected && setProjectDialog({ open: true, project: selected })}
+          />
+          {selected && (
+            <span className="hidden whitespace-nowrap text-sm text-muted-foreground sm:inline">
+              {formatNumber(selected.linkCount)} {selected.linkCount === 1 ? "link" : "links"}
+            </span>
+          )}
+        </div>
+        <Button onClick={() => setCreateOpen(true)} className="shrink-0" aria-label="New link">
+          <Plus /> <span className="hidden sm:inline">New link</span>
         </Button>
       </div>
 

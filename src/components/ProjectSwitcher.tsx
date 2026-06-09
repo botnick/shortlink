@@ -49,20 +49,29 @@ export function ProjectSwitcher({
           <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
+      <DropdownMenuContent
+        align="start"
+        className="max-h-[60vh] w-[min(18rem,calc(100vw-2rem))] overflow-y-auto"
+      >
+        <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Projects</p>
         {projects.map((p) => (
-          <DropdownMenuItem key={p.id} onClick={() => onSelect(p.id)} className="gap-2">
+          <DropdownMenuItem key={p.id} onClick={() => onSelect(p.id)} className="gap-2.5 py-2">
             <Mark project={p} brand={brand} />
             <span className="min-w-0 flex-1 truncate">{p.name}</span>
-            <span className="text-xs text-muted-foreground">{p.linkCount}</span>
-            {p.id === selected.id && <Check className="size-4 text-primary" />}
+            {p.isDefault && (
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                default
+              </span>
+            )}
+            <span className="text-xs tabular-nums text-muted-foreground">{p.linkCount}</span>
+            {p.id === selected.id && <Check className="size-4 shrink-0 text-primary" />}
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onNew}>
+        <DropdownMenuItem onClick={onNew} className="py-2">
           <FolderPlus /> New project
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onManage}>
+        <DropdownMenuItem onClick={onManage} className="py-2">
           <Settings2 /> Manage “{selected.name}”
         </DropdownMenuItem>
       </DropdownMenuContent>
