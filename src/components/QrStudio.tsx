@@ -678,10 +678,22 @@ export function QrStudio({
                   <input type="file" accept="image/*" className="sr-only" onChange={(e) => onUpload(e.target.files?.[0])} />
                 </label>
               </Field>
-              {assets.length > 0 && (
+              {(project?.logo || assets.length > 0) && (
                 <div className="space-y-2">
                   <span className="text-xs font-medium text-muted-foreground">Saved logos</span>
                   <div className="flex flex-wrap gap-2">
+                    {project?.logo && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCfg((c) => ({ ...c, logoSrc: project.logo!, logo: true }))
+                        }
+                        title="Project logo"
+                        className="block size-12 overflow-hidden rounded-lg border-2 border-primary/50 bg-white p-1 hover:ring-2 hover:ring-ring"
+                      >
+                        <img src={project.logo} alt="" className="size-full object-contain" />
+                      </button>
+                    )}
                     {assets.map((a) => (
                       <div key={a.id} className="group relative">
                         <button

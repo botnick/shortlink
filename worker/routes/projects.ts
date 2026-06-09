@@ -22,6 +22,12 @@ function cleanLogo(value: string | null | undefined): string {
   return value.startsWith("data:image/") || value.startsWith("http") ? value : "";
 }
 
+function bytesToDataUrl(bytes: Uint8Array, type: string): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return `data:${type};base64,${btoa(bin)}`;
+}
+
 function toDTO(row: ProjectRow, linkCount: number, isDefault: boolean): ProjectDTO {
   return {
     id: row.id,
@@ -67,6 +73,23 @@ route.get("/", async (c) => {
       .where(eq(links.userId, user.id))
       .groupBy(links.projectId),
   ]);
+
+  // Migrate any legacy R2-stored logos to inline data URLs (one-time), freeing R2.
+  for (const r of rows) {
+    if (r.logo === "r2") {
+      const key = `projlogo/${r.id}`;
+      const obj = await c.env.LOGO_BUCKET.get(key);
+      r.logo = obj
+        ? bytesToDataUrl(
+            new Uint8Array(await obj.arrayBuffer()),
+            obj.httpMetadata?.contentType ?? "image/png",
+          )
+        : "";
+      await c.var.db.update(projects).set({ logo: r.logo }).where(eq(projects.id, r.id));
+      c.executionCtx.waitUntil(c.env.LOGO_BUCKET.delete(key).catch(() => {}));
+    }
+  }
+
   const countMap = new Map(counts.map((r) => [r.pid, Number(r.n)]));
   const body: ProjectListDTO = {
     projects: rows.map((r) => toDTO(r, countMap.get(r.id) ?? 0, r.id === defaultId)),
