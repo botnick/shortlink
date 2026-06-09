@@ -30,6 +30,8 @@ export interface OgOptions {
   appName: string;
   brandColor: string;
   url?: string;
+  /** Optional brand logo drawn in the lockup (already loaded + same-origin/CORS-safe). */
+  logo?: HTMLImageElement | null;
 }
 
 type Rgb = [number, number, number];
@@ -230,15 +232,30 @@ export function renderOg(canvas: HTMLCanvasElement, o: OgOptions) {
   ctx.clearRect(0, 0, OG_W, OG_H);
   ctx.textAlign = "left";
 
-  // Small reusable brand lockup: accent bar + app name.
+  // Small reusable brand lockup: brand logo (if loaded) or accent bar + app name.
   const lockup = (x: number, y: number, accent: string, text: string) => {
-    ctx.fillStyle = accent;
-    roundRect(ctx, x, y, 10, 44, 5);
-    ctx.fill();
+    let markEnd = x + 25;
+    if (o.logo && o.logo.width > 0 && o.logo.height > 0) {
+      // Brand logo: cover-fit into a rounded 44×44 square so any aspect works.
+      const s = 44;
+      ctx.save();
+      roundRect(ctx, x, y, s, s, 10);
+      ctx.clip();
+      const r = Math.max(s / o.logo.width, s / o.logo.height);
+      const dw = o.logo.width * r;
+      const dh = o.logo.height * r;
+      ctx.drawImage(o.logo, x + (s - dw) / 2, y + (s - dh) / 2, dw, dh);
+      ctx.restore();
+      markEnd = x + s + 16;
+    } else {
+      ctx.fillStyle = accent;
+      roundRect(ctx, x, y, 10, 44, 5);
+      ctx.fill();
+    }
     ctx.fillStyle = text;
     ctx.font = face(600, 29);
     ctx.textBaseline = "middle";
-    ctx.fillText(app, x + 25, y + 23);
+    ctx.fillText(app, markEnd, y + 23);
   };
 
   switch (o.template) {

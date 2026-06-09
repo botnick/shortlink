@@ -93,7 +93,11 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
   const [submitting, setSubmitting] = useState(false);
   const [destMeta, setDestMeta] = useState<UrlMetaDTO | null>(null);
   const [destLoading, setDestLoading] = useState(false);
+  const [brandLogo, setBrandLogo] = useState<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // The last title/description we auto-filled from the destination — so a fresh
+  // fetch can refresh an untouched field but never overwrite what the user typed.
+  const ogAutoRef = useRef({ title: "", description: "" });
   const ogTemplate = config.ogTemplate; // system default, set by admin
   // Short URL shown on the generated card (its own link once saved, else a preview).
   const ogCardUrl = link?.shortUrl
@@ -113,6 +117,7 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
       setOgDescription(link?.ogDescription ?? "");
       setOgImage(link?.ogImage ?? "");
       setOgSource(link?.ogImage ? "upload" : "generate");
+      ogAutoRef.current = { title: "", description: "" };
     }
   }, [open, link]);
 
@@ -125,23 +130,30 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
       renderOg(canvasRef.current, {
         template: ogTemplate,
         font: family,
-        title: ogTitle.trim() || title.trim() || config.ogTitle,
-        description: ogDescription.trim() || config.ogTagline,
+        // Auto-pull the destination's title/description; a value the user typed
+        // always wins. renderOg truncates anything over-long for us.
+        title: ogTitle.trim() || destMeta?.title?.trim() || title.trim() || config.ogTitle,
+        description: ogDescription.trim() || destMeta?.description?.trim() || config.ogTagline,
         appName: config.ogLabel,
         brandColor: config.ogAccent,
         url: ogCardUrl,
+        logo: brandLogo,
       });
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewMode, ogSource, ogTemplate, config.ogFont, config.ogLabel, config.ogTitle, config.ogTagline, config.ogAccent, ogTitle, ogDescription, title, ogCardUrl, open]);
+  }, [previewMode, ogSource, ogTemplate, config.ogFont, config.ogLabel, config.ogTitle, config.ogTagline, config.ogAccent, ogTitle, ogDescription, title, ogCardUrl, destMeta, brandLogo, open]);
 
-  // In "destination" mode, fetch the destination's own metadata (debounced) so
-  // the form shows the exact rich card a platform will render when shared.
+  // Fetch the destination's own metadata (debounced) so we can auto-fill the card:
+  // "From page" mode renders it directly; "Custom → Generate" pulls the title/desc
+  // into our branded template with zero clicks. Skip it for uploads / Off.
   useEffect(() => {
-    if (previewMode !== "destination" || !/^https?:\/\//i.test(destination.trim())) {
+    const wantMeta =
+      previewMode === "destination" ||
+      (previewMode === "custom" && ogSource === "generate");
+    if (!wantMeta || !/^https?:\/\//i.test(destination.trim())) {
       setDestMeta(null);
       return;
     }
@@ -152,7 +164,25 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
         const { meta } = await api.get<{ meta: UrlMetaDTO }>(
           `/links/meta?url=${encodeURIComponent(destination.trim())}`,
         );
-        if (active) setDestMeta(meta);
+        if (!active) return;
+        setDestMeta(meta);
+        // Mirror the pulled values into the editable fields so the user sees (and
+        // can tweak) exactly what's on the card. Only fill a field that's empty or
+        // still holds our previous auto-fill — never clobber a manual edit.
+        if (previewMode === "custom" && ogSource === "generate") {
+          setOgTitle((cur) => {
+            if (cur.trim() && cur !== ogAutoRef.current.title) return cur;
+            const next = (meta.title ?? "").trim().slice(0, 120);
+            ogAutoRef.current.title = next;
+            return next;
+          });
+          setOgDescription((cur) => {
+            if (cur.trim() && cur !== ogAutoRef.current.description) return cur;
+            const next = (meta.description ?? "").trim().slice(0, 300);
+            ogAutoRef.current.description = next;
+            return next;
+          });
+        }
       } catch {
         if (active) setDestMeta(null);
       } finally {
@@ -163,22 +193,44 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
       active = false;
       clearTimeout(t);
     };
-  }, [previewMode, destination]);
+  }, [previewMode, ogSource, destination]);
+
+  // Load the site logo once so the generated card can embed our brand. crossOrigin
+  // keeps the canvas exportable; if the logo host blocks CORS the load just errors
+  // out to null (the card falls back to the accent bar) — never taints the canvas.
+  useEffect(() => {
+    const src = config.logoUrl?.trim();
+    if (!src) {
+      setBrandLogo(null);
+      return;
+    }
+    let active = true;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => active && setBrandLogo(img);
+    img.onerror = () => active && setBrandLogo(null);
+    img.src = src;
+    return () => {
+      active = false;
+    };
+  }, [config.logoUrl]);
 
   function previewPayload() {
     let image: string | null = null;
+    let pTitle = previewMode === "custom" ? ogTitle.trim() || null : null;
+    let pDesc = previewMode === "custom" ? ogDescription.trim() || null : null;
     if (previewMode === "custom") {
-      image =
-        ogSource === "generate" && canvasRef.current
-          ? ogToPng(canvasRef.current)
-          : ogImage.trim() || null;
+      if (ogSource === "generate" && canvasRef.current) {
+        image = ogToPng(canvasRef.current);
+        // Keep the og:title/description text in step with what we drew on the card
+        // (auto-pulled from the destination whenever the user left them blank).
+        pTitle = pTitle || destMeta?.title?.trim() || null;
+        pDesc = pDesc || destMeta?.description?.trim() || null;
+      } else {
+        image = ogImage.trim() || null;
+      }
     }
-    return {
-      previewMode,
-      ogTitle: previewMode === "custom" ? ogTitle.trim() || null : null,
-      ogDescription: previewMode === "custom" ? ogDescription.trim() || null : null,
-      ogImage: image,
-    };
+    return { previewMode, ogTitle: pTitle, ogDescription: pDesc, ogImage: image };
   }
 
   async function pickOgImage(file: File | undefined) {
@@ -409,8 +461,19 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
                 )}
 
                 <p className="text-[11px] text-muted-foreground">
-                  Shared as <span className="font-medium">{previewDomain}</span> — title
-                  and description appear under the image.
+                  {ogSource === "generate" ? (
+                    <>
+                      Auto-built from{" "}
+                      <span className="font-medium">{previewDomain}</span> and badged
+                      with {config.ogLabel} — type above to override the title or
+                      description.
+                    </>
+                  ) : (
+                    <>
+                      Shared as <span className="font-medium">{previewDomain}</span> —
+                      title and description appear under the image.
+                    </>
+                  )}
                 </p>
               </div>
             )}
