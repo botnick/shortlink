@@ -600,17 +600,34 @@ export function LinkEditor() {
     setSubmitting(true);
     try {
       if (isEdit && link) {
-        await api.patch<{ link: LinkDTO }>(`/links/${link.id}`, {
+        // Diff against what's saved and PATCH only the fields that changed —
+        // no point re-sending an unchanged destination or a heavy social image.
+        const candidate: Record<string, unknown> = {
           destination,
           title: title.trim() || null,
           isActive,
           ...deepLinks(),
-          ...passwordField(),
           ...previewPayload(),
-        });
-        toast.success("Link updated");
+        };
+        const patch: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(candidate)) {
+          if (v !== ((link as unknown as Record<string, unknown>)[k] ?? null)) patch[k] = v;
+        }
+        Object.assign(patch, passwordField()); // already only set when changed
+        if (Object.keys(patch).length === 0) {
+          toast.success("No changes to save");
+          return;
+        }
+        const { link: updated } = await api.patch<{ link: LinkDTO }>(
+          `/links/${link.id}`,
+          patch,
+        );
+        // Stay on the page; refresh the baseline so the next save diffs cleanly.
+        setLink(updated);
+        setIsActive(updated.isActive);
+        toast.success("Changes saved");
       } else {
-        await api.post<{ link: LinkDTO }>("/links", {
+        const { link: created } = await api.post<{ link: LinkDTO }>("/links", {
           destination,
           slug: alias.trim() || undefined,
           title: title.trim() || undefined,
@@ -620,8 +637,10 @@ export function LinkEditor() {
           ...previewPayload(),
         });
         toast.success("Short link created");
+        // Drop into the new link's editor (QR, stats, more edits) instead of
+        // bouncing back to the dashboard.
+        navigate(`/dashboard/links/${created.id}/edit`);
       }
-      navigate("/dashboard");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {
