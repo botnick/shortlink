@@ -30,8 +30,9 @@ interface Props {
   projectId?: string;
 }
 
-/** Standard rich link-preview card (favicon · domain · title · description ·
- *  image) — mirrors how Slack/X/iMessage render a shared link's destination. */
+/** Rich link-preview card as a platform actually unfurls our short link: the
+ *  title/description/image come from the destination, but the source shown is
+ *  *us* (our short host + logo via og:url/og:site_name) with a "via <dest>" note. */
 function DestinationPreview({
   meta,
   loading,
@@ -41,7 +42,9 @@ function DestinationPreview({
   loading: boolean;
   fallbackDomain: string;
 }) {
-  const domain = meta?.domain || fallbackDomain;
+  const shortHost = useShortHost();
+  const { config } = useConfig();
+  const source = meta?.domain || fallbackDomain;
   const hide = (e: { currentTarget: HTMLImageElement }) => {
     e.currentTarget.style.display = "none";
   };
@@ -56,15 +59,21 @@ function DestinationPreview({
         />
       ) : null}
       <div className="flex items-start gap-3 p-3">
-        {meta?.favicon ? (
-          <img src={meta.favicon} alt="" className="mt-0.5 size-5 rounded" onError={hide} />
+        {config.logoUrl ? (
+          <img src={config.logoUrl} alt="" className="mt-0.5 size-5 rounded" onError={hide} />
         ) : (
-          <div className="mt-0.5 size-5 shrink-0 rounded bg-muted" />
+          <div
+            className="mt-0.5 size-5 shrink-0 rounded"
+            style={{ backgroundColor: config.brandColor }}
+          />
         )}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs text-muted-foreground">{domain}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            <span className="font-medium text-foreground/75">{shortHost}</span>
+            {source ? <span> · via {source}</span> : null}
+          </div>
           <div className="line-clamp-2 text-sm font-medium">
-            {loading && !meta ? "Loading preview…" : meta?.title || domain}
+            {loading && !meta ? "Loading preview…" : meta?.title || source}
           </div>
           {meta?.description ? (
             <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
@@ -394,8 +403,9 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
                   fallbackDomain={previewDomain}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Pulled from the destination page automatically — this is what
-                  shows when the link is shared.
+                  Auto-pulled from <span className="font-medium">{previewDomain}</span>{" "}
+                  but shared under <span className="font-medium">{shortHost}</span> — your
+                  brand stays on the card.
                 </p>
               </div>
             )}

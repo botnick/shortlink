@@ -200,7 +200,9 @@ async function serveSocialPreview(
     }
     if (!preview.title) preview.title = l.title ?? l.slug;
     const bundle = await getSeoBundle(c.env);
-    return c.html(previewHtml(preview, l.destination, bundle.appName));
+    // og:url = this short link (the page being shared) so the card is credited to
+    // us; the destination is only used for the redirect fallback inside the HTML.
+    return c.html(previewHtml(preview, l.destination, bundle.appName, c.req.url));
   } finally {
     c.executionCtx.waitUntil(close());
   }

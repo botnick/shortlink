@@ -42,8 +42,16 @@ export interface Preview {
 }
 
 /** A tiny OG/Twitter-card HTML doc for crawlers, with a redirect fallback so a
- *  real browser that somehow lands here still continues to the destination. */
-export function previewHtml(p: Preview, destination: string, siteName: string): string {
+ *  real browser that somehow lands here still continues to the destination.
+ *  `pageUrl` is our own short-link URL — used as og:url so the unfurled card is
+ *  attributed to us (our domain + site name), not the destination, even when the
+ *  title/description/image are pulled from the destination page. */
+export function previewHtml(
+  p: Preview,
+  destination: string,
+  siteName: string,
+  pageUrl: string,
+): string {
   const title = p.title;
   const m: string[] = [
     `<meta name="robots" content="noindex">`,
@@ -51,7 +59,7 @@ export function previewHtml(p: Preview, destination: string, siteName: string): 
     `<meta property="og:type" content="website">`,
     `<meta property="og:site_name" content="${esc(siteName)}">`,
     `<meta property="og:title" content="${esc(title)}">`,
-    `<meta property="og:url" content="${esc(destination)}">`,
+    `<meta property="og:url" content="${esc(pageUrl)}">`,
     `<meta name="twitter:title" content="${esc(title)}">`,
   ];
   if (p.description) {
