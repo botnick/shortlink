@@ -120,10 +120,10 @@ export function ColorPicker({
   const trigger: ReactNode = (
     <button
       type="button"
-      className="inline-flex items-center gap-2 rounded-lg border bg-background py-1.5 pl-1.5 pr-2.5 shadow-sm transition-colors hover:bg-accent"
+      className="inline-flex items-center gap-2.5 rounded-lg border bg-background py-1.5 pl-1.5 pr-3 shadow-sm transition-colors hover:bg-accent"
     >
       <span
-        className="size-5 shrink-0 rounded shadow-sm ring-1 ring-inset ring-foreground/10"
+        className="size-6 shrink-0 rounded-md shadow-sm ring-1 ring-inset ring-foreground/10"
         style={{ backgroundColor: value }}
       />
       <span className="font-mono text-sm font-medium tabular-nums text-foreground">
