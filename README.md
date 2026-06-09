@@ -18,12 +18,47 @@ domain, e.g. **`links.example.com/<slug>`**.
 
 ## Features
 
-- **Accounts** — email + password; registration is closed by default and toggled from `/admin`. Team management with multiple admins (the first/primary admin can't be removed by others).
-- **Links** — random or custom slugs, optional title, expiry, and active/paused toggle; the dashboard is searchable and keyset-paginated ("load more"), so it stays smooth with thousands of links.
-- **Admin console** — a tabbed `/admin`: **Overview** (totals, 7-day chart, top links, active DB), system-wide **Analytics** (countries/referrers/devices over a range), all-user **Links** (search, bulk pause/activate/delete, CSV export, drill into one member's links), **Team** (add members, reset passwords, promote/demote), **Settings** (branding/SEO) and **Limits & safety** (blocked destination domains, reserved aliases, per-user link quota). Every list is searchable + cursor-paginated.
-- **Analytics** — per-link dashboard (Overview / Location / Sources / Share): total & unique clicks, a click-count table with rates, best day, a clicks-over-time chart, top countries (with flags), referrers, device/browser/OS, and a direct-vs-referrer split.
-- **Branding & SEO — all from `/admin`, no redeploy** — app name, brand color (drives the whole accent), logo, description, social/OG image, and a search-engine indexing toggle. Injected into the page `<head>` server-side (HTMLRewriter) with a dynamic `robots.txt`, so social unfurls and crawlers see it.
-- **QR code studio** (per link) — 11 frame styles with caption + scan icon + rounded/sharp corners; dot, eye-frame and eye-centre shapes & colors; solid or gradient fill; one-click **auto-match** color schemes; **extract a palette from an image**; a reusable **logo library** (stored in R2); per-user **saved presets**; export **PNG / SVG / JPEG** or copy to clipboard.
+- **Links** — random or custom back-halves (length admin-configurable), expiry, active/paused,
+  **tags** with search + filtering, per-OS **deep links** (iOS/Android/desktop), **password-protected
+  links** (no-JS unlock page), a built-in **UTM builder**, and **bulk import** (paste or CSV, up to
+  500 rows with per-row error reporting). The dashboard is searchable and keyset-paginated.
+- **Per-domain back-halves** — slugs are unique *per domain*, so `go.brand-a.com/promo` and the
+  default host's `/promo` coexist. Editing a back-half or moving domains keeps the old short URL
+  redirecting (Bitly-style retired aliases, change count capped + shown as history in the editor).
+  Projects can set a **default domain** for new links.
+- **Custom social preview** per link — off / custom (generated branded card or upload) /
+  from-destination with a designed fallback; cards render server-side for crawlers.
+- **Analytics** — per-link Overview / Location / Sources / Share: totals, uniques, daily chart,
+  click-rate table, best day, countries (flags), referrers, device/browser/OS, direct-vs-referrer,
+  plus a **live recent-activity feed** (auto-refresh). **Bot traffic** (CLIs, crawlers, monitors,
+  headless browsers) is flagged at log time and excluded from every number.
+- **QR studio** (per link) — frames, dot/eye shapes & colors, gradients, palette-from-image,
+  logo library (R2), saved presets, PNG/SVG/JPEG export — and the chosen design is **saved on the
+  link**, so the share page and the direct `…/qr/<slug>.svg` image match it.
+- **Accounts** — email + password; registration closed by default. `/account` self-service:
+  change password, **active-session list** (device/browser/country/last-active, revoke per device
+  or everywhere), close account. Closing is a **soft delete**: links stop instantly, the account
+  is held then purged on a schedule, and the email stays unregistrable for a configurable window —
+  all refusals deliberately generic.
+- **Human check (self-hosted, no third party)** — sign-in & sign-up protected by an invisible
+  browser **proof-of-work** plus (optionally) one of several randomized one-gesture mini-games
+  (slide / dial / hold). Challenges are HMAC-signed, IP-bound, single-use and expiring; security is
+  economic (CPU per attempt), not secrecy. Honeypot field included. Modes + difficulty set in admin.
+- **Public REST API + API keys** — `/api/v1/{links,domains,projects}` with bearer keys (shown
+  once, sha256-stored, revocable, per-key rate limits) sharing the exact handlers the dashboard
+  uses. `/apikeys` has key management and copyable quick-start docs.
+- **MCP server for AI agents** — `POST /mcp` (Streamable HTTP) with 12 tools (create/list/get/
+  update/delete link, stats, activity, domains, projects, bulk import, QR, account overview).
+  Agents authenticate with the same API keys; link refs accept an id, a slug, or the full short URL.
+- **Admin console** — tabbed `/admin`: Overview, system-wide Analytics, all-user Links (bulk ops,
+  CSV export), Team, Domains, Settings (branding/SEO/social card) and **Limits & safety** — blocked
+  destinations, reserved aliases, link quota, random-slug length, abuse rate limits (login, link
+  creation, API), back-half change cap, domains/keys per member, account hold + email-block
+  windows, human-check mode & difficulty, API/MCP kill-switches. **Everything is configured in the
+  app — nothing requires a redeploy.**
+- **Branding & SEO** — app name, brand color, logo, description, OG template/font/identity, and an
+  indexing toggle; injected into the page `<head>` server-side with a dynamic `robots.txt`. The
+  admin **Short domain** drives every displayed short URL, QR target and API doc.
 
 ---
 
@@ -177,10 +212,13 @@ runners) — run `npm run db:migrate` yourself when the schema changes.
 | `npm run deploy` | Build + deploy to Cloudflare |
 | `npm run typecheck` | Type-check client, Worker, and Node configs |
 | `npm run cf-typegen` | Regenerate `worker-configuration.d.ts` from `wrangler.jsonc` |
-| `npm run db:generate` | Generate a new Drizzle migration from schema changes |
+| `npm run db:generate` | Generate a new Drizzle migration from schema changes (Postgres) |
+| `npm run db:generate:sqlite` | Generate the matching D1/SQLite migration (always do both) |
 | `npm run db:migrate` | Apply migrations to Postgres |
 | `npm run db:studio` | Open Drizzle Studio |
 | `DBURL=… npm run test:e2e` | Integration test against a **throwaway** Postgres (creates then deletes data) |
+| `npx tsx scripts/seed-verified-domain.ts <email> <host>` | Dev: add a verified custom domain |
+| `npx tsx scripts/seed-api-key.ts <email> [name]` | Dev: mint an API key (printed once) |
 
 ## Testing
 
@@ -196,29 +234,40 @@ DBURL="postgres://user:pass@host:5432/scratch?sslmode=disable" npm run test:e2e
 ## Project layout
 
 ```
-worker/            Hono backend (API + redirect hot path + click logging)
-  db/              Drizzle schema + client (Hyperdrive)
-  lib/             auth, password (PBKDF2), sessions, slug, geo, cache, validators
-  middleware/      session, security headers, CSRF, per-request DB
-  routes/          auth, links, stats, admin
+worker/            Hono backend (API + redirect hot path + MCP + click logging)
+  db/              Drizzle schemas (Postgres + D1 mirror) and the per-request client
+  lib/             auth/sessions, password (PBKDF2), slug rules, geo/UA, domain scoping,
+                   link edge-cache helpers, settings, rate limiting, proof-of-work,
+                   API keys, account lifecycle (soft delete), social previews, SEO
+  middleware/      per-request DB, session + bearer-key auth, CSRF/origin, headers
+  routes/          auth, links (+bulk import, aliases, activity), stats, projects,
+                   domains, qr-presets, assets, keys, account, admin
+  mcp.ts           MCP server (stateless Streamable HTTP JSON-RPC)
 src/               React SPA (pages, shadcn-style UI, brand styling)
 shared/            DTOs shared by Worker + client
 tests/e2e.ts       Full-API integration test (real Postgres)
-drizzle/           Generated SQL migrations
+drizzle/           Generated SQL migrations (drizzle/sqlite for D1)
 ```
 
 ## How it works
 
 - **Routing:** the Worker runs first for every path except hashed assets. `/api/*` is the
-  JSON API, `/:slug` is the redirect, everything else serves the SPA shell.
-- **Redirects:** `slug → destination` is read from KV (global edge cache). On a miss,
-  Postgres is the source of truth and the cache is warmed. Clicks are recorded
-  asynchronously so the redirect itself never waits on the database.
+  JSON API (`/api/v1/*` re-mounts the same routers for bearer-key clients), `/mcp` serves AI
+  agents, `/:slug` is the redirect, everything else serves the SPA shell.
+- **Redirects:** the request host resolves to a domain bucket, then `slug → destination` is read
+  from KV (global edge cache). On a miss, the database is the source of truth — live back-halves
+  first, then retired aliases — and the cache is warmed. Responses are `302` + `no-store` on
+  purpose (never a cacheable 301), so analytics are complete and destination edits apply on the
+  very next click. Clicks are recorded asynchronously; bot user-agents are flagged and kept out
+  of the numbers.
 - **Security:** ownership checks on every link/stats route (404 on not-owned), admin role
   checks server-side, parameterized queries, scheme-validated destinations, CSRF + strict
-  security headers, and hardened session cookies. The admin is
+  security headers, hardened session cookies, per-IP/per-user/per-key rate limits, a
+  self-hosted human check on sign-in/sign-up, generic auth errors with uniform timing, and
+  soft-deleted accounts whose emails stay unregistrable for a configurable window. The admin is
   created through a one-time, **token-gated** installer that atomically locks itself
   after first use (no "first user becomes admin" race); registration is closed by default.
+  Account and API-key management are session-only, so a leaked bearer key can't escalate.
 
 > Passwords use PBKDF2-HMAC-SHA256 (600k iterations) via native Web Crypto — chosen over a
 > JS scrypt/argon2 so hashing stays within the Workers CPU budget while remaining an

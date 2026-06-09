@@ -53,26 +53,27 @@ async function verifyHumanity(
   map: Record<string, unknown>,
   body: ChallengeEvidence,
 ): Promise<boolean> {
-  if (body.website) return false; // honeypot
+  const ip = getClientIp(c) ?? "";
+  const fail = async () => {
+    // Feed the adaptive escalator — this IP's next challenge costs double.
+    c.executionCtx.waitUntil(recordCheckFailure(c, ip).catch(() => {}));
+    return false;
+  };
+  if (body.website) return fail(); // honeypot
   const mode = challengeModeFrom(map);
   if (mode === "off") return true;
   const difficulty = powDifficultyFrom(map);
   if (difficulty > 0) {
-    const ok = await verifySolution(
-      c.env,
-      getClientIp(c) ?? "",
-      difficulty,
-      body.challenge,
-      body.solution,
-    );
-    if (!ok) return false;
+    const ok = await verifySolution(c.env, ip, difficulty, body.challenge, body.solution);
+    if (!ok) return fail();
   }
   if (mode === "game") {
-    return verifyGame(body.challenge ?? "", {
+    const ok = verifyGame(body.challenge ?? "", {
       pos: body.gamePos,
       duration: body.gameDuration,
       moves: body.gameMoves,
     });
+    if (!ok) return fail();
   }
   return true;
 }
@@ -83,13 +84,33 @@ function toUserDTO(u: SessionUser): UserDTO {
   return { id: u.id, email: u.email, role: u.role };
 }
 
-// Sign-up bot deterrence: hand the browser a proof-of-work puzzle it solves
-// silently in the background (humans never interact with it).
+// Adaptive difficulty: every human-check failure from an IP doubles the CPU its
+// NEXT challenge costs (max +6 bits = 64×). Real users never fail (the client
+// only submits after solving), so they never escalate — zero false positives;
+// grinding bots price themselves out exponentially.
+const ESCALATE_TTL = 3600;
+const ESCALATE_MAX = 6;
+
+async function escalationFor(c: AppContext, ip: string): Promise<number> {
+  const n = Number(await c.env.LINKS_KV.get(`powfail:${ip}`)) || 0;
+  return Math.min(ESCALATE_MAX, n);
+}
+
+async function recordCheckFailure(c: AppContext, ip: string): Promise<void> {
+  const key = `powfail:${ip}`;
+  const n = Number(await c.env.LINKS_KV.get(key)) || 0;
+  await c.env.LINKS_KV.put(key, String(n + 1), { expirationTtl: ESCALATE_TTL });
+}
+
+// Hand the browser a proof-of-work challenge it solves in the background
+// (humans never interact with the PoW itself).
 auth.get("/challenge", async (c) => {
   const map = await getAllSettings(c.var.db, c.var.schema);
-  const difficulty = powDifficultyFrom(map);
-  if (difficulty <= 0) return c.json({ challenge: null, difficulty: 0 });
-  return c.json(await issueChallenge(c.env, getClientIp(c) ?? "", difficulty));
+  const base = powDifficultyFrom(map);
+  if (base <= 0) return c.json({ challenge: null, difficulty: 0 });
+  const ip = getClientIp(c) ?? "";
+  const difficulty = Math.min(26, base + (await escalationFor(c, ip)));
+  return c.json(await issueChallenge(c.env, ip, difficulty));
 });
 
 auth.post("/register", zValidator("json", registerSchema), async (c) => {
