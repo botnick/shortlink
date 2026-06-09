@@ -424,23 +424,6 @@ route.get("/:id/aliases", async (c) => {
   });
 });
 
-// Retire a back-half for good — stops the old link redirecting and frees a
-// back-half change.
-route.delete("/:id/aliases/:aliasId", async (c) => {
-  const link = await getOwnedLink(c);
-  if (!link) return c.json({ error: "Not found" }, 404);
-  const aliasId = c.req.param("aliasId");
-  if (!UUID_RE.test(aliasId)) return c.json({ error: "Not found" }, 404);
-  const { linkAliases } = c.var.schema;
-  const removed = await c.var.db
-    .delete(linkAliases)
-    .where(and(eq(linkAliases.id, aliasId), eq(linkAliases.linkId, link.id)))
-    .returning({ domainId: linkAliases.domainId, slug: linkAliases.slug });
-  if (removed[0]) {
-    await deleteCachedLink(c.env.LINKS_KV, removed[0].domainId, removed[0].slug);
-  }
-  return c.json({ ok: true });
-});
 
 // STATS (owner or admin)
 route.get("/:id/stats", async (c) => {

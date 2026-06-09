@@ -15,7 +15,6 @@ import {
   Share2,
   Smartphone,
   Sparkles,
-  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
@@ -255,14 +254,9 @@ function CopyRow({ value, label }: { value: string; label: string }) {
   );
 }
 
-/** One retired back-half in the edit history: its URL, age, copy + remove. */
-function AliasRow({
-  alias,
-  onRemove,
-}: {
-  alias: LinkAliasDTO;
-  onRemove: () => void;
-}) {
+/** One retired back-half in the edit history: its URL, age, and a copy button.
+ *  Old back-halves are permanent (they keep redirecting) — no remove. */
+function AliasRow({ alias }: { alias: LinkAliasDTO }) {
   const [copied, setCopied] = useState(false);
   const display = alias.shortUrl.replace(/^https?:\/\//, "");
   return (
@@ -285,15 +279,6 @@ function AliasRow({
         className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
       >
         {copied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
-      </button>
-      <button
-        type="button"
-        aria-label="Remove old back-half"
-        title="Remove — stops this old link from redirecting"
-        onClick={onRemove}
-        className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
-      >
-        <Trash2 className="size-3.5" />
       </button>
     </li>
   );
@@ -419,15 +404,6 @@ export function LinkEditor() {
     };
   }, [isEdit, id]);
 
-  async function removeAlias(aliasId: string) {
-    try {
-      await api.delete(`/links/${id}/aliases/${aliasId}`);
-      setAliases((a) => a.filter((x) => x.id !== aliasId));
-      toast.success("Old back-half removed");
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn’t remove it");
-    }
-  }
 
   const destValid = isHttpUrl(destination);
   const previewDomain = (() => {
@@ -979,32 +955,20 @@ export function LinkEditor() {
                   </p>
                   <ul className="space-y-1">
                     {aliases.map((a) => (
-                      <AliasRow key={a.id} alias={a} onRemove={() => removeAlias(a.id)} />
+                      <AliasRow key={a.id} alias={a} />
                     ))}
                   </ul>
                 </div>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="title">
-                Title{" "}
-                <span className="font-normal text-muted-foreground">(optional)</span>
-              </Label>
-              <Input
-                id="title"
-                placeholder="Spring campaign"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-              {!isEdit && selected && (
-                <p className="text-[11px] text-muted-foreground">
-                  Saving to{" "}
-                  <span className="font-medium text-foreground/70">{selected.name}</span> —
-                  switch projects on the dashboard.
-                </p>
-              )}
-            </div>
+            {!isEdit && selected && (
+              <p className="text-[11px] text-muted-foreground">
+                Saving to{" "}
+                <span className="font-medium text-foreground/70">{selected.name}</span> —
+                switch projects on the dashboard.
+              </p>
+            )}
 
             <div className="space-y-2">
               <label className="flex cursor-pointer items-center justify-between rounded-lg border p-3">
