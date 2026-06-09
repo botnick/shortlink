@@ -221,7 +221,7 @@ export function renderOg(canvas: HTMLCanvasElement, o: OgOptions) {
 
   const rgb = hexToRgb(o.brandColor);
   const brand = rgbStr(rgb);
-  const fam = `"${o.font || "IBM Plex Sans Thai"}", "IBM Plex Sans Thai", system-ui, sans-serif`;
+  const fam = `"${o.font || "IBM Plex Sans Thai"}", "IBM Plex Sans Thai", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif`;
   const face = (w: number, s: number) => `${w} ${s}px ${fam}`;
   const title = o.title.trim() || o.appName.trim() || DEFAULT_APP_NAME;
   const desc = (o.description ?? "").trim();
@@ -719,7 +719,7 @@ function drawBrandBadge(
   ctx: CanvasRenderingContext2D,
   o: { font: string; appName: string; brandColor: string; logo?: HTMLImageElement | null },
 ) {
-  const fam = `"${o.font || "IBM Plex Sans Thai"}", "IBM Plex Sans Thai", system-ui, sans-serif`;
+  const fam = `"${o.font || "IBM Plex Sans Thai"}", "IBM Plex Sans Thai", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif`;
   const app = (o.appName || DEFAULT_APP_NAME).trim();
   const h = 64;
   const padIn = 22;
