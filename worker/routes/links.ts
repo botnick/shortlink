@@ -77,7 +77,6 @@ function toLinkDTO(
     iosUrl: row.iosUrl,
     androidUrl: row.androidUrl,
     desktopUrl: row.desktopUrl,
-    title: row.title,
     isActive: row.isActive,
     expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     clickCount: row.clickCount,
@@ -210,7 +209,7 @@ route.get("/", async (c) => {
   const q = c.req.query("q") ?? "";
 
   const search = searchCondition(
-    [sql`${links.slug}`, sql`${links.destination}`, sql`${links.title}`],
+    [sql`${links.slug}`, sql`${links.destination}`],
     q,
   );
   const cursorCond =
@@ -302,7 +301,6 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
           userId: user.id,
           projectId,
           domainId,
-          title: input.title ?? null,
           expiresAt,
           previewMode: input.previewMode ?? "off",
           ogTitle: input.ogTitle ?? null,
@@ -541,7 +539,6 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
     patch.passwordHash = input.password ? await hashPassword(input.password) : null;
   }
   if (input.qrConfig !== undefined) patch.qrConfig = input.qrConfig;
-  if (input.title !== undefined) patch.title = input.title;
   if (input.isActive !== undefined) patch.isActive = input.isActive;
   if (input.expiresAt !== undefined) {
     patch.expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;

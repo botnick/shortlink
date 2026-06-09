@@ -69,7 +69,6 @@ export const links = pgTable(
     // The custom domain this link's back-half lives on; null = the default short
     // host. No onDelete → a domain can't be removed while links still use it.
     domainId: uuid().references(() => domains.id),
-    title: text(),
     isActive: boolean().notNull().default(true),
     expiresAt: timestamp({ withTimezone: true }),
     clickCount: integer().notNull().default(0),

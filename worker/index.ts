@@ -369,12 +369,12 @@ async function serveSocialPreview(
           : `${c.env.APP_URL}/ogimg/${l.id}`
         : "";
       preview = {
-        title: l.ogTitle ?? l.title ?? "",
+        title: l.ogTitle ?? "",
         description: l.ogDescription ?? "",
         image,
       };
     }
-    if (!preview.title) preview.title = l.title ?? l.slug;
+    if (!preview.title) preview.title = l.slug;
     const bundle = await getSeoBundle(c.env);
     // og:url = this short link (the page being shared) so the card is credited to
     // us; the destination is only used for the redirect fallback inside the HTML.

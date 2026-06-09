@@ -19,7 +19,6 @@ export interface LinkDTO {
   iosUrl: string | null;
   androidUrl: string | null;
   desktopUrl: string | null;
-  title: string | null;
   isActive: boolean;
   expiresAt: string | null;
   clickCount: number;
@@ -129,7 +128,6 @@ export interface AdminLinkDTO {
   slug: string;
   shortUrl: string;
   destination: string;
-  title: string | null;
   isActive: boolean;
   clickCount: number;
   createdAt: string;

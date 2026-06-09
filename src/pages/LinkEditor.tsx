@@ -311,7 +311,6 @@ export function LinkEditor() {
   const [domains, setDomains] = useState<DomainDTO[]>([]);
   // Retired back-halves that still redirect here (edit history).
   const [aliases, setAliases] = useState<LinkAliasDTO[]>([]);
-  const [title, setTitle] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [iosUrl, setIosUrl] = useState("");
   const [androidUrl, setAndroidUrl] = useState("");
@@ -349,7 +348,6 @@ export function LinkEditor() {
         setUtm(parseUtm(l.destination));
         setAlias(l.slug);
         setDomainId(l.domainId);
-        setTitle(l.title ?? "");
         setIsActive(l.isActive);
         setIosUrl(l.iosUrl ?? "");
         setAndroidUrl(l.androidUrl ?? "");
@@ -442,10 +440,10 @@ export function LinkEditor() {
   // Compact "Link preview" shown in the rail — mirrors how the link unfurls.
   const pvTitle =
     previewMode === "custom"
-      ? ogTitle.trim() || destMeta?.title || title.trim()
+      ? ogTitle.trim() || destMeta?.title || ""
       : previewMode === "destination"
         ? destMeta?.title || ""
-        : title.trim();
+        : "";
   const pvDesc =
     previewMode === "custom"
       ? ogDescription.trim()
@@ -503,7 +501,7 @@ export function LinkEditor() {
       renderOg(canvas, {
         template: ogTemplate,
         font: family,
-        title: ogTitle.trim() || destMeta?.title?.trim() || title.trim() || config.ogTitle,
+        title: ogTitle.trim() || destMeta?.title?.trim() || config.ogTitle,
         description: ogDescription.trim() || destMeta?.description?.trim() || config.ogTagline,
         appName: config.ogLabel,
         brandColor: config.ogAccent,
@@ -516,7 +514,7 @@ export function LinkEditor() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewMode, ogSource, ogTemplate, config.ogFont, config.ogLabel, config.ogTitle, config.ogTagline, config.ogAccent, ogTitle, ogDescription, title, ogCardUrl, destMeta, brandLogo]);
+  }, [previewMode, ogSource, ogTemplate, config.ogFont, config.ogLabel, config.ogTitle, config.ogTagline, config.ogAccent, ogTitle, ogDescription, ogCardUrl, destMeta, brandLogo]);
 
   useEffect(() => {
     const wantMeta =
@@ -720,7 +718,6 @@ export function LinkEditor() {
           destination,
           slug: aliasTrim,
           domainId,
-          title: title.trim() || null,
           isActive,
           ...deepLinks(),
           ...previewPayload(),
@@ -748,7 +745,6 @@ export function LinkEditor() {
           destination,
           slug: aliasTrim || undefined,
           domainId: domainId ?? undefined,
-          title: title.trim() || undefined,
           projectId: selectedId ?? undefined,
           ...deepLinks(),
           ...passwordField(),

@@ -112,7 +112,7 @@ export function LinkStats() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="display truncate text-2xl sm:text-3xl">
-            {link?.title || (link ? `/${link.slug}` : "Analytics")}
+            {link ? `/${link.slug}` : "Analytics"}
           </h1>
           {link && (
             <a
@@ -453,7 +453,7 @@ function BarList({
 
 function Share({ link }: { link: LinkDTO }) {
   const shortUrl = link.shortUrl;
-  const text = link.title || link.slug;
+  const text = link.slug;
   const shares = [
     {
       label: "X",

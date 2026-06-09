@@ -214,7 +214,6 @@ export function Dashboard() {
                   {!link.isActive && <Badge variant="muted">Inactive</Badge>}
                 </div>
                 <div className="truncate text-sm text-muted-foreground">
-                  {link.title ? `${link.title} · ` : ""}
                   {link.destination}
                 </div>
               </div>

@@ -73,7 +73,6 @@ export const links = sqliteTable(
     projectId: text().references(() => projects.id, { onDelete: "set null" }),
     // Custom domain the back-half lives on; null = default short host.
     domainId: text().references(() => domains.id),
-    title: text(),
     isActive: integer({ mode: "boolean" }).notNull().default(true),
     expiresAt: integer({ mode: "timestamp" }),
     clickCount: integer().notNull().default(0),

@@ -210,7 +210,7 @@ export function AdminLinks({
                   {!l.isActive && <Badge variant="muted">Paused</Badge>}
                   {l.projectName && <Badge variant="secondary">{l.projectName}</Badge>}
                 </div>
-                <div className="truncate text-xs text-muted-foreground">{l.title || l.destination}</div>
+                <div className="truncate text-xs text-muted-foreground">{l.destination}</div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">
                   {l.ownerEmail} · {formatNumber(l.clickCount)} clicks · {formatDate(l.createdAt)}
                 </div>

@@ -201,7 +201,6 @@ export const createLinkSchema = z.object({
   password: linkPassword.optional(),
   slug: slugField.optional(),
   domainId: linkDomainId.optional(),
-  title: z.string().trim().max(120).optional(),
   expiresAt: isoDate.optional(),
   previewMode: previewMode.optional(),
   ogTitle: ogTitle.optional(),
@@ -221,7 +220,6 @@ export const updateLinkSchema = z.object({
   // alias so old shared links keep redirecting.
   slug: slugField.optional(),
   domainId: linkDomainId.optional(),
-  title: z.string().trim().max(120).nullable().optional(),
   isActive: z.boolean().optional(),
   expiresAt: isoDate.nullable().optional(),
   previewMode: previewMode.optional(),

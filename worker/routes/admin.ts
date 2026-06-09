@@ -357,7 +357,6 @@ admin.get("/links", async (c) => {
     [
       sql`${links.slug}`,
       sql`${links.destination}`,
-      sql`${links.title}`,
       sql`${users.email}`,
     ],
     q,
@@ -379,7 +378,6 @@ admin.get("/links", async (c) => {
         id: links.id,
         slug: links.slug,
         destination: links.destination,
-        title: links.title,
         isActive: links.isActive,
         clickCount: links.clickCount,
         createdAt: links.createdAt,
@@ -409,7 +407,6 @@ admin.get("/links", async (c) => {
     slug: r.slug,
     shortUrl: buildShortUrl(c.env, r.domainHost ?? null, r.slug),
     destination: r.destination,
-    title: r.title,
     isActive: r.isActive,
     clickCount: r.clickCount,
     createdAt: r.createdAt.toISOString(),
@@ -587,7 +584,6 @@ admin.get("/export/links.csv", async (c) => {
     .select({
       slug: links.slug,
       destination: links.destination,
-      title: links.title,
       clicks: links.clickCount,
       active: links.isActive,
       owner: users.email,
@@ -597,7 +593,7 @@ admin.get("/export/links.csv", async (c) => {
     .innerJoin(users, eq(links.userId, users.id))
     .orderBy(desc(links.createdAt));
 
-  const head = "slug,destination,title,clicks,active,owner,created\n";
+  const head = "slug,destination,clicks,active,owner,created\n";
   const csv =
     head +
     rows
@@ -605,7 +601,6 @@ admin.get("/export/links.csv", async (c) => {
         [
           r.slug,
           r.destination,
-          r.title ?? "",
           String(r.clicks),
           String(r.active),
           r.owner,
