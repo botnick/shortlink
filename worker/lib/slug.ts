@@ -40,7 +40,7 @@ const RESERVED_LIST = [
   "styles", "robots", "sitemap", "manifest", "sw", "service-worker", "ads",
   "humans", "well-known", ".well-known", "acme-challenge", "s", "www", "ftp",
   "mail", "email", "smtp", "imap", "pop", "ns", "mx", "dns", "ws", "wss", "ssh",
-  "graphql", "rest", "webhook", "webhooks", "v1", "v2", "v3", "api-docs", "swagger",
+  "graphql", "rest", "webhook", "webhooks", "v1", "v2", "v3", "api-docs", "swagger", "mcp",
   "openapi", "health", "healthz", "ping", "metrics", "debug", "test", "tests",
   "demo", "example", "examples", "sample", "default", "temp", "tmp",
   "favicon.ico", "robots.txt", "sitemap.xml", "ads.txt", "security.txt",

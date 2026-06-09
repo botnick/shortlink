@@ -31,6 +31,7 @@ import {
   maxAliasesPerLinkFrom,
   maxApiKeysPerUserFrom,
   maxDomainsPerUserFrom,
+  mcpEnabledFrom,
   slugLengthFrom,
   cfConfiguredFrom,
   cfFallbackHostFrom,
@@ -56,7 +57,7 @@ import {
 import { getCustomHostname } from "../lib/cloudflare";
 import { checkTxtVerification } from "../lib/dns";
 import { invalidateSeo } from "../lib/seo";
-import { invalidatePublicConfig } from "../lib/appconfig";
+import { invalidatePublicConfig, shortOrigin } from "../lib/appconfig";
 import {
   bulkLinksSchema,
   createUserSchema,
@@ -106,6 +107,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     apiEnabled: apiEnabledFrom(map),
     apiRateLimit: apiRateLimitFrom(map),
     maxApiKeysPerUser: maxApiKeysPerUserFrom(map),
+    mcpEnabled: mcpEnabledFrom(map),
     slugLength: slugLengthFrom(map),
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
@@ -188,6 +190,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.maxApiKeysPerUser !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.maxApiKeysPerUser, input.maxApiKeysPerUser);
+  }
+  if (input.mcpEnabled !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.mcpEnabled, input.mcpEnabled);
   }
   if (input.slugLength !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.slugLength, input.slugLength);
@@ -422,10 +427,11 @@ admin.get("/links", async (c) => {
 
   const hasMore = rows.length > PAGE;
   const page = hasMore ? rows.slice(0, PAGE) : rows;
+  const base = await shortOrigin(c.env);
   const items: AdminLinkDTO[] = page.map((r) => ({
     id: r.id,
     slug: r.slug,
-    shortUrl: buildShortUrl(c.env, r.domainHost ?? null, r.slug),
+    shortUrl: buildShortUrl(base, r.domainHost ?? null, r.slug),
     destination: r.destination,
     isActive: r.isActive,
     clickCount: r.clickCount,

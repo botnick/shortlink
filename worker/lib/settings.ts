@@ -27,6 +27,7 @@ export const SETTING_KEYS = {
   apiEnabled: "api_enabled",
   apiRateLimit: "api_rate_limit",
   maxApiKeysPerUser: "max_api_keys_per_user",
+  mcpEnabled: "mcp_enabled",
   slugLength: "slug_length",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
@@ -234,6 +235,11 @@ export function maxApiKeysPerUserFrom(map: Record<string, unknown>): number {
   return asCount(map[SETTING_KEYS.maxApiKeysPerUser], 10);
 }
 
+/** MCP server (AI-agent transport) — rides under the public-API master switch. */
+export function mcpEnabledFrom(map: Record<string, unknown>): boolean {
+  return map[SETTING_KEYS.mcpEnabled] !== false;
+}
+
 /** Length of auto-generated back-halves (server defaults + editor suggestions),
  *  clamped to the slug rules (3–32). */
 export function slugLengthFrom(map: Record<string, unknown>): number {
@@ -323,9 +329,16 @@ export async function getPublicConfig(
     needsSetup = Number(row?.c ?? 0) === 0;
   }
 
-  // The canonical public origin — used for display and docs so the UI never
-  // leaks a dev host like localhost.
-  const appOrigin = appUrl.replace(/\/+$/, "");
+  // The canonical public origin for display and docs. The admin's Short domain
+  // is the source of truth (every connected host serves this same Worker);
+  // APP_URL is only the fallback before it's configured. Never a dev host.
+  const configuredHost = shortDomainFrom(map)
+    .trim()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+    .replace(/\/.*$/, "");
+  const appOrigin = configuredHost
+    ? `https://${configuredHost}`
+    : appUrl.replace(/\/+$/, "");
   let appHost = "";
   try {
     appHost = new URL(appOrigin).host;
@@ -337,7 +350,7 @@ export async function getPublicConfig(
     needsSetup,
     appName: appNameFrom(map),
     // Display host for short links: the admin setting, else the app's own host.
-    shortDomain: shortDomainFrom(map) || appHost,
+    shortDomain: configuredHost || appHost,
     appOrigin,
     brandColor: brandColorFrom(map),
     logoUrl: logoFrom(map),
@@ -352,6 +365,7 @@ export async function getPublicConfig(
     ogAccent: ogAccentFrom(map),
     domainUnverifiedDays: domainUnverifiedDaysFrom(map),
     apiEnabled: apiEnabledFrom(map),
+    mcpEnabled: mcpEnabledFrom(map),
     slugLength: slugLengthFrom(map),
   };
 }

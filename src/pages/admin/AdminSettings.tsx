@@ -148,6 +148,7 @@ export function AdminSettings() {
   const [apiEnabled, setApiEnabled] = useState(true);
   const [apiRateLimit, setApiRateLimit] = useState(120);
   const [maxApiKeys, setMaxApiKeys] = useState(10);
+  const [mcpEnabled, setMcpEnabled] = useState(true);
   const [slugLength, setSlugLength] = useState(6);
   const [savingLimits, setSavingLimits] = useState(false);
 
@@ -187,6 +188,7 @@ export function AdminSettings() {
         setApiEnabled(s.apiEnabled ?? true);
         setApiRateLimit(s.apiRateLimit ?? 120);
         setMaxApiKeys(s.maxApiKeysPerUser ?? 10);
+        setMcpEnabled(s.mcpEnabled ?? true);
         setSlugLength(s.slugLength ?? 6);
         setCfZoneId(s.cfZoneId);
         setCfFallbackHost(s.cfFallbackHost);
@@ -246,6 +248,7 @@ export function AdminSettings() {
         apiEnabled,
         apiRateLimit: Math.max(0, Math.floor(apiRateLimit) || 0),
         maxApiKeysPerUser: Math.max(0, Math.floor(maxApiKeys) || 0),
+        mcpEnabled,
         slugLength: Math.min(32, Math.max(3, Math.floor(slugLength) || 6)),
       });
       toast.success("Limits saved");
@@ -669,28 +672,43 @@ export function AdminSettings() {
                   />
                 </div>
                 {apiEnabled && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="apiRate">Requests / minute / key</Label>
-                      <Input
-                        id="apiRate"
-                        type="number"
-                        min={0}
-                        value={apiRateLimit}
-                        onChange={(e) => setApiRateLimit(Number(e.target.value))}
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="apiRate">Requests / minute / key</Label>
+                        <Input
+                          id="apiRate"
+                          type="number"
+                          min={0}
+                          value={apiRateLimit}
+                          onChange={(e) => setApiRateLimit(Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="maxKeys">API keys per member</Label>
+                        <Input
+                          id="maxKeys"
+                          type="number"
+                          min={0}
+                          value={maxApiKeys}
+                          onChange={(e) => setMaxApiKeys(Number(e.target.value))}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t pt-3">
+                      <div>
+                        <p className="text-sm font-medium">MCP server</p>
+                        <p className="text-xs text-muted-foreground">
+                          Lets AI agents (Claude, etc.) manage links at /mcp using API keys.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={mcpEnabled}
+                        onCheckedChange={setMcpEnabled}
+                        aria-label="Enable the MCP server"
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="maxKeys">API keys per member</Label>
-                      <Input
-                        id="maxKeys"
-                        type="number"
-                        min={0}
-                        value={maxApiKeys}
-                        onChange={(e) => setMaxApiKeys(Number(e.target.value))}
-                      />
-                    </div>
-                  </div>
+                  </>
                 )}
               </div>
 

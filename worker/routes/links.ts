@@ -13,6 +13,7 @@ import {
 import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink } from "../lib/cache";
 import { buildShortUrl, domainBucket } from "../lib/domainScope";
+import { shortOrigin } from "../lib/appconfig";
 import { cachePayload, purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
 import { hashPassword } from "../lib/password";
 import { searchCondition } from "../lib/query";
@@ -72,13 +73,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function toLinkDTO(
   env: AppBindings,
+  base: string,
   row: LinkRow,
   domainHost: string | null,
 ): LinkDTO {
   return {
     id: row.id,
     slug: row.slug,
-    shortUrl: buildShortUrl(env, domainHost, row.slug),
+    shortUrl: buildShortUrl(base, domainHost, row.slug),
     destination: row.destination,
     iosUrl: row.iosUrl,
     androidUrl: row.androidUrl,
@@ -215,8 +217,11 @@ route.get("/", async (c) => {
   const cursor = c.req.query("cursor");
   const q = c.req.query("q") ?? "";
 
+  // Search also matches inside the tags array (cast to text on Postgres).
+  const tagsText =
+    c.var.dialect === "sqlite" ? sql`${links.tags}` : sql`${links.tags}::text`;
   const search = searchCondition(
-    [sql`${links.slug}`, sql`${links.destination}`],
+    [sql`${links.slug}`, sql`${links.destination}`, tagsText],
     q,
   );
   const cursorCond =
@@ -246,10 +251,13 @@ route.get("/", async (c) => {
 
   const hasMore = rows.length > PAGE_SIZE;
   const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
-  const hosts = await userDomainHosts(c.var.db, c.var.schema, user.id);
+  const [hosts, base] = await Promise.all([
+    userDomainHosts(c.var.db, c.var.schema, user.id),
+    shortOrigin(c.env),
+  ]);
   const body: LinkListDTO = {
     links: page.map((r) =>
-      toLinkDTO(c.env, r, r.domainId ? hosts.get(r.domainId) ?? null : null),
+      toLinkDTO(c.env, base, r, r.domainId ? hosts.get(r.domainId) ?? null : null),
     ),
     nextCursor: hasMore ? page[page.length - 1].createdAt.toISOString() : null,
   };
@@ -333,6 +341,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     return row;
   };
 
+  const base = await shortOrigin(c.env);
   if (input.slug) {
     if (!isValidCustomSlug(input.slug)) {
       return c.json({ error: "That custom alias isn't allowed" }, 400);
@@ -343,7 +352,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     }
     try {
       const row = await insertOne(input.slug);
-      return c.json({ link: toLinkDTO(c.env, row, domainHost) }, 201);
+      return c.json({ link: toLinkDTO(c.env, base, row, domainHost) }, 201);
     } catch (e) {
       if (isUniqueViolation(e)) {
         return c.json({ error: "That custom alias is already taken" }, 409);
@@ -358,7 +367,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     if (await slugTaken(db, schema, domainId, slug)) continue;
     try {
       const row = await insertOne(slug);
-      return c.json({ link: toLinkDTO(c.env, row, domainHost) }, 201);
+      return c.json({ link: toLinkDTO(c.env, base, row, domainHost) }, 201);
     } catch (e) {
       if (isUniqueViolation(e)) continue;
       throw e;
@@ -386,6 +395,7 @@ route.post("/import", zValidator("json", bulkImportSchema), async (c) => {
     (await db.select({ n: count() }).from(links).where(eq(links.userId, user.id)))[0].n,
   );
 
+  const base = await shortOrigin(c.env);
   const created: LinkDTO[] = [];
   const errors: { index: number; destination: string; reason: string }[] = [];
   const fail = (index: number, destination: string, reason: string) =>
@@ -440,7 +450,7 @@ route.post("/import", zValidator("json", bulkImportSchema), async (c) => {
           .returning()
       )[0];
       await putCachedLink(c.env.LINKS_KV, row.domainId, row.slug, cachePayload(row));
-      created.push(toLinkDTO(c.env, row, dom.hostname));
+      created.push(toLinkDTO(c.env, base, row, dom.hostname));
       total++;
     } catch (e) {
       fail(i, r.destination, isUniqueViolation(e) ? "That alias is already taken" : "Failed to create");
@@ -489,8 +499,11 @@ route.get("/slug-check", zValidator("query", slugCheckSchema), async (c) => {
 route.get("/:id", async (c) => {
   const row = await getOwnedLink(c);
   if (!row) return c.json({ error: "Not found" }, 404);
-  const host = await hostFor(c.var.db, c.var.schema, row.domainId);
-  return c.json({ link: toLinkDTO(c.env, row, host) });
+  const [host, base] = await Promise.all([
+    hostFor(c.var.db, c.var.schema, row.domainId),
+    shortOrigin(c.env),
+  ]);
+  return c.json({ link: toLinkDTO(c.env, base, row, host) });
 });
 
 // History: a link's retired back-halves (still redirecting), newest first.
@@ -498,23 +511,26 @@ route.get("/:id/aliases", async (c) => {
   const link = await getOwnedLink(c);
   if (!link) return c.json({ error: "Not found" }, 404);
   const { linkAliases, domains } = c.var.schema;
-  const rows = await c.var.db
-    .select({
-      id: linkAliases.id,
-      slug: linkAliases.slug,
-      domainHost: domains.hostname,
-      createdAt: linkAliases.createdAt,
-    })
-    .from(linkAliases)
-    .leftJoin(domains, eq(linkAliases.domainId, domains.id))
-    .where(eq(linkAliases.linkId, link.id))
-    .orderBy(desc(linkAliases.createdAt));
+  const [rows, base] = await Promise.all([
+    c.var.db
+      .select({
+        id: linkAliases.id,
+        slug: linkAliases.slug,
+        domainHost: domains.hostname,
+        createdAt: linkAliases.createdAt,
+      })
+      .from(linkAliases)
+      .leftJoin(domains, eq(linkAliases.domainId, domains.id))
+      .where(eq(linkAliases.linkId, link.id))
+      .orderBy(desc(linkAliases.createdAt)),
+    shortOrigin(c.env),
+  ]);
   return c.json({
     aliases: rows.map((r) => ({
       id: r.id,
       slug: r.slug,
       domain: r.domainHost ?? null,
-      shortUrl: buildShortUrl(c.env, r.domainHost ?? null, r.slug),
+      shortUrl: buildShortUrl(base, r.domainHost ?? null, r.slug),
       createdAt: r.createdAt.toISOString(),
     })),
   });
@@ -728,8 +744,11 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   await refreshLinkCache(c.env, db, schema, row);
   // Drop any cached destination preview so changes show on the next share.
   await invalidateLinkPreview(c.env, row.id);
-  const host = await hostFor(db, schema, row.domainId);
-  return c.json({ link: toLinkDTO(c.env, row, host) });
+  const [host, base] = await Promise.all([
+    hostFor(db, schema, row.domainId),
+    shortOrigin(c.env),
+  ]);
+  return c.json({ link: toLinkDTO(c.env, base, row, host) });
 });
 
 // DELETE

@@ -25,13 +25,14 @@ export function appHost(env: AppBindings): string {
   }
 }
 
-/** Build a short URL on the right host (custom domain or the default). */
+/** Build a short URL on the right host: the link's custom domain, else the
+ *  canonical default origin (admin Short domain — see `shortOrigin(env)`). */
 export function buildShortUrl(
-  env: AppBindings,
+  defaultOrigin: string,
   domainHost: string | null,
   slug: string,
 ): string {
-  const base = domainHost ? `https://${domainHost}` : env.APP_URL.replace(/\/+$/, "");
+  const base = domainHost ? `https://${domainHost}` : defaultOrigin.replace(/\/+$/, "");
   return `${base}/${slug}`;
 }
 

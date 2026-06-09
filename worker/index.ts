@@ -22,7 +22,8 @@ import assetRoutes from "./routes/assets";
 import domainRoutes from "./routes/domains";
 import projectRoutes from "./routes/projects";
 import keyRoutes from "./routes/keys";
-import { getCachedPublicConfig } from "./lib/appconfig";
+import { handleMcp } from "./mcp";
+import { getCachedPublicConfig, shortOrigin } from "./lib/appconfig";
 import { getCachedLink, putCachedLink, routeDestination } from "./lib/cache";
 import { cachePayload } from "./lib/linkCache";
 import { buildShortUrl, findLinkRow, resolveScope } from "./lib/domainScope";
@@ -119,7 +120,11 @@ app.get("/api/qr/:slug", async (c) => {
         : null;
     return c.json(
       {
-        shortUrl: buildShortUrl(c.env, scope.domainId ? scope.host : null, l.slug),
+        shortUrl: buildShortUrl(
+          await shortOrigin(c.env),
+          scope.domainId ? scope.host : null,
+          l.slug,
+        ),
         color: p?.color ?? null,
         logo,
         qrConfig: l.qrConfig ?? null,
@@ -176,6 +181,13 @@ app.post("/api/unlock/:slug", async (c) => {
 
 app.route("/api", api);
 
+// Remote MCP server (context7-style): agents connect to /mcp with their API
+// key as a Bearer token. Tool calls dispatch back through /api/v1 internally,
+// inheriting auth, validation, rate limits and the admin switches.
+app.all("/mcp", (c) =>
+  handleMcp(c, async (req) => app.fetch(req, c.env, c.executionCtx)),
+);
+
 // --- Dynamic branding / SEO endpoints ---------------------------------------
 app.get("/robots.txt", async (c) =>
   c.text(await robotsTxt(c.env), 200, { "cache-control": "public, max-age=3600" }),
@@ -216,7 +228,11 @@ app.get("/qr/:file", async (c) => {
     const fg = hex(qc.fg, "#000000");
     const corner = hex(qc.cornerSquareColor, fg);
     const logo = qc.logo && typeof qc.logoSrc === "string" ? qc.logoSrc : projectLogo;
-    const shortUrl = buildShortUrl(c.env, scope.domainId ? scope.host : null, l.slug);
+    const shortUrl = buildShortUrl(
+      await shortOrigin(c.env),
+      scope.domainId ? scope.host : null,
+      l.slug,
+    );
     return c.body(qrSvg(shortUrl, { fg, brand: corner, logo }), 200, {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "public, max-age=86400",

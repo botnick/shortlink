@@ -98,6 +98,7 @@ export const settingsSchema = z
     apiEnabled: z.boolean().optional(),
     apiRateLimit: z.number().int().min(0).max(100_000).optional(),
     maxApiKeysPerUser: z.number().int().min(0).max(1_000).optional(),
+    mcpEnabled: z.boolean().optional(),
     slugLength: z.number().int().min(3).max(32).optional(),
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),

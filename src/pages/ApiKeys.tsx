@@ -129,6 +129,7 @@ export function ApiKeys() {
   // Docs always show the canonical public origin, never a dev host.
   const origin = config.appOrigin || window.location.origin;
   const keyPlaceholder = "sk_YOUR_KEY";
+  const mcpName = config.appName.toLowerCase().replace(/\s+/g, "-") || "shortlink";
 
   return (
     <div className="space-y-6">
@@ -262,6 +263,46 @@ export function ApiKeys() {
             code={`curl "${origin}/api/v1/links/LINK_ID/stats?range=7d" \\
   -H "Authorization: Bearer ${keyPlaceholder}"`}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Connect an AI agent (MCP)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            A built-in MCP server lets agents create, edit and analyse links with the
+            same key — point them at{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{origin}/mcp</code>.
+          </p>
+          {!config.mcpEnabled && (
+            <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              The MCP server is currently turned off by an administrator.
+            </p>
+          )}
+          <CodeRow
+            label="Claude Code"
+            code={`claude mcp add --transport http ${mcpName} ${origin}/mcp \\
+  --header "Authorization: Bearer ${keyPlaceholder}"`}
+          />
+          <CodeRow
+            label="Claude Desktop / Cursor (mcp-remote)"
+            code={`{
+  "mcpServers": {
+    "${mcpName}": {
+      "command": "npx",
+      "args": ["mcp-remote", "${origin}/mcp",
+               "--header", "Authorization: Bearer ${keyPlaceholder}"]
+    }
+  }
+}`}
+          />
+          <p className="text-xs text-muted-foreground">
+            Tools: create_link, list_links, get_link, update_link, delete_link,
+            get_link_stats, get_link_activity, list_domains, list_projects, bulk_import,
+            get_qr.
+          </p>
         </CardContent>
       </Card>
 

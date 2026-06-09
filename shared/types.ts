@@ -229,6 +229,8 @@ export interface SettingsDTO {
   apiEnabled: boolean;
   apiRateLimit: number;
   maxApiKeysPerUser: number;
+  /** MCP server for AI agents (rides under the API master switch). */
+  mcpEnabled: boolean;
   /** Length of auto-generated back-halves (3–32). */
   slugLength: number;
   /** Cloudflare for SaaS — configured via /admin. The token is never returned;
@@ -268,6 +270,8 @@ export interface AppConfigDTO {
   domainUnverifiedDays: number;
   /** Whether the public (bearer-key) API is enabled. */
   apiEnabled: boolean;
+  /** Whether the MCP server (AI agents) is enabled. */
+  mcpEnabled: boolean;
   /** Length of auto-generated back-halves. */
   slugLength: number;
 }

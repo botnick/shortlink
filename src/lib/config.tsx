@@ -33,6 +33,7 @@ const DEFAULT: AppConfigDTO = {
   ogAccent: DEFAULT_BRAND_COLOR,
   domainUnverifiedDays: 90,
   apiEnabled: true,
+  mcpEnabled: true,
   slugLength: 6,
 };
 
