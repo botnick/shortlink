@@ -32,7 +32,7 @@ export function qrSvg(
     logo?: string | null;
   } = {},
 ): string {
-  const fg = opts.fg ?? "#0b0b0c";
+  const fg = opts.fg ?? "#000000";
   const brand = opts.brand ?? fg;
   const light = opts.light ?? "#ffffff";
   const margin = opts.margin ?? 4;

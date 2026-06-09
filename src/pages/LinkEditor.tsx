@@ -1240,21 +1240,26 @@ function QrCard({ slug, linkId }: { slug: string; linkId: string }) {
   const { config } = useConfig();
   const [svg, setSvg] = useState("");
   const qrUrl = `${window.location.origin}/qr/${slug}`;
-  const shortUrl = `${window.location.origin}/${slug}`;
 
   useEffect(() => {
     let active = true;
-    const cfg = makeDefault(config.brandColor);
-    cfg.fg = "#0b0b0c";
-    cfg.cornerSquareColor = config.brandColor;
-    cfg.cornerDotColor = config.brandColor;
-    renderQrSvg(cfg, shortUrl)
-      .then((raw) => active && setSvg(composeFrame(raw, cfg).svg))
+    // Same source as the QR studio + the /qr page: brand colour, project logo,
+    // and the canonical short URL — so every QR view of the link is identical.
+    fetch(`/api/qr/${slug}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { shortUrl: string; color: string | null; logo: string | null } | null) => {
+        if (!active || !d) return;
+        const base = makeDefault(d.color || config.brandColor);
+        const cfg = d.logo ? { ...base, logoSrc: d.logo, logo: true } : base;
+        return renderQrSvg(cfg, d.shortUrl).then((raw) => {
+          if (active) setSvg(composeFrame(raw, cfg).svg);
+        });
+      })
       .catch(() => {});
     return () => {
       active = false;
     };
-  }, [shortUrl, config.brandColor]);
+  }, [slug, config.brandColor]);
 
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4">

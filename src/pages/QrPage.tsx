@@ -73,7 +73,7 @@ export function QrPage() {
 
       {ready && link && (
         <QrStudio
-          url={shortUrlFor(link.slug)}
+          url={link.shortUrl}
           downloadName={link.slug}
           project={project ?? undefined}
         />

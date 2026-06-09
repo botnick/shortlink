@@ -193,8 +193,8 @@ app.get("/qr/:file", async (c) => {
     const l = rows[0];
     const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l || !l.isActive || expired) return spa(c, 404);
-    const brand = /^#[0-9a-fA-F]{6}$/.test(l.color ?? "") ? (l.color as string) : "#0b0b0c";
-    return c.body(qrSvg(`${c.env.APP_URL}/${l.slug}`, { brand, logo: l.logo }), 200, {
+    // Match the studio's makeDefault look: black modules + project logo.
+    return c.body(qrSvg(`${c.env.APP_URL}/${l.slug}`, { logo: l.logo }), 200, {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "public, max-age=86400",
     });

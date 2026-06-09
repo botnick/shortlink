@@ -51,18 +51,12 @@ export function QrLinkPage() {
     };
   }, [slug]);
 
+  // Same config as the QR studio (the source of truth): makeDefault(brand) plus
+  // the project logo. Keeps every QR view of a link identical.
   const cfg = useMemo<QrCfg | null>(() => {
     if (!data) return null;
-    const brand = data.color || config.brandColor;
-    const c = makeDefault(brand);
-    c.fg = "#0b0b0c";
-    c.cornerSquareColor = brand;
-    c.cornerDotColor = brand;
-    if (data.logo) {
-      c.logo = true;
-      c.logoSrc = data.logo;
-    }
-    return c;
+    const base = makeDefault(data.color || config.brandColor);
+    return data.logo ? { ...base, logoSrc: data.logo, logo: true } : base;
   }, [data, config.brandColor]);
 
   useEffect(() => {
