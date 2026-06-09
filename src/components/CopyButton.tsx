@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button, type ButtonProps } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 
 type CopyButtonProps = Omit<ButtonProps, "value"> & {
   value: string;
@@ -28,16 +29,19 @@ export function CopyButton({
     }
   }
 
-  return (
+  const btn = (
     <Button
       type="button"
       variant={variant}
       size={label ? "default" : size}
       onClick={copy}
+      aria-label={label ? undefined : "Copy"}
       {...props}
     >
       {copied ? <Check className="text-emerald-500" /> : <Copy />}
       {label}
     </Button>
   );
+  // Icon-only copy buttons get a tooltip so they're understandable.
+  return label ? btn : <Hint label="Copy">{btn}</Hint>;
 }

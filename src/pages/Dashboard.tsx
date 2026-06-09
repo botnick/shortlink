@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Hint } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/CopyButton";
 import {
   DropdownMenu,
@@ -227,21 +228,24 @@ export function Dashboard() {
 
               <CopyButton value={shortUrlFor(link.slug)} />
 
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Edit link"
-                onClick={() => navigate(`/dashboard/links/${link.id}/edit`)}
-              >
-                <Pencil />
-              </Button>
+              <Hint label="Edit">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit link"
+                  onClick={() => navigate(`/dashboard/links/${link.id}/edit`)}
+                >
+                  <Pencil />
+                </Button>
+              </Hint>
 
-              <Switch
-                checked={link.isActive}
-                onCheckedChange={() => toggleActive(link)}
-                aria-label={link.isActive ? "Deactivate link" : "Activate link"}
-                title={link.isActive ? "Active — click to deactivate" : "Inactive — click to activate"}
-              />
+              <Hint label={link.isActive ? "Deactivate" : "Activate"}>
+                <Switch
+                  checked={link.isActive}
+                  onCheckedChange={() => toggleActive(link)}
+                  aria-label={link.isActive ? "Deactivate link" : "Activate link"}
+                />
+              </Hint>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
