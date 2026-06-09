@@ -120,13 +120,13 @@ export function ColorPicker({
   const trigger: ReactNode = (
     <button
       type="button"
-      className="inline-flex items-center gap-2 rounded-lg border bg-background px-2 py-1.5 hover:bg-accent"
+      className="inline-flex items-center gap-2.5 rounded-lg border bg-background py-1.5 pl-1.5 pr-3 shadow-sm transition-colors hover:bg-accent"
     >
       <span
-        className="size-5 rounded border"
+        className="size-6 rounded-md shadow-sm ring-1 ring-inset ring-foreground/10"
         style={{ backgroundColor: value }}
       />
-      <span className="font-mono text-xs text-muted-foreground">
+      <span className="font-mono text-sm font-medium tabular-nums text-foreground">
         {value.toUpperCase()}
       </span>
     </button>
