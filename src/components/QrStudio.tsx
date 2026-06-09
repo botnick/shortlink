@@ -30,6 +30,7 @@ import {
 import type { AssetDTO, ProjectDTO, QrPresetDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Hint } from "@/components/ui/tooltip";
 import { ColorPicker } from "@/components/ColorPicker";
 
 const CURATED = [
@@ -181,7 +182,7 @@ function Segmented<T extends string>({
           type="button"
           onClick={() => onChange(o.value)}
           className={cn(
-            "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+            "flex-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
             value === o.value
               ? "bg-card text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",
@@ -475,9 +476,11 @@ export function QrStudio({
             <Button className="flex-1" disabled={busy} onClick={() => exportQr(format)}>
               <Download /> Download
             </Button>
-            <Button variant="outline" size="icon" onClick={copyQr} aria-label="Copy image">
-              {copied ? <Check className="text-emerald-500" /> : <Copy />}
-            </Button>
+            <Hint label="Copy image">
+              <Button variant="outline" size="icon" onClick={copyQr} aria-label="Copy image">
+                {copied ? <Check className="text-emerald-500" /> : <Copy />}
+              </Button>
+            </Hint>
           </div>
           <button
             type="button"
