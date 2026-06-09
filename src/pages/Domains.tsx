@@ -11,6 +11,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { CopyButton } from "@/components/CopyButton";
 
+const HOST_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
+
+/** Reduce a pasted value to a bare hostname (mirrors the server's domainSchema). */
+function normalizeHost(v: string): string {
+  return v
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "")
+    .replace(/^\.+|\.+$/g, "");
+}
+
 function statusBadge(status: string) {
   if (status === "active")
     return (
@@ -27,38 +40,34 @@ function statusBadge(status: string) {
   return <Badge variant="muted">Needs setup</Badge>;
 }
 
-/** One labelled, copyable DNS value (Name / Value) — clearer than a packed row. */
-function RecordValue({ label, value }: { label: string; value: string }) {
+function RecordRow({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
-      <span className="w-12 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="flex items-center gap-3 border-b px-3 py-2.5 last:border-b-0">
+      <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <code className="min-w-0 flex-1 truncate font-mono text-sm" title={value}>
         {value}
       </code>
-      <CopyButton value={value} />
+      {copy && <CopyButton value={value} />}
     </div>
   );
 }
 
-function Step({ n, title, children }: { n: number; title: string; children?: ReactNode }) {
+/** A DNS record shown as a clean three-row table (Type / Name / Value). */
+function DnsRecord({ type, name, value }: { type: string; name: string; value: string }) {
   return (
-    <div className="flex gap-3">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-        {n}
-      </span>
-      <div className="min-w-0 flex-1 space-y-2">
-        <p className="text-sm font-medium">{title}</p>
-        {children}
-      </div>
+    <div className="overflow-hidden rounded-lg border bg-background">
+      <RecordRow label="Type" value={type} />
+      <RecordRow label="Name" value={name} copy />
+      <RecordRow label="Value" value={value} copy />
     </div>
   );
 }
 
 function NoticeBox({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+    <div className="flex items-start gap-2 border-t pt-4 text-sm text-muted-foreground">
       <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
       <p>{children}</p>
     </div>
@@ -96,11 +105,12 @@ export function Domains() {
 
   async function add(e: FormEvent) {
     e.preventDefault();
-    if (!hostname.trim()) return;
+    const cleaned = normalizeHost(hostname);
+    if (!HOST_RE.test(cleaned)) return;
     setAdding(true);
     try {
       const { domain } = await api.post<{ domain: DomainDTO }>("/domains", {
-        hostname: hostname.trim(),
+        hostname: cleaned,
       });
       setDomains((d) => [domain, ...(d ?? [])]);
       setHostname("");
@@ -145,14 +155,19 @@ export function Domains() {
     }
   }
 
+  const cleanedHost = normalizeHost(hostname);
+  const validHost =
+    cleanedHost.length > 0 && cleanedHost.length <= 253 && HOST_RE.test(cleanedHost);
+  const typed = hostname.trim().length > 0;
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">
         <h1 className="display text-3xl">Custom domains</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           Serve short links from a domain you own — like{" "}
-          <span className="font-medium text-foreground">go.yourbrand.com/abc</span> — instead of the
-          default one.
+          <span className="font-medium text-foreground">go.yourbrand.com/abc</span> — instead of
+          the default one.
         </p>
       </div>
 
@@ -163,8 +178,8 @@ export function Domains() {
           title="Add one DNS record"
           desc={
             mode === "saas"
-              ? "We give you a CNAME + TXT to paste into your domain's DNS settings."
-              : "We give you a TXT record to paste into your domain's DNS settings."
+              ? "Paste the CNAME + TXT we give you into your domain's DNS."
+              : "Paste the TXT record we give you into your domain's DNS."
           }
         />
         <HowStep
@@ -189,15 +204,29 @@ export function Domains() {
               onChange={(e) => setHostname(e.target.value)}
               placeholder="go.yourbrand.com"
               className="pl-9"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
           </div>
-          <Button type="submit" disabled={adding} className="sm:w-auto">
+          <Button type="submit" disabled={adding || !validHost} className="sm:w-auto">
             {adding ? <Loader2 className="animate-spin" /> : <Plus />} Add domain
           </Button>
         </form>
-        <p className="text-xs text-muted-foreground">
-          A domain or subdomain you control — we'll show the exact DNS record to add next.
-        </p>
+        {typed && !validHost ? (
+          <p className="text-xs text-destructive">
+            Enter a valid domain like go.brand.com — no http:// or paths.
+          </p>
+        ) : validHost && cleanedHost !== hostname.trim().toLowerCase() ? (
+          <p className="text-xs text-muted-foreground">
+            Will be added as{" "}
+            <span className="font-medium text-foreground">{cleanedHost}</span>.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            A domain or subdomain you control — we'll show the exact DNS record to add next.
+          </p>
+        )}
       </div>
 
       {domains === null ? (
@@ -209,9 +238,7 @@ export function Domains() {
         <div className="rounded-xl border border-dashed py-12 text-center">
           <Globe className="mx-auto size-7 text-muted-foreground/60" />
           <p className="mt-2 text-sm font-medium">No custom domains yet</p>
-          <p className="text-sm text-muted-foreground">
-            Add one above to brand your short links.
-          </p>
+          <p className="text-sm text-muted-foreground">Add one above to brand your short links.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -221,7 +248,7 @@ export function Domains() {
             return (
               <Card key={d.id}>
                 <CardContent className="space-y-4 p-4 sm:p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-2.5">
                       <Globe className="size-4 shrink-0 text-muted-foreground" />
                       <span className="truncate font-semibold">{d.hostname}</span>
@@ -239,41 +266,28 @@ export function Domains() {
                   </div>
 
                   {!done && d.records.length > 0 && (
-                    <div className="space-y-4 rounded-xl border bg-muted/30 p-4">
-                      <Step
-                        n={1}
-                        title={`Add ${d.records.length > 1 ? "these DNS records" : "this DNS record"} at your domain provider`}
-                      >
-                        <p className="text-xs text-muted-foreground">
-                          In your registrar's DNS settings (Cloudflare, Namecheap, GoDaddy…), create:
-                        </p>
-                        <div className="space-y-3">
-                          {d.records.map((r, i) => (
-                            <div key={i} className="space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="secondary" className="font-mono">
-                                  {r.type}
-                                </Badge>
-                                <span className="text-xs text-muted-foreground">record</span>
-                              </div>
-                              <RecordValue label="Name" value={r.name} />
-                              <RecordValue label="Value" value={r.value} />
-                            </div>
-                          ))}
-                        </div>
-                      </Step>
-
-                      <Step n={2} title="Then check the connection">
-                        <p className="text-xs text-muted-foreground">
-                          DNS can take a few minutes to propagate.{" "}
-                          {d.mode === "saas"
-                            ? "TLS is issued automatically once it resolves."
-                            : "We'll verify you own the domain."}
-                        </p>
-                        <Button variant="outline" size="sm" onClick={() => check(d)} disabled={loading}>
+                    <div className="space-y-3 border-t pt-4">
+                      <p className="text-sm text-muted-foreground">
+                        Add {d.records.length > 1 ? "these records" : "this record"} in your DNS
+                        provider (Cloudflare, Namecheap, GoDaddy…), then check the connection.
+                      </p>
+                      {d.records.map((r, i) => (
+                        <DnsRecord key={i} type={r.type} name={r.name} value={r.value} />
+                      ))}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-0.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => check(d)}
+                          disabled={loading}
+                        >
                           <RefreshCw className={loading ? "animate-spin" : ""} /> Check connection
                         </Button>
-                      </Step>
+                        <span className="text-xs text-muted-foreground">
+                          DNS can take a few minutes to propagate
+                          {d.mode === "saas" ? " — TLS is issued automatically." : "."}
+                        </span>
+                      </div>
                     </div>
                   )}
 
