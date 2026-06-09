@@ -70,6 +70,11 @@ export function AdminSettings() {
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [indexable, setIndexable] = useState(true);
 
+  const [blockedDomains, setBlockedDomains] = useState("");
+  const [extraReserved, setExtraReserved] = useState("");
+  const [maxLinks, setMaxLinks] = useState(0);
+  const [savingLimits, setSavingLimits] = useState(false);
+
   useEffect(() => {
     api
       .get<SettingsDTO>("/admin/settings")
@@ -82,6 +87,9 @@ export function AdminSettings() {
         setDescription(s.description);
         setOgImageUrl(s.ogImageUrl);
         setIndexable(s.indexable);
+        setBlockedDomains(s.blockedDomains.join("\n"));
+        setExtraReserved(s.extraReserved.join("\n"));
+        setMaxLinks(s.maxLinksPerUser);
       })
       .catch(() => toast.error("Couldn't load settings"))
       .finally(() => setLoading(false));
@@ -115,6 +123,26 @@ export function AdminSettings() {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
     } finally {
       setSavingApp(false);
+    }
+  }
+
+  const toLines = (s: string) =>
+    s.split("\n").map((x) => x.trim()).filter(Boolean);
+
+  async function saveLimits(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSavingLimits(true);
+    try {
+      await patch({
+        blockedDomains: toLines(blockedDomains),
+        extraReserved: toLines(extraReserved),
+        maxLinksPerUser: Math.max(0, Math.floor(maxLinks) || 0),
+      });
+      toast.success("Limits saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Update failed");
+    } finally {
+      setSavingLimits(false);
     }
   }
 
@@ -196,6 +224,73 @@ export function AdminSettings() {
               </label>
               <Button type="submit" disabled={savingApp}>
                 {savingApp && <Loader2 className="animate-spin" />}
+                Save
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Limits &amp; safety</CardTitle>
+          <CardDescription>Guardrails applied when members create links.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ) : (
+            <form onSubmit={saveLimits} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="blocked">
+                  Blocked destination domains{" "}
+                  <span className="font-normal text-muted-foreground">(one per line)</span>
+                </Label>
+                <textarea
+                  id="blocked"
+                  rows={3}
+                  value={blockedDomains}
+                  onChange={(e) => setBlockedDomains(e.target.value)}
+                  placeholder={"malware.example\nspam.test"}
+                  className="w-full rounded-lg border bg-transparent px-3 py-2 font-mono text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Links pointing to these domains (or their subdomains) are rejected.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reserved">
+                  Reserved aliases{" "}
+                  <span className="font-normal text-muted-foreground">(one per line)</span>
+                </Label>
+                <textarea
+                  id="reserved"
+                  rows={3}
+                  value={extraReserved}
+                  onChange={(e) => setExtraReserved(e.target.value)}
+                  placeholder={"pricing\nblog"}
+                  className="w-full rounded-lg border bg-transparent px-3 py-2 font-mono text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxLinks">
+                  Max links per member{" "}
+                  <span className="font-normal text-muted-foreground">(0 = unlimited)</span>
+                </Label>
+                <Input
+                  id="maxLinks"
+                  type="number"
+                  min={0}
+                  value={maxLinks}
+                  onChange={(e) => setMaxLinks(Number(e.target.value))}
+                  className="max-w-[12rem]"
+                />
+              </div>
+              <Button type="submit" disabled={savingLimits}>
+                {savingLimits && <Loader2 className="animate-spin" />}
                 Save
               </Button>
             </form>

@@ -8,11 +8,14 @@ import { dayBucket, searchCondition } from "../lib/query";
 import {
   SETTING_KEYS,
   appNameFrom,
+  blockedDomainsFrom,
   brandColorFrom,
   descriptionFrom,
+  extraReservedFrom,
   getAllSettings,
   indexableFrom,
   logoFrom,
+  maxLinksPerUserFrom,
   ogImageFrom,
   setSetting,
   shortDomainFrom,
@@ -45,6 +48,9 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     description: descriptionFrom(map),
     ogImageUrl: ogImageFrom(map),
     indexable: indexableFrom(map),
+    blockedDomains: blockedDomainsFrom(map),
+    extraReserved: extraReservedFrom(map),
+    maxLinksPerUser: maxLinksPerUserFrom(map),
   };
 }
 
@@ -80,6 +86,21 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.indexable !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.indexable, input.indexable);
+  }
+  if (input.blockedDomains !== undefined) {
+    const clean = input.blockedDomains
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+    await setSetting(db, schema, SETTING_KEYS.blockedDomains, clean);
+  }
+  if (input.extraReserved !== undefined) {
+    const clean = input.extraReserved
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    await setSetting(db, schema, SETTING_KEYS.extraReserved, clean);
+  }
+  if (input.maxLinksPerUser !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.maxLinksPerUser, input.maxLinksPerUser);
   }
   await invalidateSeo(c.env.LINKS_KV);
   const map = await getAllSettings(db, schema);

@@ -115,6 +115,9 @@ export interface SettingsDTO {
   description: string;
   ogImageUrl: string;
   indexable: boolean;
+  blockedDomains: string[];
+  extraReserved: string[];
+  maxLinksPerUser: number;
 }
 
 export interface AppConfigDTO {

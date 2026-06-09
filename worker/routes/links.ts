@@ -1,12 +1,19 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { type SQL, and, desc, eq, lt, sql } from "drizzle-orm";
+import { type SQL, and, count, desc, eq, lt, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "../env";
 import type { LinkRow } from "../db/schema";
 import { createLinkSchema, updateLinkSchema } from "../lib/validators";
 import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink, type CachedLink } from "../lib/cache";
 import { searchCondition } from "../lib/query";
+import {
+  blockedDomainsFrom,
+  extraReservedFrom,
+  getAllSettings,
+  isBlockedDestination,
+  maxLinksPerUserFrom,
+} from "../lib/settings";
 import { requireAuth } from "../middleware/auth";
 import { computeStats, parseRange } from "./stats";
 import type { LinkDTO, LinkListDTO } from "@shared/types";
@@ -98,10 +105,31 @@ route.get("/", async (c) => {
 // CREATE
 route.post("/", zValidator("json", createLinkSchema), async (c) => {
   const db = c.var.db;
-  const { links } = c.var.schema;
+  const schema = c.var.schema;
+  const { links } = schema;
   const user = c.var.user!;
   const input = c.req.valid("json");
   const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+
+  // Admin-configured guardrails: blocked destination domains, reserved aliases,
+  // and a per-user link quota.
+  const settings = await getAllSettings(db, schema);
+  if (isBlockedDestination(input.destination, blockedDomainsFrom(settings))) {
+    return c.json({ error: "That destination domain isn’t allowed" }, 400);
+  }
+  if (input.slug && extraReservedFrom(settings).includes(input.slug.toLowerCase())) {
+    return c.json({ error: "That custom alias is reserved" }, 400);
+  }
+  const maxLinks = maxLinksPerUserFrom(settings);
+  if (maxLinks > 0) {
+    const [{ n }] = await db
+      .select({ n: count() })
+      .from(links)
+      .where(eq(links.userId, user.id));
+    if (Number(n) >= maxLinks) {
+      return c.json({ error: `You’ve reached your link limit (${maxLinks})` }, 409);
+    }
+  }
 
   const insertOne = async (slug: string) => {
     const row = (

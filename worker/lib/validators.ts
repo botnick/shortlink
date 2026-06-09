@@ -67,6 +67,9 @@ export const settingsSchema = z
     description: description.optional(),
     ogImageUrl: longText.optional(),
     indexable: z.boolean().optional(),
+    blockedDomains: z.array(z.string().trim().max(253)).max(1000).optional(),
+    extraReserved: z.array(z.string().trim().max(64)).max(1000).optional(),
+    maxLinksPerUser: z.number().int().min(0).max(10_000_000).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "No settings provided");
 
