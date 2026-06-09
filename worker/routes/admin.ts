@@ -1,10 +1,23 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { type SQL, and, count, desc, eq, gte, lt, sql, sum } from "drizzle-orm";
+import {
+  type SQL,
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lt,
+  sql,
+  sum,
+} from "drizzle-orm";
 import type { AppEnv } from "../env";
 import { deleteCachedLink, putCachedLink } from "../lib/cache";
 import { dayBucket, searchCondition } from "../lib/query";
+import { hashPassword } from "../lib/password";
+import { computeGlobalStats, parseRange } from "./stats";
 import {
   SETTING_KEYS,
   appNameFrom,
@@ -21,7 +34,13 @@ import {
   shortDomainFrom,
 } from "../lib/settings";
 import { invalidateSeo } from "../lib/seo";
-import { settingsSchema, updateUserRoleSchema } from "../lib/validators";
+import {
+  bulkLinksSchema,
+  createUserSchema,
+  resetPasswordSchema,
+  settingsSchema,
+  updateUserRoleSchema,
+} from "../lib/validators";
 import { requireAdmin } from "../middleware/auth";
 import type {
   AdminLinkDTO,
@@ -37,6 +56,11 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE = 25;
 const DAY_MS = 86_400_000;
+
+/** Escape a value for CSV (quote if it contains a comma, quote, or newline). */
+function csvCell(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
 
 function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
   return {
@@ -248,18 +272,27 @@ admin.get("/links", async (c) => {
   const { links, users } = c.var.schema;
   const q = c.req.query("q") ?? "";
   const cursor = c.req.query("cursor");
+  const userId = c.req.query("userId");
 
   const search = searchCondition(
-    [sql`${links.slug}`, sql`${links.destination}`, sql`${links.title}`],
+    [
+      sql`${links.slug}`,
+      sql`${links.destination}`,
+      sql`${links.title}`,
+      sql`${users.email}`,
+    ],
     q,
   );
   const cursorCond =
     cursor && !Number.isNaN(Date.parse(cursor))
       ? lt(links.createdAt, new Date(cursor))
       : undefined;
-  const where = and(
-    ...([search, cursorCond].filter(Boolean) as SQL[]),
+  const ownerCond =
+    userId && UUID_RE.test(userId) ? eq(links.userId, userId) : undefined;
+  const filter = and(
+    ...([search, ownerCond].filter(Boolean) as SQL[]),
   );
+  const where = and(...([search, cursorCond, ownerCond].filter(Boolean) as SQL[]));
 
   const [rows, totalRow] = await Promise.all([
     db
@@ -281,7 +314,8 @@ admin.get("/links", async (c) => {
     db
       .select({ v: count() })
       .from(links)
-      .where(search)
+      .innerJoin(users, eq(links.userId, users.id))
+      .where(filter)
       .then((r) => Number(r[0]?.v ?? 0)),
   ]);
 
@@ -343,6 +377,153 @@ admin.delete("/links/:id", async (c) => {
   if (!rows[0]) return c.json({ error: "Not found" }, 404);
   await deleteCachedLink(c.env.LINKS_KV, rows[0].slug);
   return c.json({ ok: true });
+});
+
+// Create a member directly (bypasses the registration toggle).
+admin.post("/users", zValidator("json", createUserSchema), async (c) => {
+  const db = c.var.db;
+  const { users } = c.var.schema;
+  const { email, password, role } = c.req.valid("json");
+
+  const existing = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  if (existing.length > 0) {
+    return c.json({ error: "A member with that email already exists" }, 409);
+  }
+  const passwordHash = await hashPassword(password);
+  const row = (
+    await db
+      .insert(users)
+      .values({ email, passwordHash, role })
+      .returning({
+        id: users.id,
+        email: users.email,
+        role: users.role,
+        isPrimary: users.isPrimary,
+        createdAt: users.createdAt,
+      })
+  )[0];
+  return c.json(
+    { user: { ...row, createdAt: row.createdAt.toISOString(), linkCount: 0 } },
+    201,
+  );
+});
+
+// Reset a member's password and sign them out everywhere.
+admin.post(
+  "/users/:id/password",
+  zValidator("json", resetPasswordSchema),
+  async (c) => {
+    const id = c.req.param("id");
+    if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
+    const { users, sessions } = c.var.schema;
+    const passwordHash = await hashPassword(c.req.valid("json").password);
+    const rows = await c.var.db
+      .update(users)
+      .set({ passwordHash })
+      .where(eq(users.id, id))
+      .returning({ id: users.id });
+    if (!rows[0]) return c.json({ error: "Not found" }, 404);
+    await c.var.db.delete(sessions).where(eq(sessions.userId, id));
+    return c.json({ ok: true });
+  },
+);
+
+// Bulk pause / activate / delete links.
+admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
+  const db = c.var.db;
+  const { links } = c.var.schema;
+  const { ids, action } = c.req.valid("json");
+  const kv = c.env.LINKS_KV;
+
+  if (action === "delete") {
+    const rows = await db
+      .delete(links)
+      .where(inArray(links.id, ids))
+      .returning({ slug: links.slug });
+    c.executionCtx.waitUntil(
+      Promise.all(rows.map((r) => deleteCachedLink(kv, r.slug))).then(() => {}),
+    );
+    return c.json({ ok: true, count: rows.length });
+  }
+
+  const isActive = action === "activate";
+  const rows = await db
+    .update(links)
+    .set({ isActive, updatedAt: new Date() })
+    .where(inArray(links.id, ids))
+    .returning();
+  c.executionCtx.waitUntil(
+    Promise.all(
+      rows.map((r) =>
+        putCachedLink(kv, r.slug, {
+          id: r.id,
+          destination: r.destination,
+          isActive: r.isActive,
+          expiresAt: r.expiresAt ? r.expiresAt.getTime() : null,
+        }),
+      ),
+    ).then(() => {}),
+  );
+  return c.json({ ok: true, count: rows.length });
+});
+
+// System-wide analytics for the Analytics tab.
+admin.get("/analytics", async (c) => {
+  const stats = await computeGlobalStats(
+    c.var.db,
+    c.var.schema,
+    c.var.dialect,
+    parseRange(c.req.query("range")),
+  );
+  return c.json(stats);
+});
+
+// CSV export of every link.
+admin.get("/export/links.csv", async (c) => {
+  const { links, users } = c.var.schema;
+  const rows = await c.var.db
+    .select({
+      slug: links.slug,
+      destination: links.destination,
+      title: links.title,
+      clicks: links.clickCount,
+      active: links.isActive,
+      owner: users.email,
+      created: links.createdAt,
+    })
+    .from(links)
+    .innerJoin(users, eq(links.userId, users.id))
+    .orderBy(desc(links.createdAt));
+
+  const head = "slug,destination,title,clicks,active,owner,created\n";
+  const csv =
+    head +
+    rows
+      .map((r) =>
+        [
+          r.slug,
+          r.destination,
+          r.title ?? "",
+          String(r.clicks),
+          String(r.active),
+          r.owner,
+          r.created.toISOString(),
+        ]
+          .map(csvCell)
+          .join(","),
+      )
+      .join("\n");
+
+  return new Response(csv, {
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": 'attachment; filename="links.csv"',
+    },
+  });
 });
 
 // Delete a user. The primary admin and your own account are protected.

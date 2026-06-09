@@ -12,7 +12,8 @@ import {
 } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { DB, DbSchema, Dialect } from "../db";
-import type { NameCount, StatsDTO } from "@shared/types";
+import { dayBucket } from "../lib/query";
+import type { AdminAnalyticsDTO, NameCount, StatsDTO } from "@shared/types";
 
 export type Range = "24h" | "7d" | "30d" | "90d" | "all";
 const RANGES: Range[] = ["24h", "7d", "30d", "90d", "all"];
@@ -156,5 +157,68 @@ export async function computeStats(
     devices,
     browsers,
     os: operatingSystems,
+  };
+}
+
+/**
+ * System-wide analytics for the admin Analytics tab. Range-scoped breakdowns
+ * come from the clicks table; "top links" uses the denormalized click_count
+ * (all-time) to avoid a full clicks scan, keeping Worker CPU low.
+ */
+export async function computeGlobalStats(
+  db: DB,
+  schema: DbSchema,
+  dialect: Dialect,
+  range: Range,
+): Promise<AdminAnalyticsDTO> {
+  const { clicks, links, users } = schema;
+  const start = rangeStart(range);
+  const base: SQL = start ? (gte(clicks.createdAt, start) as SQL) : sql`1=1`;
+  const dayExpr = dayBucket(dialect, sql`${clicks.createdAt}`);
+
+  const [totals, series, countries, referrers, devices, browsers, oss, top] =
+    await Promise.all([
+      db
+        .select({ total: count(), unique: countDistinct(clicks.ipHash) })
+        .from(clicks)
+        .where(base),
+      db
+        .select({ day: dayExpr, value: count() })
+        .from(clicks)
+        .where(base)
+        .groupBy(dayExpr)
+        .orderBy(dayExpr),
+      topList(db, clicks, base, clicks.country),
+      topList(db, clicks, base, clicks.referrer),
+      topList(db, clicks, base, clicks.deviceType),
+      topList(db, clicks, base, clicks.browser),
+      topList(db, clicks, base, clicks.os),
+      db
+        .select({
+          slug: links.slug,
+          clickCount: links.clickCount,
+          ownerEmail: users.email,
+        })
+        .from(links)
+        .innerJoin(users, eq(links.userId, users.id))
+        .orderBy(desc(links.clickCount))
+        .limit(10),
+    ]);
+
+  return {
+    range,
+    totalClicks: Number(totals[0]?.total ?? 0),
+    uniqueVisitors: Number(totals[0]?.unique ?? 0),
+    timeseries: series.map((r) => ({ day: r.day, count: Number(r.value) })),
+    countries,
+    referrers,
+    devices,
+    browsers,
+    os: oss,
+    topLinks: top.map((t) => ({
+      slug: t.slug,
+      clickCount: t.clickCount,
+      ownerEmail: t.ownerEmail,
+    })),
   };
 }

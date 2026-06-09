@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { BarChart3, Link2, Settings, Users } from "lucide-react";
+import { BarChart3, Link2, LineChart, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { AdminUserDTO } from "@shared/types";
 import { AdminOverview } from "@/pages/admin/AdminOverview";
+import { AdminAnalytics } from "@/pages/admin/AdminAnalytics";
 import { AdminLinks } from "@/pages/admin/AdminLinks";
 import { AdminTeam } from "@/pages/admin/AdminTeam";
 import { AdminSettings } from "@/pages/admin/AdminSettings";
 
-type Tab = "overview" | "links" | "team" | "settings";
+type Tab = "overview" | "analytics" | "links" | "team" | "settings";
 
 const TABS: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "overview", label: "Overview", icon: BarChart3 },
+  { id: "analytics", label: "Analytics", icon: LineChart },
   { id: "links", label: "Links", icon: Link2 },
   { id: "team", label: "Team", icon: Users },
   { id: "settings", label: "Settings", icon: Settings },
@@ -17,6 +20,7 @@ const TABS: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
 
 export function Admin() {
   const [tab, setTab] = useState<Tab>("overview");
+  const [focusUser, setFocusUser] = useState<AdminUserDTO | null>(null);
 
   return (
     <div className="space-y-6">
@@ -50,8 +54,23 @@ export function Admin() {
       </div>
 
       {tab === "overview" && <AdminOverview />}
-      {tab === "links" && <AdminLinks />}
-      {tab === "team" && <AdminTeam />}
+      {tab === "analytics" && <AdminAnalytics />}
+      {tab === "links" && (
+        <AdminLinks
+          key={focusUser?.id ?? "all"}
+          userId={focusUser?.id}
+          userLabel={focusUser?.email}
+          onClearFilter={() => setFocusUser(null)}
+        />
+      )}
+      {tab === "team" && (
+        <AdminTeam
+          onViewLinks={(u) => {
+            setFocusUser(u);
+            setTab("links");
+          }}
+        />
+      )}
       {tab === "settings" && <AdminSettings />}
     </div>
   );

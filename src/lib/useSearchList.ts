@@ -73,6 +73,11 @@ export function useSearchList<T>(
     setTotal((t) => (t === undefined ? t : Math.max(0, t - 1)));
   }, []);
 
+  const addItem = useCallback((item: T) => {
+    setItems((prev) => [item, ...prev]);
+    setTotal((t) => (t === undefined ? t : t + 1));
+  }, []);
+
   return {
     query,
     setQuery,
@@ -84,5 +89,6 @@ export function useSearchList<T>(
     loadMore,
     patchItem,
     removeItem,
+    addItem,
   };
 }

@@ -92,6 +92,19 @@ export interface AdminLinkListDTO {
   total: number;
 }
 
+export interface AdminAnalyticsDTO {
+  range: string;
+  totalClicks: number;
+  uniqueVisitors: number;
+  timeseries: TimePoint[];
+  countries: NameCount[];
+  referrers: NameCount[];
+  devices: NameCount[];
+  browsers: NameCount[];
+  os: NameCount[];
+  topLinks: { slug: string; clickCount: number; ownerEmail: string }[];
+}
+
 export interface AdminOverviewDTO {
   totals: {
     links: number;

@@ -1,4 +1,5 @@
-import { MoreHorizontal, Search, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { KeyRound, Link2, MoreHorizontal, Plus, Search, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -6,8 +7,16 @@ import { formatDate } from "@/lib/format";
 import { useSearchList } from "@/lib/useSearchList";
 import type { AdminUserDTO, AdminUserListDTO, Role } from "@shared/types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export function AdminTeam() {
+export function AdminTeam({ onViewLinks }: { onViewLinks?: (u: AdminUserDTO) => void }) {
   const { user: me } = useAuth();
   const list = useSearchList<AdminUserDTO>(async ({ q, cursor }) => {
     const params = new URLSearchParams();
@@ -33,6 +42,9 @@ export function AdminTeam() {
     const r = await api.get<AdminUserListDTO>(`/admin/users?${params}`);
     return { items: r.users, nextCursor: r.nextCursor, total: r.total };
   });
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [resetUser, setResetUser] = useState<AdminUserDTO | null>(null);
 
   async function setRole(u: AdminUserDTO, role: Role) {
     try {
@@ -67,11 +79,7 @@ export function AdminTeam() {
             className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
-        {list.total !== undefined && (
-          <span className="shrink-0 text-sm text-muted-foreground">
-            {list.total.toLocaleString()} member{list.total === 1 ? "" : "s"}
-          </span>
-        )}
+        <Button onClick={() => setAddOpen(true)}><Plus /> Add member</Button>
       </div>
 
       <div className="rounded-xl border">
@@ -88,22 +96,13 @@ export function AdminTeam() {
           <TableBody>
             {list.loading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={5}>
-                    <Skeleton className="h-6 w-full" />
-                  </TableCell>
-                </TableRow>
+                <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
               ))
             ) : list.items.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  No members found.
-                </TableCell>
-              </TableRow>
+              <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No members found.</TableCell></TableRow>
             ) : (
               list.items.map((u) => {
                 const isSelf = u.id === me?.id;
-                const actionable = !u.isPrimary && !isSelf;
                 return (
                   <TableRow key={u.id}>
                     <TableCell className="max-w-[14rem] truncate font-medium">{u.email}</TableCell>
@@ -115,36 +114,30 @@ export function AdminTeam() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{u.linkCount}</TableCell>
-                    <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
-                      {formatDate(u.createdAt)}
-                    </TableCell>
+                    <TableCell className="hidden text-right text-muted-foreground sm:table-cell">{formatDate(u.createdAt)}</TableCell>
                     <TableCell className="text-right">
-                      {actionable ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="User actions">
-                              <MoreHorizontal />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            {u.role === "user" ? (
-                              <DropdownMenuItem onClick={() => setRole(u, "admin")}>
-                                <ShieldCheck /> Make admin
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem onClick={() => setRole(u, "user")}>
-                                <ShieldOff /> Remove admin
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem variant="destructive" onClick={() => removeUser(u)}>
-                              <Trash2 /> Delete user
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" aria-label="User actions"><MoreHorizontal /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          {onViewLinks && u.linkCount > 0 && (
+                            <DropdownMenuItem onClick={() => onViewLinks(u)}><Link2 /> View links</DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => setResetUser(u)}><KeyRound /> Reset password</DropdownMenuItem>
+                          {!u.isPrimary && !isSelf && (
+                            <>
+                              {u.role === "user" ? (
+                                <DropdownMenuItem onClick={() => setRole(u, "admin")}><ShieldCheck /> Make admin</DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem onClick={() => setRole(u, "user")}><ShieldOff /> Remove admin</DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem variant="destructive" onClick={() => removeUser(u)}><Trash2 /> Delete user</DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 );
@@ -161,6 +154,116 @@ export function AdminTeam() {
           </Button>
         </div>
       )}
+
+      <AddMemberDialog open={addOpen} onOpenChange={setAddOpen} onAdded={(u) => list.addItem(u)} />
+      <ResetPasswordDialog user={resetUser} onOpenChange={(o) => !o && setResetUser(null)} />
     </div>
+  );
+}
+
+function AddMemberDialog({
+  open,
+  onOpenChange,
+  onAdded,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onAdded: (u: AdminUserDTO) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<Role>("user");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { user } = await api.post<{ user: AdminUserDTO }>("/admin/users", { email, password, role });
+      toast.success(`${user.email} added`);
+      setEmail(""); setPassword(""); setRole("user");
+      onOpenChange(false);
+      onAdded(user);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't add member");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Add member</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="m-email">Email</Label>
+            <Input id="m-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="m-pass">Password</Label>
+            <Input id="m-pass" type="text" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
+          </div>
+          <div className="space-y-2">
+            <Label>Role</Label>
+            <div className="flex gap-1 rounded-lg bg-muted p-1">
+              {(["user", "admin"] as Role[]).map((r) => (
+                <button key={r} type="button" onClick={() => setRole(r)}
+                  className={role === r ? "flex-1 rounded-md bg-card px-3 py-1.5 text-sm font-medium shadow-sm" : "flex-1 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground"}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Button type="submit" className="w-full" disabled={saving}>{saving ? "Adding…" : "Add member"}</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ResetPasswordDialog({
+  user,
+  onOpenChange,
+}: {
+  user: AdminUserDTO | null;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!user) return;
+    setSaving(true);
+    try {
+      await api.post(`/admin/users/${user.id}/password`, { password });
+      toast.success(`Password reset — ${user.email} was signed out`);
+      setPassword("");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Reset failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={user !== null} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Reset password</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Set a new password for <span className="font-medium">{user?.email}</span>. They’ll be
+            signed out of all sessions.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="r-pass">New password</Label>
+            <Input id="r-pass" type="text" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
+          </div>
+          <Button type="submit" className="w-full" disabled={saving}>{saving ? "Saving…" : "Reset password"}</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

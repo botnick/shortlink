@@ -57,6 +57,21 @@ export const updateUserRoleSchema = z.object({
   role: z.enum(["user", "admin"]),
 });
 
+export const createUserSchema = z.object({
+  email: emailField,
+  password: passwordField,
+  role: z.enum(["user", "admin"]).optional().default("user"),
+});
+
+export const resetPasswordSchema = z.object({
+  password: passwordField,
+});
+
+export const bulkLinksSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+  action: z.enum(["pause", "activate", "delete"]),
+});
+
 export const settingsSchema = z
   .object({
     registrationEnabled: z.boolean().optional(),
