@@ -6,6 +6,7 @@ import type { LinkRow } from "../db/schema";
 import { createLinkSchema, updateLinkSchema } from "../lib/validators";
 import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink, type CachedLink } from "../lib/cache";
+import { hashPassword } from "../lib/password";
 import { searchCondition } from "../lib/query";
 import { fetchMeta, invalidateLinkPreview } from "../lib/social";
 import { resolveProjectId } from "../lib/projects";
@@ -78,6 +79,7 @@ function toLinkDTO(env: AppBindings, row: LinkRow): LinkDTO {
         ? `${env.APP_URL}/ogimg/${row.id}`
         : row.ogImage || null,
     projectId: row.projectId,
+    hasPassword: Boolean(row.passwordHash),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -90,6 +92,7 @@ function cachePayload(row: LinkRow): CachedLink {
     androidUrl: row.androidUrl,
     desktopUrl: row.desktopUrl,
     isActive: row.isActive,
+    hasPassword: Boolean(row.passwordHash),
     expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
   };
 }
@@ -183,6 +186,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
 
   // Place the link in the requested project (if owned) or the user's default.
   const projectId = await resolveProjectId(db, schema, user.id, user.email, input.projectId);
+  const passwordHash = input.password ? await hashPassword(input.password) : null;
 
   const insertOne = async (slug: string) => {
     const row = (
@@ -194,6 +198,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
           iosUrl: input.iosUrl ?? null,
           androidUrl: input.androidUrl ?? null,
           desktopUrl: input.desktopUrl ?? null,
+          passwordHash,
           userId: user.id,
           projectId,
           title: input.title ?? null,
@@ -309,6 +314,9 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   if (input.iosUrl !== undefined) patch.iosUrl = input.iosUrl;
   if (input.androidUrl !== undefined) patch.androidUrl = input.androidUrl;
   if (input.desktopUrl !== undefined) patch.desktopUrl = input.desktopUrl;
+  if (input.password !== undefined) {
+    patch.passwordHash = input.password ? await hashPassword(input.password) : null;
+  }
   if (input.title !== undefined) patch.title = input.title;
   if (input.isActive !== undefined) patch.isActive = input.isActive;
   if (input.expiresAt !== undefined) {

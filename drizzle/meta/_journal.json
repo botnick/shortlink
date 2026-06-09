@@ -64,6 +64,13 @@
       "when": 1781012719812,
       "tag": "0008_spicy_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781017910456,
+      "tag": "0009_dry_boomer",
+      "breakpoints": true
     }
   ]
 }

@@ -54,6 +54,9 @@ export const links = pgTable(
     iosUrl: text(),
     androidUrl: text(),
     desktopUrl: text(),
+    // Optional password gate (PBKDF2 hash). When set, the redirect serves a
+    // password prompt instead of forwarding until the visitor unlocks it.
+    passwordHash: text(),
     userId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

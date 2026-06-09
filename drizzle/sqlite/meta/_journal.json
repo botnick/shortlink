@@ -50,6 +50,13 @@
       "when": 1781012720495,
       "tag": "0006_easy_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1781017911150,
+      "tag": "0007_smart_black_queen",
+      "breakpoints": true
     }
   ]
 }

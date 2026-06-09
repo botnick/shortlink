@@ -173,12 +173,15 @@ const ogImage = longText.nullable();
 // or null to clear. Custom URI schemes are intentionally rejected — they'd need
 // a JS interstitial, which we avoid to keep the redirect clean and instant.
 const deepLink = httpUrl.nullable();
+// A link password: a non-empty string to set, or null to remove the gate.
+const linkPassword = z.string().min(1, "Password can’t be empty").max(200).nullable();
 
 export const createLinkSchema = z.object({
   destination: httpUrl,
   iosUrl: deepLink.optional(),
   androidUrl: deepLink.optional(),
   desktopUrl: deepLink.optional(),
+  password: linkPassword.optional(),
   slug: slugField.optional(),
   title: z.string().trim().max(120).optional(),
   expiresAt: isoDate.optional(),
@@ -194,6 +197,7 @@ export const updateLinkSchema = z.object({
   iosUrl: deepLink.optional(),
   androidUrl: deepLink.optional(),
   desktopUrl: deepLink.optional(),
+  password: linkPassword.optional(),
   title: z.string().trim().max(120).nullable().optional(),
   isActive: z.boolean().optional(),
   expiresAt: isoDate.nullable().optional(),

@@ -423,6 +423,7 @@ admin.patch(
       androidUrl: row.androidUrl,
       desktopUrl: row.desktopUrl,
       isActive: row.isActive,
+      hasPassword: Boolean(row.passwordHash),
       expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
     });
     return c.json({ ok: true });
@@ -538,6 +539,7 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
           androidUrl: r.androidUrl,
           desktopUrl: r.desktopUrl,
           isActive: r.isActive,
+          hasPassword: Boolean(r.passwordHash),
           expiresAt: r.expiresAt ? r.expiresAt.getTime() : null,
         }),
       ),

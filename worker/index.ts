@@ -30,6 +30,7 @@ import {
 } from "./lib/seo";
 import { isValidCustomSlug } from "./lib/slug";
 import { destinationPreview, isCrawler, previewHtml } from "./lib/social";
+import { verifyPassword } from "./lib/password";
 import {
   getClientIp,
   getCountry,
@@ -99,6 +100,62 @@ app.get("/api/qr/:slug", async (c) => {
   }
 });
 
+// Public unlock for password-protected links: verify the password, then 302 to
+// the (per-OS) destination, or re-render the prompt with an error. PBKDF2 makes
+// brute force slow; the no-JS form posts here from the unlock page.
+app.post("/api/unlock/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  if (!isValidCustomSlug(slug)) return spa(c, 404);
+  const body = await c.req.parseBody();
+  const password = typeof body.password === "string" ? body.password : "";
+  const { db, schema, close } = getDbHandle(c.env);
+  const { links } = schema;
+  try {
+    const rows = await db
+      .select({
+        id: links.id,
+        destination: links.destination,
+        iosUrl: links.iosUrl,
+        androidUrl: links.androidUrl,
+        desktopUrl: links.desktopUrl,
+        isActive: links.isActive,
+        expiresAt: links.expiresAt,
+        passwordHash: links.passwordHash,
+      })
+      .from(links)
+      .where(eq(links.slug, slug))
+      .limit(1);
+    const l = rows[0];
+    const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
+    if (!l || !l.isActive || expired) return spa(c, 410);
+    if (l.passwordHash && !(await verifyPassword(password, l.passwordHash))) {
+      return passwordPage(c, slug, "Incorrect password. Try again.");
+    }
+    c.executionCtx.waitUntil(logClick(c, l.id));
+    const { os, deviceType } = parseUserAgent(c.req.header("user-agent") ?? null);
+    const target = routeDestination(
+      {
+        id: l.id,
+        destination: l.destination,
+        iosUrl: l.iosUrl,
+        androidUrl: l.androidUrl,
+        desktopUrl: l.desktopUrl,
+        isActive: l.isActive,
+        hasPassword: true,
+        expiresAt: null,
+      },
+      os,
+      deviceType,
+    );
+    return new Response(null, {
+      status: 302,
+      headers: { Location: target, "Cache-Control": "private, no-store" },
+    });
+  } finally {
+    c.executionCtx.waitUntil(close());
+  }
+});
+
 app.route("/api", api);
 
 // --- Dynamic branding / SEO endpoints ---------------------------------------
@@ -141,6 +198,7 @@ app.get("/:slug", async (c) => {
           androidUrl: links.androidUrl,
           desktopUrl: links.desktopUrl,
           isActive: links.isActive,
+          passwordHash: links.passwordHash,
           expiresAt: links.expiresAt,
         })
         .from(links)
@@ -155,6 +213,7 @@ app.get("/:slug", async (c) => {
           androidUrl: l.androidUrl,
           desktopUrl: l.desktopUrl,
           isActive: l.isActive,
+          hasPassword: Boolean(l.passwordHash),
           expiresAt: l.expiresAt ? l.expiresAt.getTime() : null,
         };
         c.executionCtx.waitUntil(putCachedLink(kv, slug, cached));
@@ -168,6 +227,10 @@ app.get("/:slug", async (c) => {
   if (!cached.isActive || (cached.expiresAt !== null && cached.expiresAt <= Date.now())) {
     return spa(c, 410);
   }
+
+  // Password-gated links: show the unlock prompt instead of forwarding. The
+  // click is counted on a successful unlock (in /api/unlock), not here.
+  if (cached.hasPassword) return passwordPage(c, slug);
 
   // Log the click off the response path so the redirect stays instant.
   c.executionCtx.waitUntil(logClick(c, cached.id));
@@ -220,6 +283,39 @@ async function spa(c: AppContext, status: number): Promise<Response> {
   return new Response(res.body, { status, headers: res.headers });
 }
 
+const htmlEsc = (s: string): string =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/**
+ * A clean, no-JS unlock page for password-protected links. The form POSTs to
+ * /api/unlock/:slug; the server 302s on the right password or re-renders this
+ * page with an error — so it works under our strict CSP (no inline scripts).
+ */
+async function passwordPage(c: AppContext, slug: string, error?: string): Promise<Response> {
+  const cfg = await getCachedPublicConfig(c.env);
+  const brand = /^#[0-9a-fA-F]{6}$/.test(cfg.brandColor) ? cfg.brandColor : "#e5392e";
+  const app = htmlEsc(cfg.appName || "Shortlink");
+  const logo = cfg.logoUrl
+    ? `<img src="${htmlEsc(cfg.logoUrl)}" alt="" width="44" height="44" style="border-radius:10px;object-fit:cover">`
+    : `<div style="width:44px;height:44px;border-radius:10px;background:${brand}"></div>`;
+  const err = error
+    ? `<p style="margin:2px 0 0;color:#dc2626;font-size:13px">${htmlEsc(error)}</p>`
+    : "";
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${app} — Protected link</title><style>
+*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:"IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f4f4f5;color:#18181b}
+.card{width:100%;max-width:380px;background:#fff;border:1px solid #e7e7ea;border-radius:18px;padding:32px;box-shadow:0 8px 30px rgba(0,0,0,.06);text-align:center}
+.mark{display:flex;justify-content:center;margin-bottom:18px}
+h1{margin:0 0 6px;font-size:19px;font-weight:600}
+.sub{margin:0 0 22px;color:#71717a;font-size:14px}
+form{display:flex;flex-direction:column;gap:12px;text-align:left}
+input{height:44px;border:1px solid #d4d4d8;border-radius:10px;padding:0 14px;font-size:16px;outline:none}
+input:focus{border-color:${brand};box-shadow:0 0 0 3px ${brand}22}
+button{height:44px;border:0;border-radius:10px;background:${brand};color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.foot{margin:22px 0 0;color:#a1a1aa;font-size:12px}
+</style></head><body><div class="card"><div class="mark">${logo}</div><h1>Protected link</h1><p class="sub">Enter the password to continue.</p><form method="POST" action="/api/unlock/${slug}"><input type="password" name="password" placeholder="Password" autofocus required autocomplete="off">${err}<button type="submit">Unlock</button></form><p class="foot">${app}</p></div></body></html>`;
+  return c.html(html, error ? 401 : 200, { "cache-control": "private, no-store" });
+}
+
 /**
  * For social crawlers: return an OG-card HTML when the link opts into a preview,
  * else null (so the caller continues to the normal redirect path). Does a DB
@@ -267,7 +363,11 @@ async function serveSocialPreview(
     const bundle = await getSeoBundle(c.env);
     // og:url = this short link (the page being shared) so the card is credited to
     // us; the destination is only used for the redirect fallback inside the HTML.
-    return c.html(previewHtml(preview, l.destination, bundle.appName, c.req.url));
+    // For a locked link, point the HTML fallback at the short URL (the unlock
+    // page), never the destination — so the protected URL can't leak via source.
+    return c.html(
+      previewHtml(preview, l.passwordHash ? c.req.url : l.destination, bundle.appName, c.req.url),
+    );
   } finally {
     c.executionCtx.waitUntil(close());
   }

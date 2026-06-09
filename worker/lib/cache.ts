@@ -10,6 +10,8 @@ export interface CachedLink {
   androidUrl: string | null;
   desktopUrl: string | null;
   isActive: boolean;
+  /** true when the link is password-gated (the hash itself stays in the DB) */
+  hasPassword: boolean;
   /** epoch ms, or null when the link never expires */
   expiresAt: number | null;
 }

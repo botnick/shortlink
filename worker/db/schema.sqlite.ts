@@ -57,6 +57,9 @@ export const links = sqliteTable(
     iosUrl: text(),
     androidUrl: text(),
     desktopUrl: text(),
+    // Optional password gate (PBKDF2 hash). When set, the redirect serves a
+    // password prompt instead of forwarding until the visitor unlocks it.
+    passwordHash: text(),
     userId: text()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

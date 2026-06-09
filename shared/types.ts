@@ -28,6 +28,8 @@ export interface LinkDTO {
   ogDescription: string | null;
   ogImage: string | null;
   projectId: string | null;
+  /** true when a password gate is set (the password itself is never returned) */
+  hasPassword: boolean;
   createdAt: string;
 }
 

@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Link2,
   Loader2,
+  Lock,
   Megaphone,
   Monitor,
   Plus,
@@ -273,6 +274,9 @@ export function LinkEditor() {
   const [genDataUrl, setGenDataUrl] = useState(""); // live snapshot of the generated card
   const [submitting, setSubmitting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(isEdit); // create starts simple
+  const [slugStrategy, setSlugStrategy] = useState(""); // last "Optimize" label used
+  const [passwordOn, setPasswordOn] = useState(false);
+  const [password, setPassword] = useState("");
   const [destMeta, setDestMeta] = useState<UrlMetaDTO | null>(null);
   const [destLoading, setDestLoading] = useState(false);
   const [brandLogo, setBrandLogo] = useState<HTMLImageElement | null>(null);
@@ -300,6 +304,7 @@ export function LinkEditor() {
         setOgDescription(l.ogDescription ?? "");
         setOgImage(l.ogImage ?? "");
         setOgSource(l.ogImage ? "upload" : "generate");
+        setPasswordOn(l.hasPassword);
         setLoaded(true);
       })
       .catch(() => {
@@ -367,6 +372,7 @@ export function LinkEditor() {
     setUtm(parseUtm(value));
   }
   function optimizeSlug(kind: (typeof SLUG_OPTIONS)[number]["kind"]) {
+    setSlugStrategy(SLUG_OPTIONS.find((o) => o.kind === kind)?.label ?? "");
     if (kind === "shortest") return setAlias(randomSlug(4));
     if (kind === "random") return setAlias(randomSlug(8));
     const s = toSlug(slugSource, kind);
@@ -525,6 +531,12 @@ export function LinkEditor() {
       desktopUrl: desktopUrl.trim() || null,
     };
   }
+  function passwordField() {
+    // On: set the typed password, else (edit) keep the existing one. Off: clear
+    // an existing password, else there's nothing to send.
+    if (passwordOn) return password.trim() ? { password } : {};
+    return link?.hasPassword ? { password: null } : {};
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -542,6 +554,10 @@ export function LinkEditor() {
         return;
       }
     }
+    if (passwordOn && !password.trim() && !(isEdit && link?.hasPassword)) {
+      toast.error("Enter a password, or turn off password protection");
+      return;
+    }
     setSubmitting(true);
     try {
       if (isEdit && link) {
@@ -550,6 +566,7 @@ export function LinkEditor() {
           title: title.trim() || null,
           isActive,
           ...deepLinks(),
+          ...passwordField(),
           ...previewPayload(),
         });
         toast.success("Link updated");
@@ -560,6 +577,7 @@ export function LinkEditor() {
           title: title.trim() || undefined,
           projectId: selectedId ?? undefined,
           ...deepLinks(),
+          ...passwordField(),
           ...previewPayload(),
         });
         toast.success("Short link created");
@@ -662,7 +680,10 @@ export function LinkEditor() {
                       className="h-9 w-full bg-transparent px-1 text-base outline-none md:text-sm"
                       placeholder="my-link"
                       value={alias}
-                      onChange={(e) => setAlias(e.target.value)}
+                      onChange={(e) => {
+                        setAlias(e.target.value);
+                        setSlugStrategy("");
+                      }}
                     />
                   </div>
                   <DropdownMenu>
@@ -692,11 +713,13 @@ export function LinkEditor() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                {alias.trim() && !/^[a-zA-Z0-9_-]{3,32}$/.test(alias.trim()) && (
+                {alias.trim() && !/^[a-zA-Z0-9_-]{3,32}$/.test(alias.trim()) ? (
                   <p className="text-[11px] text-amber-600">
                     3–32 characters: letters, numbers, - or _
                   </p>
-                )}
+                ) : slugStrategy ? (
+                  <p className="text-[11px] text-muted-foreground">{slugStrategy} back-half</p>
+                ) : null}
               </div>
             )}
 
@@ -730,6 +753,34 @@ export function LinkEditor() {
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-center justify-between rounded-lg border p-3">
+                <span className="flex items-center gap-2.5">
+                  <Lock className="size-4 text-muted-foreground" />
+                  <span>
+                    <span className="block text-sm font-medium">Password protect</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Visitors enter a password to open the link.
+                    </span>
+                  </span>
+                </span>
+                <Switch checked={passwordOn} onCheckedChange={setPasswordOn} />
+              </label>
+              {passwordOn && (
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder={
+                    isEdit && link?.hasPassword
+                      ? "Leave blank to keep the current password"
+                      : "Set a password"
+                  }
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              )}
             </div>
 
             {isEdit && (
@@ -1032,6 +1083,15 @@ export function LinkEditor() {
           <section className="space-y-3 rounded-2xl border bg-card p-4">
             <span className="text-xs font-medium text-muted-foreground">Your short link</span>
             <CopyRow value={shortUrlText} label="Copy short link" />
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Character count</span>
+              <span className="flex items-center gap-1 font-medium text-foreground/70">
+                {shortUrlText.length}
+                {/^[a-zA-Z0-9_-]{3,32}$/.test(aliasOrSlug) && (
+                  <Check className="size-3 text-emerald-600" />
+                )}
+              </span>
+            </div>
           </section>
 
           <section className="space-y-3 rounded-2xl border bg-card p-4">
