@@ -124,7 +124,7 @@ export async function destinationPreview(
   linkId: string,
   destination: string,
 ): Promise<Preview> {
-  const key = `linkog:${linkId}`;
+  const key = `linkog:v2:${linkId}`;
   const cached = await env.LINKS_KV.get<Preview>(key, "json");
   if (cached) return cached;
 
@@ -217,7 +217,9 @@ export async function fetchMeta(env: AppBindings, rawUrl: string): Promise<UrlMe
   } catch {
     return emptyMeta(rawUrl);
   }
-  const key = `meta:${u.host}${u.pathname}`.slice(0, 480);
+  // `v2` bumps the cache namespace so entries scraped before HTML-entity
+  // decoding (which would still show "&#064;" etc.) are skipped, not re-served.
+  const key = `meta:v2:${u.host}${u.pathname}`.slice(0, 480);
   const cached = await env.LINKS_KV.get<UrlMeta>(key, "json");
   if (cached) return cached;
 
