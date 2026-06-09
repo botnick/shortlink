@@ -23,6 +23,7 @@ import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { compressUpload, ogToJpeg, ogToPng, renderOg, renderPhotoOg } from "@/lib/ogTemplates";
 import { loadOgFont } from "@/lib/ogFonts";
+import { composeFrame, makeDefault, renderQrSvg, svgDataUrl } from "@/lib/qr";
 import type { LinkDTO, PreviewMode, UrlMetaDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1236,15 +1237,41 @@ export function LinkEditor() {
 
 /** QR block in the preview rail: a live QR plus its public /qr/<slug> share page. */
 function QrCard({ slug, linkId }: { slug: string; linkId: string }) {
-  // The exact same image as /qr/<slug>.svg and the public QR page — one source,
-  // no client re-render and nothing stored, so every QR view stays identical.
+  const { config } = useConfig();
+  const [svg, setSvg] = useState("");
   const qrUrl = `${window.location.origin}/qr/${slug}`;
-  const directUrl = `${window.location.origin}/qr/${slug}.svg`;
+
+  useEffect(() => {
+    let active = true;
+    // Same source as the QR studio + the /qr page: brand colour, project logo,
+    // and the canonical short URL — so every QR view of the link is identical.
+    fetch(`/api/qr/${slug}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { shortUrl: string; color: string | null; logo: string | null } | null) => {
+        if (!active || !d) return;
+        const base = makeDefault(d.color || config.brandColor);
+        const cfg = d.logo ? { ...base, logoSrc: d.logo, logo: true } : base;
+        return renderQrSvg(cfg, d.shortUrl).then((raw) => {
+          if (active) setSvg(composeFrame(raw, cfg).svg);
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [slug, config.brandColor]);
+
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4">
       <span className="text-xs font-medium text-muted-foreground">QR code</span>
       <div className="mx-auto size-32">
-        <img src={directUrl} alt="QR code" className="size-full" />
+        {svg ? (
+          <img src={svgDataUrl(svg)} alt="QR code" className="size-full" />
+        ) : (
+          <div className="flex size-full items-center justify-center rounded-lg border">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant="outline" size="sm" asChild>
