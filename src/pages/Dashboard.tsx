@@ -7,7 +7,6 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  Power,
   QrCode,
   Search,
   Trash2,
@@ -24,6 +23,7 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { CopyButton } from "@/components/CopyButton";
 import {
   DropdownMenu,
@@ -227,6 +227,22 @@ export function Dashboard() {
 
               <CopyButton value={shortUrlFor(link.slug)} />
 
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Edit link"
+                onClick={() => navigate(`/dashboard/links/${link.id}/edit`)}
+              >
+                <Pencil />
+              </Button>
+
+              <Switch
+                checked={link.isActive}
+                onCheckedChange={() => toggleActive(link)}
+                aria-label={link.isActive ? "Deactivate link" : "Activate link"}
+                title={link.isActive ? "Active — click to deactivate" : "Inactive — click to activate"}
+              />
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" aria-label="Link actions">
@@ -248,12 +264,6 @@ export function Dashboard() {
                     <a href={shortUrlFor(link.slug)} target="_blank" rel="noreferrer">
                       <ExternalLink /> Open link
                     </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/dashboard/links/${link.id}/edit`)}>
-                    <Pencil /> Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => toggleActive(link)}>
-                    <Power /> {link.isActive ? "Deactivate" : "Activate"}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
