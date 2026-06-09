@@ -241,6 +241,14 @@ async function serveSocialPreview(
     let preview;
     if (l.previewMode === "destination") {
       preview = await destinationPreview(c.env, l.id, l.destination);
+      // If the destination exposes no image, fall back to the branded card we
+      // baked at create time (stored like a custom image, served from R2) so the
+      // shared card still looks designed instead of bare.
+      if (!preview.image && l.ogImage) {
+        preview.image = l.ogImage.startsWith("http")
+          ? l.ogImage
+          : `${c.env.APP_URL}/ogimg/${l.id}`;
+      }
     } else {
       // og:image must be a public URL (social ignores data: URLs). A custom
       // image lives in R2 ("r2") and is served via the public /ogimg/:id endpoint.

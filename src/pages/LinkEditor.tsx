@@ -174,22 +174,25 @@ function DestinationPreview({
   meta,
   loading,
   fallbackDomain,
+  fallbackImage,
 }: {
   meta: UrlMetaDTO | null;
   loading: boolean;
   fallbackDomain: string;
+  fallbackImage?: string;
 }) {
   const shortHost = useShortHost();
   const { config } = useConfig();
   const source = meta?.domain || fallbackDomain;
+  const img = meta?.image || fallbackImage;
   const hide = (e: { currentTarget: HTMLImageElement }) => {
     e.currentTarget.style.display = "none";
   };
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
-      {meta?.image ? (
+      {img ? (
         <img
-          src={meta.image}
+          src={img}
           alt=""
           className="aspect-[1.91/1] w-full border-b object-cover"
           onError={hide}
@@ -350,7 +353,7 @@ export function LinkEditor() {
         ? ogImage
         : genDataUrl
       : previewMode === "destination"
-        ? destMeta?.image || ""
+        ? destMeta?.image || genDataUrl // fall back to our branded card
         : "";
 
   function setUtmField(key: UtmKey, value: string) {
@@ -372,11 +375,19 @@ export function LinkEditor() {
 
   // --- Social card rendering (same pipeline as before) ----------------------
   useEffect(() => {
-    if (previewMode !== "custom" || ogSource !== "generate") return;
+    // Render our branded card for Custom→Generate (to the visible canvas) and,
+    // as a fallback, for From-page (offscreen) — used when the destination has
+    // no image of its own. Either way the snapshot lands in genDataUrl.
+    const wantCard =
+      (previewMode === "custom" && ogSource === "generate") || previewMode === "destination";
+    if (!wantCard) return;
     let cancelled = false;
     void loadOgFont(config.ogFont).then((family) => {
-      if (cancelled || !canvasRef.current) return;
-      renderOg(canvasRef.current, {
+      if (cancelled) return;
+      const visible = previewMode === "custom" && ogSource === "generate";
+      const canvas = visible ? canvasRef.current : document.createElement("canvas");
+      if (!canvas) return;
+      renderOg(canvas, {
         template: ogTemplate,
         font: family,
         title: ogTitle.trim() || destMeta?.title?.trim() || title.trim() || config.ogTitle,
@@ -386,7 +397,7 @@ export function LinkEditor() {
         url: ogCardUrl,
         logo: brandLogo,
       });
-      setGenDataUrl(canvasRef.current.toDataURL("image/png"));
+      setGenDataUrl(canvas.toDataURL("image/png"));
     });
     return () => {
       cancelled = true;
@@ -465,6 +476,11 @@ export function LinkEditor() {
       } else {
         image = ogImage.trim() || null;
       }
+    } else if (previewMode === "destination") {
+      // From-page: if the destination has its own image the worker pulls it live
+      // (null here); if it has none, store our branded card as the fallback so
+      // the shared card still looks designed, not bare.
+      image = destMeta?.image ? null : genDataUrl || null;
     }
     return { previewMode, ogTitle: pTitle, ogDescription: pDesc, ogImage: image };
   }
@@ -895,10 +911,26 @@ export function LinkEditor() {
 
             {previewMode === "destination" && (
               <div className="space-y-2">
-                <DestinationPreview meta={destMeta} loading={destLoading} fallbackDomain={previewDomain} />
+                <DestinationPreview
+                  meta={destMeta}
+                  loading={destLoading}
+                  fallbackDomain={previewDomain}
+                  fallbackImage={genDataUrl}
+                />
                 <p className="text-[11px] text-muted-foreground">
-                  Auto-pulled from <span className="font-medium">{previewDomain}</span> but shared under{" "}
-                  <span className="font-medium">{shortHost}</span> — your brand stays on the card.
+                  {destMeta && !destMeta.image ? (
+                    <>
+                      No image on <span className="font-medium">{previewDomain}</span> — we use your
+                      branded card instead, shared under{" "}
+                      <span className="font-medium">{shortHost}</span>.
+                    </>
+                  ) : (
+                    <>
+                      Auto-pulled from <span className="font-medium">{previewDomain}</span> but shared
+                      under <span className="font-medium">{shortHost}</span> — your brand stays on the
+                      card.
+                    </>
+                  )}
                 </p>
               </div>
             )}
