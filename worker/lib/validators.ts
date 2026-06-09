@@ -177,6 +177,7 @@ export const createLinkSchema = z.object({
   ogTitle: ogTitle.optional(),
   ogDescription: ogDescription.optional(),
   ogImage: ogImage.optional(),
+  projectId: z.string().uuid().optional(),
 });
 
 export const updateLinkSchema = z.object({
@@ -188,4 +189,22 @@ export const updateLinkSchema = z.object({
   ogTitle: ogTitle.optional(),
   ogDescription: ogDescription.optional(),
   ogImage: ogImage.optional(),
+  projectId: z.string().uuid().optional(),
 });
+
+const projectName = z.string().trim().min(1).max(60);
+const projectColor = z.union([z.literal(""), brandColor]);
+
+export const projectCreateSchema = z.object({
+  name: projectName,
+  color: projectColor.optional(),
+  logo: longText.nullable().optional(),
+});
+
+export const projectUpdateSchema = z
+  .object({
+    name: projectName.optional(),
+    color: projectColor.optional(),
+    logo: longText.nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, "No changes provided");

@@ -55,6 +55,7 @@ export const links = sqliteTable(
     userId: text()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text().references(() => projects.id, { onDelete: "set null" }),
     title: text(),
     isActive: integer({ mode: "boolean" }).notNull().default(true),
     expiresAt: integer({ mode: "timestamp" }),
@@ -69,7 +70,23 @@ export const links = sqliteTable(
   (t) => [
     uniqueIndex("links_slug_idx").on(t.slug),
     index("links_user_created_idx").on(t.userId, t.createdAt),
+    index("links_project_created_idx").on(t.projectId, t.createdAt),
   ],
+);
+
+export const projects = sqliteTable(
+  "projects",
+  {
+    id: text().primaryKey().$defaultFn(uuid),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    color: text(),
+    logo: text(),
+    createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
+  },
+  (t) => [index("projects_user_idx").on(t.userId, t.createdAt)],
 );
 
 export const clicks = sqliteTable(

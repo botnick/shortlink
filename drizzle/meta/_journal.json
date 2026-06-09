@@ -43,6 +43,13 @@
       "when": 1780985947576,
       "tag": "0005_zippy_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781005818977,
+      "tag": "0006_needy_nomad",
+      "breakpoints": true
     }
   ]
 }

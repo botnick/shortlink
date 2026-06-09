@@ -8,6 +8,7 @@ import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink, type CachedLink } from "../lib/cache";
 import { searchCondition } from "../lib/query";
 import { fetchMeta, invalidateLinkPreview } from "../lib/social";
+import { resolveProjectId } from "../lib/projects";
 
 /**
  * Store a link's OG image in R2 (cheap blob storage) instead of bloating the DB
@@ -73,6 +74,7 @@ function toLinkDTO(env: AppBindings, row: LinkRow): LinkDTO {
       row.ogImage === "r2"
         ? `${env.APP_URL}/ogimg/${row.id}`
         : row.ogImage || null,
+    projectId: row.projectId,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -120,9 +122,12 @@ route.get("/", async (c) => {
     cursor && !Number.isNaN(Date.parse(cursor))
       ? lt(links.createdAt, new Date(cursor))
       : undefined;
+  const projectId = c.req.query("projectId");
+  const projectCond =
+    projectId && UUID_RE.test(projectId) ? eq(links.projectId, projectId) : undefined;
   const where = and(
     eq(links.userId, user.id),
-    ...([search, cursorCond].filter(Boolean) as SQL[]),
+    ...([search, cursorCond, projectCond].filter(Boolean) as SQL[]),
   );
 
   const rows = await c.var.db
@@ -170,6 +175,9 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     }
   }
 
+  // Place the link in the requested project (if owned) or the user's default.
+  const projectId = await resolveProjectId(db, schema, user.id, user.email, input.projectId);
+
   const insertOne = async (slug: string) => {
     const row = (
       await db
@@ -178,6 +186,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
           slug,
           destination: input.destination,
           userId: user.id,
+          projectId,
           title: input.title ?? null,
           expiresAt,
           previewMode: input.previewMode ?? "off",
@@ -298,6 +307,15 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   if (input.ogDescription !== undefined) patch.ogDescription = input.ogDescription;
   if (input.ogImage !== undefined) {
     patch.ogImage = await resolveOgImage(c.env, existing.id, input.ogImage);
+  }
+  if (input.projectId !== undefined) {
+    patch.projectId = await resolveProjectId(
+      db,
+      c.var.schema,
+      c.var.user!.id,
+      c.var.user!.email,
+      input.projectId,
+    );
   }
 
   const row = (

@@ -23,12 +23,29 @@ export interface LinkDTO {
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;
+  projectId: string | null;
   createdAt: string;
 }
 
 export interface LinkListDTO {
   links: LinkDTO[];
   nextCursor: string | null;
+}
+
+export interface ProjectDTO {
+  id: string;
+  name: string;
+  /** Brand presets for this project — null inherits the global brand. */
+  color: string | null;
+  logo: string | null;
+  linkCount: number;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface ProjectListDTO {
+  projects: ProjectDTO[];
+  defaultProjectId: string;
 }
 
 export interface TimePoint {

@@ -13,6 +13,7 @@ import setupRoutes from "./routes/setup";
 import qrPresetRoutes from "./routes/qr-presets";
 import assetRoutes from "./routes/assets";
 import domainRoutes from "./routes/domains";
+import projectRoutes from "./routes/projects";
 import { getCachedPublicConfig } from "./lib/appconfig";
 import { getCachedLink, putCachedLink } from "./lib/cache";
 import {
@@ -48,6 +49,7 @@ api.route("/setup", setupRoutes);
 api.route("/qr-presets", qrPresetRoutes);
 api.route("/assets", assetRoutes);
 api.route("/domains", domainRoutes);
+api.route("/projects", projectRoutes);
 
 // Public, cacheable endpoints — registered before the API group so they skip the
 // per-request DB client + auth/CSRF middleware entirely. /config is served from

@@ -52,6 +52,7 @@ export const links = pgTable(
     userId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    projectId: uuid().references(() => projects.id, { onDelete: "set null" }),
     title: text(),
     isActive: boolean().notNull().default(true),
     expiresAt: timestamp({ withTimezone: true }),
@@ -67,7 +68,25 @@ export const links = pgTable(
   (t) => [
     uniqueIndex("links_slug_idx").on(t.slug),
     index("links_user_created_idx").on(t.userId, t.createdAt),
+    index("links_project_created_idx").on(t.projectId, t.createdAt),
   ],
+);
+
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    // Per-project branding presets. color = hex; logo = "r2" | http url | null
+    // (the image itself lives in R2 at projlogo/<id>). null = inherit the global.
+    color: text(),
+    logo: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("projects_user_idx").on(t.userId, t.createdAt)],
 );
 
 export const clicks = pgTable(
@@ -130,6 +149,7 @@ export const domains = pgTable(
 
 export type UserRow = typeof users.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
+export type ProjectRow = typeof projects.$inferSelect;
 export type ClickRow = typeof clicks.$inferSelect;
 export type QrPresetRow = typeof qrPresets.$inferSelect;
 export type DomainRow = typeof domains.$inferSelect;
