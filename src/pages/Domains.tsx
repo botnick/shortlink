@@ -1,7 +1,16 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { CheckCircle2, Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Globe,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { DomainDTO, DomainListDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,7 +76,7 @@ function DnsRecord({ type, name, value }: { type: string; name: string; value: s
 
 function NoticeBox({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-start gap-2 border-t pt-4 text-sm text-muted-foreground">
+    <div className="flex items-start gap-2 text-sm text-muted-foreground">
       <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
       <p>{children}</p>
     </div>
@@ -92,6 +101,14 @@ export function Domains() {
   const [hostname, setHostname] = useState("");
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [open, setOpen] = useState<Set<string>>(new Set());
+
+  const toggle = (id: string) =>
+    setOpen((s) => {
+      const next = new Set(s);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     api
@@ -113,6 +130,7 @@ export function Domains() {
         hostname: cleaned,
       });
       setDomains((d) => [domain, ...(d ?? [])]);
+      setOpen((s) => new Set(s).add(domain.id)); // expand the one just added
       setHostname("");
       toast.success("Domain added — follow the steps to connect it");
     } catch (err) {
@@ -230,9 +248,10 @@ export function Domains() {
       </div>
 
       {domains === null ? (
-        <div className="space-y-3">
-          <Skeleton className="h-28 w-full" />
-          <Skeleton className="h-28 w-full" />
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-[58px] w-full" />
+          ))}
         </div>
       ) : domains.length === 0 ? (
         <div className="rounded-xl border border-dashed py-12 text-center">
@@ -241,19 +260,30 @@ export function Domains() {
           <p className="text-sm text-muted-foreground">Add one above to brand your short links.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {domains.map((d) => {
             const done = d.status === "active" || d.status === "verified";
             const loading = busy === d.id;
+            const isOpen = open.has(d.id);
             return (
               <Card key={d.id}>
-                <CardContent className="space-y-4 p-4 sm:p-5">
+                <CardContent className="p-2.5 sm:p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Globe className="size-4 shrink-0 text-muted-foreground" />
+                    <button
+                      type="button"
+                      onClick={() => toggle(d.id)}
+                      aria-expanded={isOpen}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1.5 py-1 text-left hover:bg-accent/50"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "size-4 shrink-0 text-muted-foreground transition-transform",
+                          isOpen && "rotate-90",
+                        )}
+                      />
                       <span className="truncate font-semibold">{d.hostname}</span>
                       {statusBadge(d.status)}
-                    </div>
+                    </button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -265,45 +295,51 @@ export function Domains() {
                     </Button>
                   </div>
 
-                  {!done && d.records.length > 0 && (
-                    <div className="space-y-3 border-t pt-4">
-                      <p className="text-sm text-muted-foreground">
-                        Add {d.records.length > 1 ? "these records" : "this record"} in your DNS
-                        provider (Cloudflare, Namecheap, GoDaddy…), then check the connection.
-                      </p>
-                      {d.records.map((r, i) => (
-                        <DnsRecord key={i} type={r.type} name={r.name} value={r.value} />
-                      ))}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-0.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => check(d)}
-                          disabled={loading}
-                        >
-                          <RefreshCw className={loading ? "animate-spin" : ""} /> Check connection
-                        </Button>
-                        <span className="text-xs text-muted-foreground">
-                          DNS can take a few minutes to propagate
-                          {d.mode === "saas" ? " — TLS is issued automatically." : "."}
-                        </span>
-                      </div>
+                  {isOpen && (
+                    <div className="mt-3 border-t px-1.5 pt-4">
+                      {!done && d.records.length > 0 && (
+                        <div className="space-y-3">
+                          <p className="text-sm text-muted-foreground">
+                            Add {d.records.length > 1 ? "these records" : "this record"} in your
+                            DNS provider (Cloudflare, Namecheap, GoDaddy…), then check the
+                            connection.
+                          </p>
+                          {d.records.map((r, i) => (
+                            <DnsRecord key={i} type={r.type} name={r.name} value={r.value} />
+                          ))}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-0.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => check(d)}
+                              disabled={loading}
+                            >
+                              <RefreshCw className={loading ? "animate-spin" : ""} /> Check
+                              connection
+                            </Button>
+                            <span className="text-xs text-muted-foreground">
+                              DNS can take a few minutes to propagate
+                              {d.mode === "saas" ? " — TLS is issued automatically." : "."}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {d.status === "verified" && d.mode === "dns" && (
+                        <NoticeBox>
+                          Ownership confirmed. An admin connects{" "}
+                          <strong className="text-foreground">{d.hostname}</strong> and TLS is
+                          issued — your links go live shortly after.
+                        </NoticeBox>
+                      )}
+
+                      {d.status === "active" && (
+                        <NoticeBox>
+                          Live — your short links now work at{" "}
+                          <strong className="text-foreground">{d.hostname}</strong>.
+                        </NoticeBox>
+                      )}
                     </div>
-                  )}
-
-                  {d.status === "verified" && d.mode === "dns" && (
-                    <NoticeBox>
-                      Ownership confirmed. An admin connects{" "}
-                      <strong className="text-foreground">{d.hostname}</strong> and TLS is issued —
-                      your links go live shortly after.
-                    </NoticeBox>
-                  )}
-
-                  {d.status === "active" && (
-                    <NoticeBox>
-                      Live — your short links now work at{" "}
-                      <strong className="text-foreground">{d.hostname}</strong>.
-                    </NoticeBox>
                   )}
                 </CardContent>
               </Card>
