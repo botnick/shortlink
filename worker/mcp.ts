@@ -3,9 +3,16 @@
  * links. One endpoint — POST /mcp — speaking JSON-RPC per the MCP spec, with
  * the existing API keys as auth (`Authorization: Bearer sk_…`).
  *
- * Every tool call is dispatched back through the Worker's own /api/v1 routes,
- * so MCP inherits the public API's validation, per-key rate limits and the
- * admin kill-switches with zero duplicated logic.
+ * Built for agent ergonomics:
+ * - every tool that targets a link accepts an id, a slug, OR a full short URL;
+ * - expiry can be relative ("30m", "12h", "7d") instead of an ISO timestamp;
+ * - tags can be added/removed incrementally, not just replaced;
+ * - results carry structuredContent (spec 2025-06-18) plus a text fallback;
+ * - read-only/destructive annotations let clients auto-approve safe tools.
+ *
+ * Every call is dispatched back through the Worker's own /api/v1 routes, so
+ * MCP inherits the public API's validation, per-key rate limits and the admin
+ * kill-switches with zero duplicated logic.
  */
 import type { AppContext } from "./env";
 import { getDbHandle } from "./db";
@@ -14,7 +21,8 @@ import { resolveApiKey } from "./lib/apikeys";
 import type { LinkDTO } from "@shared/types";
 
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_VERSION = "1.0.0";
+const SERVER_VERSION = "1.1.0";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Dispatch = (req: Request) => Promise<Response>;
 
@@ -22,18 +30,66 @@ interface ToolCtx {
   dispatch: Dispatch;
   origin: string;
   auth: string;
+  /** Host short links live on when no custom domain is chosen. */
+  defaultHost: string;
 }
 
 // --- Tool catalogue -----------------------------------------------------------
 
 const RANGE_ENUM = ["24h", "7d", "30d", "90d", "all"];
 
-const TOOLS = [
+const LINK_REF = {
+  type: "string",
+  description:
+    'The link — accepts its id, its slug (e.g. "promo"), or the full short URL (e.g. "https://go.brand.com/promo")',
+};
+
+const EXPIRES_IN = {
+  type: "string",
+  description:
+    'Relative expiry like "30m", "12h", "7d", "4w" (minutes/hours/days/weeks). Alternative to expiresAt.',
+};
+
+interface ToolDef {
+  name: string;
+  title: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations: {
+    title: string;
+    readOnlyHint: boolean;
+    destructiveHint: boolean;
+    idempotentHint: boolean;
+    openWorldHint: boolean;
+  };
+}
+
+const annotate = (
+  title: string,
+  opts: { readOnly?: boolean; destructive?: boolean; idempotent?: boolean } = {},
+) => ({
+  title,
+  readOnlyHint: opts.readOnly ?? false,
+  destructiveHint: opts.destructive ?? false,
+  idempotentHint: opts.idempotent ?? false,
+  openWorldHint: false,
+});
+
+const TOOLS: ToolDef[] = [
+  {
+    name: "get_overview",
+    title: "Account overview",
+    description:
+      "Snapshot of the account: projects (with link counts), usable custom domains, and the most recent links. A good first call to get oriented.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: annotate("Account overview", { readOnly: true, idempotent: true }),
+  },
   {
     name: "create_link",
+    title: "Create link",
     description:
-      "Create a short link. Returns the link including its final shortUrl. " +
-      "Omit `slug` for a random back-half; `domain` must be one of the account's verified custom domains (see list_domains), omit for the default host.",
+      "Create a short link; returns it with its final shortUrl and ready-to-use QR URLs. " +
+      "Omit `slug` for a random back-half. `domain` must be one of the account's verified custom domains (see list_domains); omit for the default host.",
     inputSchema: {
       type: "object",
       properties: {
@@ -42,7 +98,8 @@ const TOOLS = [
         domain: { type: "string", description: "Custom domain hostname to host the back-half on" },
         tags: { type: "array", items: { type: "string" }, description: "Labels for organising (max 20)" },
         password: { type: "string", description: "Password-protect the link" },
-        expiresAt: { type: "string", description: "ISO 8601 expiry; the link stops working after this" },
+        expiresAt: { type: "string", description: "ISO 8601 expiry timestamp" },
+        expiresIn: EXPIRES_IN,
         iosUrl: { type: "string", description: "iOS visitors go here instead" },
         androidUrl: { type: "string", description: "Android visitors go here instead" },
         desktopUrl: { type: "string", description: "Desktop visitors go here instead" },
@@ -50,97 +107,119 @@ const TOOLS = [
       },
       required: ["destination"],
     },
+    annotations: annotate("Create link"),
   },
   {
     name: "list_links",
+    title: "List links",
     description:
-      "List the account's short links, newest first (20 per page). Filter with `q` (slug/destination search), `tag`, or `projectId`; pass `cursor` from a previous result for the next page.",
+      "List the account's short links, newest first (20 per page). `q` searches slugs, destinations and tags; `tag` filters exactly; pass `cursor` from a previous result for the next page.",
     inputSchema: {
       type: "object",
       properties: {
-        q: { type: "string", description: "Search text" },
-        tag: { type: "string", description: "Only links carrying this tag" },
+        q: { type: "string", description: "Search text (matches slug, destination and tags)" },
+        tag: { type: "string", description: "Only links carrying exactly this tag" },
         projectId: { type: "string" },
         cursor: { type: "string", description: "nextCursor from the previous page" },
       },
     },
+    annotations: annotate("List links", { readOnly: true, idempotent: true }),
   },
   {
     name: "get_link",
-    description: "Fetch one link by id, including all its settings.",
+    title: "Get link",
+    description: "Fetch one link with all its settings and QR URLs.",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "string", description: "Link id" } },
-      required: ["id"],
+      properties: { link: LINK_REF },
+      required: ["link"],
     },
+    annotations: annotate("Get link", { readOnly: true, idempotent: true }),
   },
   {
     name: "update_link",
+    title: "Update link",
     description:
-      "Update a link. Only provided fields change. Changing `slug`/`domain` keeps the old short URL redirecting (it's retired to an alias). Set `password` to null to remove protection; `isActive` false pauses the link.",
+      "Update a link; only provided fields change. Changing `slug`/`domain` keeps the old short URL redirecting (retired to an alias). " +
+      "`tags` replaces the whole set; `addTags`/`removeTags` adjust it incrementally. Set `password` to null to remove protection, `expiresAt` to null to never expire, `isActive` false to pause.",
     inputSchema: {
       type: "object",
       properties: {
-        id: { type: "string" },
+        link: LINK_REF,
         destination: { type: "string" },
-        slug: { type: "string" },
+        slug: { type: "string", description: "New back-half" },
         domain: { type: ["string", "null"], description: "Custom domain hostname, or null for the default host" },
-        tags: { type: "array", items: { type: "string" } },
+        tags: { type: "array", items: { type: "string" }, description: "Replace all tags" },
+        addTags: { type: "array", items: { type: "string" }, description: "Add these tags" },
+        removeTags: { type: "array", items: { type: "string" }, description: "Remove these tags" },
         isActive: { type: "boolean" },
         password: { type: ["string", "null"] },
-        expiresAt: { type: ["string", "null"] },
+        expiresAt: { type: ["string", "null"], description: "ISO 8601 expiry, or null to clear" },
+        expiresIn: EXPIRES_IN,
         iosUrl: { type: ["string", "null"] },
         androidUrl: { type: ["string", "null"] },
         desktopUrl: { type: ["string", "null"] },
         projectId: { type: "string" },
       },
-      required: ["id"],
+      required: ["link"],
     },
+    annotations: annotate("Update link", { idempotent: true }),
   },
   {
     name: "delete_link",
-    description: "Permanently delete a link (and its analytics). This cannot be undone.",
+    title: "Delete link",
+    description: "Permanently delete a link and its analytics. This cannot be undone — prefer update_link with isActive=false to pause instead.",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "string" } },
-      required: ["id"],
+      properties: { link: LINK_REF },
+      required: ["link"],
     },
+    annotations: annotate("Delete link", { destructive: true, idempotent: true }),
   },
   {
     name: "get_link_stats",
+    title: "Link analytics",
     description:
       "Analytics for a link: totals, unique visitors, daily timeseries, top countries/referrers/devices/browsers/OS. Bot traffic is already filtered out.",
     inputSchema: {
       type: "object",
       properties: {
-        id: { type: "string" },
+        link: LINK_REF,
         range: { type: "string", enum: RANGE_ENUM, description: "Time range (default 7d)" },
       },
-      required: ["id"],
+      required: ["link"],
     },
+    annotations: annotate("Link analytics", { readOnly: true, idempotent: true }),
   },
   {
     name: "get_link_activity",
+    title: "Recent clicks",
     description: "The latest 20 human clicks on a link (time, country, browser, OS, device, referrer).",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "string" } },
-      required: ["id"],
+      properties: { link: LINK_REF },
+      required: ["link"],
     },
+    annotations: annotate("Recent clicks", { readOnly: true, idempotent: true }),
   },
   {
     name: "list_domains",
+    title: "List domains",
     description:
-      "The account's custom domains and their status. Only `verified`/`active` domains can host back-halves.",
+      "The account's custom domains and their status. Only `usable: true` domains can host back-halves.",
     inputSchema: { type: "object", properties: {} },
+    annotations: annotate("List domains", { readOnly: true, idempotent: true }),
   },
   {
     name: "list_projects",
+    title: "List projects",
     description: "The account's projects (link folders), with link counts and the default project.",
     inputSchema: { type: "object", properties: {} },
+    annotations: annotate("List projects", { readOnly: true, idempotent: true }),
   },
   {
     name: "bulk_import",
+    title: "Bulk import",
     description:
       "Create up to 500 links in one call. Each row is independent — failures are reported per row while the rest are created.",
     inputSchema: {
@@ -163,16 +242,19 @@ const TOOLS = [
       },
       required: ["rows"],
     },
+    annotations: annotate("Bulk import"),
   },
   {
     name: "get_qr",
+    title: "QR code",
     description:
       "QR code URLs for a link: a shareable QR page and a direct SVG image URL (both reflect the link's saved QR design).",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "string" } },
-      required: ["id"],
+      properties: { link: LINK_REF },
+      required: ["link"],
     },
+    annotations: annotate("QR code", { readOnly: true, idempotent: true }),
   },
 ];
 
@@ -210,8 +292,14 @@ async function callApi(
   return json;
 }
 
-/** Trim a LinkDTO down to what an agent actually needs (saves tokens). */
+/** Trim a LinkDTO down to what an agent needs, with QR URLs included. */
 function compactLink(l: LinkDTO): Record<string, unknown> {
+  let qrOrigin = "";
+  try {
+    qrOrigin = new URL(l.shortUrl).origin;
+  } catch {
+    /* leave QR fields off if the URL is somehow malformed */
+  }
   return {
     id: l.id,
     shortUrl: l.shortUrl,
@@ -228,6 +316,12 @@ function compactLink(l: LinkDTO): Record<string, unknown> {
     desktopUrl: l.desktopUrl,
     projectId: l.projectId,
     createdAt: l.createdAt,
+    ...(qrOrigin
+      ? {
+          qrPage: `${qrOrigin}/qr/${l.slug}`,
+          qrImageSvg: `${qrOrigin}/qr/${l.slug}.svg`,
+        }
+      : {}),
   };
 }
 
@@ -240,10 +334,10 @@ async function resolveDomainArg(
   if (domain === null || domain === "") return null;
   const data = await callApi(ctx, "GET", "/api/v1/domains");
   const domains = (data.domains ?? []) as { id: string; hostname: string; status: string }[];
+  const wanted = String(domain).toLowerCase();
+  if (wanted === ctx.defaultHost.toLowerCase()) return null; // default host, not a custom domain
   const hit = domains.find(
-    (d) =>
-      d.hostname === String(domain).toLowerCase() &&
-      (d.status === "verified" || d.status === "active"),
+    (d) => d.hostname === wanted && (d.status === "verified" || d.status === "active"),
   );
   if (!hit) {
     const usable = domains
@@ -258,6 +352,62 @@ async function resolveDomainArg(
   return hit.id;
 }
 
+/**
+ * Resolve a link reference — id, slug, or full short URL — to its id.
+ * Friendly errors: unknown refs say so; an ambiguous slug lists the candidates.
+ */
+async function resolveLinkRef(ctx: ToolCtx, ref: unknown): Promise<string> {
+  const raw = String(ref ?? "").trim();
+  if (!raw) throw new Error("Provide `link`: an id, a slug, or the full short URL");
+  if (UUID_RE.test(raw)) return raw;
+
+  let slug = raw;
+  let host: string | undefined;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.includes("/")) {
+    try {
+      const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+      slug = u.pathname.replace(/^\/+|\/+$/g, "");
+      host = u.host.toLowerCase();
+    } catch {
+      throw new Error(`"${raw}" isn't a valid link reference`);
+    }
+    if (!slug || slug.includes("/")) {
+      throw new Error(`"${raw}" doesn't look like a short link (expected <host>/<slug>)`);
+    }
+  }
+
+  const params = new URLSearchParams({ slug });
+  if (host) {
+    params.set("host", host === ctx.defaultHost.toLowerCase() ? "default" : host);
+  }
+  const data = await callApi(ctx, "GET", `/api/v1/links?${params}`);
+  const matches = (data.links ?? []) as LinkDTO[];
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length === 0) {
+    throw new Error(`No link found for "${raw}" — try list_links to browse`);
+  }
+  throw new Error(
+    `"${slug}" exists on several domains — be specific: ${matches
+      .map((m) => m.shortUrl)
+      .join(", ")}`,
+  );
+}
+
+/** Turn "30m" / "12h" / "7d" / "4w" into an ISO timestamp from now. */
+function parseExpiresIn(value: unknown): string {
+  const m = /^(\d{1,4})\s*([mhdw])$/i.exec(String(value ?? "").trim());
+  if (!m) {
+    throw new Error(
+      `Invalid expiresIn "${value}" — use e.g. "30m", "12h", "7d" or "4w"`,
+    );
+  }
+  const n = Number(m[1]);
+  const unitMs = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[
+    m[2].toLowerCase() as "m" | "h" | "d" | "w"
+  ];
+  return new Date(Date.now() + n * unitMs).toISOString();
+}
+
 // --- Tool execution -------------------------------------------------------------
 
 async function executeTool(
@@ -266,6 +416,40 @@ async function executeTool(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   switch (name) {
+    case "get_overview": {
+      const [projects, domains, links] = await Promise.all([
+        callApi(ctx, "GET", "/api/v1/projects"),
+        callApi(ctx, "GET", "/api/v1/domains"),
+        callApi(ctx, "GET", "/api/v1/links"),
+      ]);
+      const projectList = (projects.projects ?? []) as {
+        id: string;
+        name: string;
+        linkCount: number;
+        isDefault: boolean;
+      }[];
+      const domainList = (domains.domains ?? []) as {
+        hostname: string;
+        status: string;
+      }[];
+      const recent = ((links.links ?? []) as LinkDTO[]).slice(0, 5);
+      return {
+        totalLinks: projectList.reduce((n, p) => n + p.linkCount, 0),
+        defaultHost: ctx.defaultHost,
+        projects: projectList.map((p) => ({
+          id: p.id,
+          name: p.name,
+          linkCount: p.linkCount,
+          isDefault: p.isDefault,
+        })),
+        domains: domainList.map((d) => ({
+          hostname: d.hostname,
+          status: d.status,
+          usable: d.status === "verified" || d.status === "active",
+        })),
+        recentLinks: recent.map(compactLink),
+      };
+    }
     case "create_link": {
       const domainId = await resolveDomainArg(ctx, args.domain);
       const body: Record<string, unknown> = { destination: args.destination };
@@ -281,6 +465,7 @@ async function executeTool(
       ]) {
         if (args[k] !== undefined) body[k] = args[k];
       }
+      if (args.expiresIn !== undefined) body.expiresAt = parseExpiresIn(args.expiresIn);
       if (domainId !== undefined) body.domainId = domainId;
       const r = await callApi(ctx, "POST", "/api/v1/links", body);
       return compactLink(r.link as LinkDTO);
@@ -298,10 +483,12 @@ async function executeTool(
       };
     }
     case "get_link": {
-      const r = await callApi(ctx, "GET", `/api/v1/links/${args.id}`);
+      const id = await resolveLinkRef(ctx, args.link);
+      const r = await callApi(ctx, "GET", `/api/v1/links/${id}`);
       return compactLink(r.link as LinkDTO);
     }
     case "update_link": {
+      const id = await resolveLinkRef(ctx, args.link);
       const domainId = await resolveDomainArg(ctx, args.domain);
       const body: Record<string, unknown> = {};
       for (const k of [
@@ -318,21 +505,41 @@ async function executeTool(
       ]) {
         if (args[k] !== undefined) body[k] = args[k];
       }
+      if (args.expiresIn !== undefined) body.expiresAt = parseExpiresIn(args.expiresIn);
       if (domainId !== undefined) body.domainId = domainId;
+      // Incremental tag edits: fetch the current set, then adjust.
+      const addTags = Array.isArray(args.addTags) ? (args.addTags as string[]) : [];
+      const removeTags = Array.isArray(args.removeTags)
+        ? (args.removeTags as string[])
+        : [];
+      if (addTags.length || removeTags.length) {
+        const baseTags = Array.isArray(body.tags)
+          ? (body.tags as string[])
+          : (((await callApi(ctx, "GET", `/api/v1/links/${id}`)).link as LinkDTO)
+              .tags ?? []);
+        const next = new Set(baseTags);
+        for (const t of addTags) next.add(t);
+        for (const t of removeTags) next.delete(t);
+        body.tags = [...next];
+      }
       if (Object.keys(body).length === 0) throw new Error("No fields to update");
-      const r = await callApi(ctx, "PATCH", `/api/v1/links/${args.id}`, body);
+      const r = await callApi(ctx, "PATCH", `/api/v1/links/${id}`, body);
       return compactLink(r.link as LinkDTO);
     }
     case "delete_link": {
-      await callApi(ctx, "DELETE", `/api/v1/links/${args.id}`);
-      return { ok: true, deleted: args.id };
+      const id = await resolveLinkRef(ctx, args.link);
+      await callApi(ctx, "DELETE", `/api/v1/links/${id}`);
+      return { ok: true, deleted: id };
     }
     case "get_link_stats": {
+      const id = await resolveLinkRef(ctx, args.link);
       const range = RANGE_ENUM.includes(String(args.range)) ? args.range : "7d";
-      return callApi(ctx, "GET", `/api/v1/links/${args.id}/stats?range=${range}`);
+      return callApi(ctx, "GET", `/api/v1/links/${id}/stats?range=${range}`);
     }
-    case "get_link_activity":
-      return callApi(ctx, "GET", `/api/v1/links/${args.id}/activity`);
+    case "get_link_activity": {
+      const id = await resolveLinkRef(ctx, args.link);
+      return callApi(ctx, "GET", `/api/v1/links/${id}/activity`);
+    }
     case "list_domains": {
       const r = await callApi(ctx, "GET", "/api/v1/domains");
       const domains = (r.domains ?? []) as {
@@ -341,6 +548,7 @@ async function executeTool(
         status: string;
       }[];
       return {
+        defaultHost: ctx.defaultHost,
         domains: domains.map((d) => ({
           id: d.id,
           hostname: d.hostname,
@@ -380,7 +588,8 @@ async function executeTool(
       };
     }
     case "get_qr": {
-      const r = await callApi(ctx, "GET", `/api/v1/links/${args.id}`);
+      const id = await resolveLinkRef(ctx, args.link);
+      const r = await callApi(ctx, "GET", `/api/v1/links/${id}`);
       const link = r.link as LinkDTO;
       const origin = new URL(link.shortUrl).origin;
       return {
@@ -469,10 +678,17 @@ export async function handleMcp(c: AppContext, dispatch: Dispatch): Promise<Resp
     return c.body(null, 202);
   }
 
+  let defaultHost = "";
+  try {
+    defaultHost = new URL(cfg.appOrigin).host;
+  } catch {
+    defaultHost = "";
+  }
   const ctx: ToolCtx = {
     dispatch,
     origin: new URL(c.req.url).origin,
     auth,
+    defaultHost,
   };
 
   switch (rpc.method) {
@@ -487,8 +703,11 @@ export async function handleMcp(c: AppContext, dispatch: Dispatch): Promise<Resp
           capabilities: { tools: { listChanged: false } },
           serverInfo: { name: cfg.appName, version: SERVER_VERSION },
           instructions:
-            `Manage short links on ${ctx.origin}. Create, edit, organise and analyse ` +
-            "links; list_domains shows which custom domains can host back-halves.",
+            `Short-link manager for ${cfg.appOrigin}. ` +
+            "Start with get_overview to see projects, domains and recent links. " +
+            "Tools that take `link` accept an id, a slug, or the full short URL. " +
+            'Expiry accepts relative values via expiresIn ("30m", "12h", "7d"). ' +
+            "Old back-halves keep redirecting after a slug/domain change.",
         }),
       );
     }
@@ -508,6 +727,7 @@ export async function handleMcp(c: AppContext, dispatch: Dispatch): Promise<Resp
         return c.json(
           rpcResult(rpc.id, {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+            structuredContent: result,
           }),
         );
       } catch (e) {

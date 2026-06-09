@@ -26,6 +26,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+// The MCP tool catalogue, for display. kind drives the chip's status dot.
+const MCP_TOOLS: { name: string; kind: "read" | "write" | "destructive" }[] = [
+  { name: "get_overview", kind: "read" },
+  { name: "create_link", kind: "write" },
+  { name: "list_links", kind: "read" },
+  { name: "get_link", kind: "read" },
+  { name: "update_link", kind: "write" },
+  { name: "delete_link", kind: "destructive" },
+  { name: "get_link_stats", kind: "read" },
+  { name: "get_link_activity", kind: "read" },
+  { name: "list_domains", kind: "read" },
+  { name: "list_projects", kind: "read" },
+  { name: "bulk_import", kind: "write" },
+  { name: "get_qr", kind: "read" },
+];
+
+const KIND_DOT: Record<string, string> = {
+  read: "bg-emerald-500",
+  write: "bg-sky-500",
+  destructive: "bg-red-500",
+};
+
 function HowStep({ n, title, desc }: { n: number; title: string; desc: string }) {
   return (
     <div className="rounded-xl border bg-card p-4">
@@ -298,11 +320,33 @@ export function ApiKeys() {
   }
 }`}
           />
-          <p className="text-xs text-muted-foreground">
-            Tools: create_link, list_links, get_link, update_link, delete_link,
-            get_link_stats, get_link_activity, list_domains, list_projects, bulk_import,
-            get_qr.
-          </p>
+          <div className="space-y-2 pt-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Available tools
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {MCP_TOOLS.map((t) => (
+                <span
+                  key={t.name}
+                  className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 font-mono text-[11px]"
+                >
+                  <span className={`size-1.5 rounded-full ${KIND_DOT[t.kind]}`} />
+                  {t.name}
+                </span>
+              ))}
+            </div>
+            <p className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-emerald-500" /> read
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-sky-500" /> write
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-red-500" /> destructive
+              </span>
+            </p>
+          </div>
         </CardContent>
       </Card>
 

@@ -237,9 +237,29 @@ route.get("/", async (c) => {
       ? sql`exists (select 1 from json_each(${links.tags}) where value = ${tag})`
       : sql`${links.tags} @> ${JSON.stringify([tag])}::jsonb`
     : undefined;
+  // Exact back-half lookup (used by the MCP resolver): ?slug= matches exactly;
+  // ?host= narrows to one domain bucket — "default" for the default host.
+  const exactSlug = c.req.query("slug")?.trim();
+  const slugCond = exactSlug ? eq(links.slug, exactSlug) : undefined;
+  let hostCond: SQL | undefined;
+  const hostQ = c.req.query("host")?.trim().toLowerCase();
+  if (hostQ === "default") {
+    hostCond = sql`${links.domainId} is null`;
+  } else if (hostQ) {
+    const { domains } = c.var.schema;
+    const d = await c.var.db
+      .select({ id: domains.id })
+      .from(domains)
+      .where(eq(domains.hostname, hostQ))
+      .limit(1);
+    if (!d[0]) return c.json({ links: [], nextCursor: null } satisfies LinkListDTO);
+    hostCond = eq(links.domainId, d[0].id);
+  }
   const where = and(
     eq(links.userId, user.id),
-    ...([search, cursorCond, projectCond, tagCond].filter(Boolean) as SQL[]),
+    ...([search, cursorCond, projectCond, tagCond, slugCond, hostCond].filter(
+      Boolean,
+    ) as SQL[]),
   );
 
   const rows = await c.var.db
