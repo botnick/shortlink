@@ -676,24 +676,78 @@ export function LinkEditor() {
             }
             defaultOpen={deepCount > 0}
           >
-            <p className="text-[11px] text-muted-foreground">
-              Send each platform somewhere specific (an app/universal link or store page). Blank =
-              uses the destination above.
-            </p>
             {(
               [
-                ["iOS", iosUrl, setIosUrl, Apple, "https://apps.apple.com/app/…"],
-                ["Android", androidUrl, setAndroidUrl, Smartphone, "https://play.google.com/store/apps/…"],
-                ["Desktop", desktopUrl, setDesktopUrl, Monitor, "https://example.com/desktop"],
+                {
+                  label: "iOS",
+                  sub: "iPhone & iPad",
+                  Icon: Apple,
+                  chip: "bg-foreground/5 text-foreground",
+                  value: iosUrl,
+                  set: setIosUrl,
+                  ph: "https://apps.apple.com/app/…",
+                },
+                {
+                  label: "Android",
+                  sub: "Phones & tablets",
+                  Icon: Smartphone,
+                  chip: "bg-emerald-500/10 text-emerald-600",
+                  value: androidUrl,
+                  set: setAndroidUrl,
+                  ph: "https://play.google.com/store/apps/…",
+                },
+                {
+                  label: "Desktop",
+                  sub: "Windows · macOS · Linux",
+                  Icon: Monitor,
+                  chip: "bg-sky-500/10 text-sky-600",
+                  value: desktopUrl,
+                  set: setDesktopUrl,
+                  ph: "https://example.com/desktop",
+                },
               ] as const
-            ).map(([label, value, set, Icon, ph]) => (
-              <div key={label} className="space-y-1.5">
-                <Label className="flex items-center gap-1.5 text-xs">
-                  <Icon className="size-3.5" /> {label}
-                </Label>
-                <Input type="url" placeholder={ph} value={value} onChange={(e) => set(e.target.value)} />
-              </div>
-            ))}
+            ).map((p) => {
+              const routed = Boolean(p.value.trim());
+              return (
+                <div
+                  key={p.label}
+                  className={cn(
+                    "rounded-xl border bg-background p-3 transition-colors",
+                    routed && "border-foreground/15 ring-1 ring-foreground/5",
+                  )}
+                >
+                  <div className="mb-2 flex items-center gap-2.5">
+                    <span className={cn("flex size-8 items-center justify-center rounded-lg", p.chip)}>
+                      <p.Icon className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1 leading-tight">
+                      <div className="text-sm font-medium">{p.label}</div>
+                      <div className="text-[11px] text-muted-foreground">{p.sub}</div>
+                    </div>
+                    {routed ? (
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
+                        <Check className="size-3" /> Routed
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-[10px] text-muted-foreground">Uses default</span>
+                    )}
+                  </div>
+                  <Input
+                    type="url"
+                    placeholder={p.ph}
+                    value={p.value}
+                    onChange={(e) => p.set(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              );
+            })}
+            <div className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
+              <Link2 className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                Everyone else (and any platform left blank) goes to your destination above.
+              </span>
+            </div>
           </Collapsible>
 
           {/* Social preview */}
