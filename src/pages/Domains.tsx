@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { CheckCircle2, Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
@@ -11,9 +11,57 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CopyButton } from "@/components/CopyButton";
 
 function statusBadge(status: string) {
-  if (status === "active") return <Badge variant="success"><CheckCircle2 className="size-3.5" /> Live</Badge>;
-  if (status === "verified") return <Badge variant="success"><CheckCircle2 className="size-3.5" /> Verified</Badge>;
-  return <Badge variant="muted">Pending</Badge>;
+  if (status === "active")
+    return (
+      <Badge variant="success">
+        <CheckCircle2 className="size-3.5" /> Live
+      </Badge>
+    );
+  if (status === "verified")
+    return (
+      <Badge variant="success">
+        <CheckCircle2 className="size-3.5" /> Verified
+      </Badge>
+    );
+  return <Badge variant="muted">Needs setup</Badge>;
+}
+
+/** One labelled, copyable DNS value (Name / Value) — clearer than a packed row. */
+function RecordValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
+      <span className="w-12 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <code className="min-w-0 flex-1 truncate font-mono text-sm" title={value}>
+        {value}
+      </code>
+      <CopyButton value={value} />
+    </div>
+  );
+}
+
+function Step({ n, title, children }: { n: number; title: string; children?: ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+        {n}
+      </span>
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="text-sm font-medium">{title}</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function NoticeBox({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+      <p>{children}</p>
+    </div>
+  );
 }
 
 export function Domains() {
@@ -26,7 +74,10 @@ export function Domains() {
   useEffect(() => {
     api
       .get<DomainListDTO>("/domains")
-      .then((r) => { setMode(r.mode); setDomains(r.domains); })
+      .then((r) => {
+        setMode(r.mode);
+        setDomains(r.domains);
+      })
       .catch(() => toast.error("Couldn't load domains"));
   }, []);
 
@@ -35,10 +86,12 @@ export function Domains() {
     if (!hostname.trim()) return;
     setAdding(true);
     try {
-      const { domain } = await api.post<{ domain: DomainDTO }>("/domains", { hostname: hostname.trim() });
+      const { domain } = await api.post<{ domain: DomainDTO }>("/domains", {
+        hostname: hostname.trim(),
+      });
       setDomains((d) => [domain, ...(d ?? [])]);
       setHostname("");
-      toast.success("Domain added — add the DNS record(s) below");
+      toast.success("Domain added — follow the steps to connect it");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't add domain");
     } finally {
@@ -52,8 +105,11 @@ export function Domains() {
       const { domain } = await api.post<{ domain: DomainDTO }>(`/domains/${d.id}/check`);
       setDomains((list) => (list ?? []).map((x) => (x.id === domain.id ? domain : x)));
       toast.success(
-        domain.status === "active" ? "Domain is live!" :
-        domain.status === "verified" ? "Domain verified!" : "Still waiting on DNS",
+        domain.status === "active"
+          ? "Domain is live!"
+          : domain.status === "verified"
+            ? "Domain verified!"
+            : "Still waiting on DNS",
       );
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Not ready yet");
@@ -78,21 +134,25 @@ export function Domains() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="space-y-1">
         <h1 className="display text-3xl">Custom domains</h1>
-        <p className="text-sm text-muted-foreground">
-          Serve your short links from your own domain, e.g.{" "}
-          <span className="font-medium">go.yourbrand.com</span>.{" "}
-          {mode === "saas"
-            ? "Add the DNS record and it connects automatically with TLS."
-            : "Verify ownership with a DNS record; an admin then connects it."}
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Serve your short links from your own domain like{" "}
+          <span className="font-medium text-foreground">go.yourbrand.com</span> instead of the
+          default one. Add a domain below, point one DNS record at us, and you're set
+          {mode === "saas" ? " — TLS is issued automatically." : "."}
         </p>
       </div>
 
       <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row">
         <div className="relative flex-1">
           <Globe className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="go.yourbrand.com" className="pl-9" />
+          <Input
+            value={hostname}
+            onChange={(e) => setHostname(e.target.value)}
+            placeholder="go.yourbrand.com"
+            className="pl-9"
+          />
         </div>
         <Button type="submit" disabled={adding} className="sm:w-auto">
           {adding ? <Loader2 className="animate-spin" /> : <Plus />} Add domain
@@ -100,60 +160,95 @@ export function Domains() {
       </form>
 
       {domains === null ? (
-        <Skeleton className="h-24 w-full" />
+        <div className="space-y-3">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
       ) : domains.length === 0 ? (
-        <p className="rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground">
-          No custom domains yet.
-        </p>
+        <div className="rounded-xl border border-dashed py-12 text-center">
+          <Globe className="mx-auto size-7 text-muted-foreground/60" />
+          <p className="mt-2 text-sm font-medium">No custom domains yet</p>
+          <p className="text-sm text-muted-foreground">
+            Add one above to brand your short links.
+          </p>
+        </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {domains.map((d) => {
             const done = d.status === "active" || d.status === "verified";
+            const loading = busy === d.id;
             return (
               <Card key={d.id}>
-                <CardContent className="space-y-3 p-4 sm:p-5">
+                <CardContent className="space-y-4 p-4 sm:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Globe className="size-4 shrink-0 text-muted-foreground" />
                       <span className="truncate font-semibold">{d.hostname}</span>
                       {statusBadge(d.status)}
                     </div>
-                    <div className="flex items-center gap-2">
-                      {d.status !== "active" && (
-                        <Button variant="outline" size="sm" onClick={() => check(d)} disabled={busy === d.id}>
-                          <RefreshCw className={busy === d.id ? "animate-spin" : ""} /> Check
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="icon" onClick={() => remove(d)} disabled={busy === d.id} aria-label="Remove domain">
-                        <Trash2 />
-                      </Button>
-                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => remove(d)}
+                      disabled={loading}
+                      aria-label="Remove domain"
+                    >
+                      <Trash2 />
+                    </Button>
                   </div>
 
                   {!done && d.records.length > 0 && (
-                    <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground">
-                        Add {d.records.length > 1 ? "these records" : "this record"} at your DNS
-                        provider, then press <strong>Check</strong>.
-                        {d.mode === "saas" && " TLS is issued automatically once they resolve."}
-                      </p>
-                      {d.records.map((r, i) => (
-                        <div key={i} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-xs">
-                          <Badge variant="secondary" className="w-14 justify-center">{r.type}</Badge>
-                          <span className="truncate font-mono" title={r.name}>{r.name}</span>
-                          <CopyButton value={r.name} />
-                          <span />
-                          <span className="truncate font-mono" title={r.value}>{r.value}</span>
-                          <CopyButton value={r.value} />
+                    <div className="space-y-4 rounded-xl border bg-muted/30 p-4">
+                      <Step
+                        n={1}
+                        title={`Add ${d.records.length > 1 ? "these DNS records" : "this DNS record"} at your domain provider`}
+                      >
+                        <p className="text-xs text-muted-foreground">
+                          In your registrar's DNS settings (Cloudflare, Namecheap, GoDaddy…), create:
+                        </p>
+                        <div className="space-y-3">
+                          {d.records.map((r, i) => (
+                            <div key={i} className="space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="font-mono">
+                                  {r.type}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">record</span>
+                              </div>
+                              <RecordValue label="Name" value={r.name} />
+                              <RecordValue label="Value" value={r.value} />
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </Step>
+
+                      <Step n={2} title="Then check the connection">
+                        <p className="text-xs text-muted-foreground">
+                          DNS can take a few minutes to propagate.{" "}
+                          {d.mode === "saas"
+                            ? "TLS is issued automatically once it resolves."
+                            : "We'll verify you own the domain."}
+                        </p>
+                        <Button variant="outline" size="sm" onClick={() => check(d)} disabled={loading}>
+                          <RefreshCw className={loading ? "animate-spin" : ""} /> Check connection
+                        </Button>
+                      </Step>
                     </div>
                   )}
 
                   {d.status === "verified" && d.mode === "dns" && (
-                    <p className="text-xs text-muted-foreground">
-                      Ownership confirmed. An admin connects <strong>{d.hostname}</strong> (Workers
-                      Custom Domain) and TLS is issued — then your links work on it.
-                    </p>
+                    <NoticeBox>
+                      Ownership confirmed. An admin connects{" "}
+                      <strong className="text-foreground">{d.hostname}</strong> and TLS is issued —
+                      your links go live shortly after.
+                    </NoticeBox>
+                  )}
+
+                  {d.status === "active" && (
+                    <NoticeBox>
+                      Live — your short links now work at{" "}
+                      <strong className="text-foreground">{d.hostname}</strong>.
+                    </NoticeBox>
                   )}
                 </CardContent>
               </Card>
