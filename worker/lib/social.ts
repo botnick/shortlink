@@ -84,10 +84,36 @@ export function previewHtml(
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">${m.join("")}<meta http-equiv="refresh" content="0;url=${dest}"></head><body><a href="${dest}">Continue</a><script>location.replace(${JSON.stringify(destination)})</script></body></html>`;
 }
 
+// Common named HTML entities found in <title>/<meta> text. Numeric ones
+// (decimal &#064; and hex &#x2022;) are handled generically below.
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  mdash: "—", ndash: "–", hellip: "…", middot: "·", bull: "•",
+  lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
+  copy: "©", reg: "®", trade: "™", deg: "°",
+};
+
+/** Decode HTML entities in scraped meta text/URLs so the preview shows real
+ *  characters (e.g. `&#064;` → "@", `&#x2022;` → "•", `&amp;` → "&"). Worker
+ *  has no DOM, so this is a small hand-rolled decoder for the common cases. */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => cp(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => cp(parseInt(d, 10)))
+    .replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, (m, n) => NAMED_ENTITIES[n.toLowerCase()] ?? m);
+}
+function cp(n: number): string {
+  try {
+    return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "";
+  } catch {
+    return "";
+  }
+}
+
 function pick(html: string, patterns: RegExp[]): string {
   for (const re of patterns) {
     const m = re.exec(html);
-    if (m?.[1]) return m[1].trim().slice(0, 300);
+    if (m?.[1]) return decodeEntities(m[1].trim()).slice(0, 300);
   }
   return "";
 }
@@ -204,7 +230,7 @@ export async function fetchMeta(env: AppBindings, rawUrl: string): Promise<UrlMe
     });
     if (res.ok && (res.headers.get("content-type") ?? "").includes("text/html")) {
       const html = (await res.text()).slice(0, 200_000);
-      const fav = pickFavicon(html);
+      const fav = decodeEntities(pickFavicon(html));
       meta = {
         title: pick(html, [
           /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
