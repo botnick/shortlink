@@ -13,6 +13,9 @@ function TemplateThumb({
   fontId,
   brandColor,
   appName,
+  title,
+  description,
+  url,
   selected,
   onSelect,
 }: {
@@ -20,6 +23,9 @@ function TemplateThumb({
   fontId: string;
   brandColor: string;
   appName: string;
+  title: string;
+  description: string;
+  url: string;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -28,20 +34,12 @@ function TemplateThumb({
     let cancelled = false;
     void loadOgFont(fontId).then((family) => {
       if (cancelled || !ref.current) return;
-      renderOg(ref.current, {
-        template,
-        font: family,
-        title: "Your headline goes here",
-        description: "Share links with a clean, branded card.",
-        appName,
-        brandColor,
-        url: "go.brand.co/abc",
-      });
+      renderOg(ref.current, { template, font: family, title, description, appName, brandColor, url });
     });
     return () => {
       cancelled = true;
     };
-  }, [template, fontId, brandColor, appName]);
+  }, [template, fontId, brandColor, appName, title, description, url]);
   return (
     <button
       type="button"
@@ -323,6 +321,9 @@ export function AdminSettings() {
                         fontId={ogFont}
                         brandColor={brandColor}
                         appName={appName || "Shortlink"}
+                        title={appName || "Shortlink"}
+                        description={description}
+                        url={shortDomain.trim() || window.location.host}
                         selected={ogTemplate === t.id}
                         onSelect={() => setOgTemplate(t.id)}
                       />

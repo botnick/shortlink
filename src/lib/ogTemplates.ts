@@ -220,7 +220,7 @@ export function renderOg(canvas: HTMLCanvasElement, o: OgOptions) {
   const brand = rgbStr(rgb);
   const fam = `"${o.font || "IBM Plex Sans Thai"}", "IBM Plex Sans Thai", system-ui, sans-serif`;
   const face = (w: number, s: number) => `${w} ${s}px ${fam}`;
-  const title = o.title.trim() || "Your headline goes here";
+  const title = o.title.trim() || o.appName.trim() || "Shortlink";
   const desc = (o.description ?? "").trim();
   const app = (o.appName || "Shortlink").trim();
   const url = (o.url ?? "").trim();
