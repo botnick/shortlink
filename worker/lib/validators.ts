@@ -133,14 +133,22 @@ export const qrPresetSchema = z.object({
 });
 
 export const domainSchema = z.object({
+  // Be forgiving: accept a pasted URL and reduce it to the bare hostname before
+  // validating (strip scheme://, any path/query, a port, and stray dots).
   hostname: z
     .string()
     .trim()
-    .toLowerCase()
-    .max(253)
-    .regex(
-      /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/,
-      "Enter a valid domain like go.example.com (no http://)",
+    .transform((v) =>
+      v
+        .toLowerCase()
+        .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+        .replace(/\/.*$/, "")
+        .replace(/:\d+$/, "")
+        .replace(/^\.+|\.+$/g, ""),
+    )
+    .refine(
+      (v) => v.length <= 253 && /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/.test(v),
+      "Enter a valid domain like go.example.com",
     ),
 });
 
