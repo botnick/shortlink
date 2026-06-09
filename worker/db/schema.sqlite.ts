@@ -82,6 +82,8 @@ export const links = sqliteTable(
     ogImage: text(),
     // Saved QR design (a QrCfg JSON) so the studio's choice shows everywhere.
     qrConfig: text({ mode: "json" }),
+    // Free-form labels for organising/filtering links (a JSON string array).
+    tags: text({ mode: "json" }).$type<string[]>(),
     createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
     updatedAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
   },

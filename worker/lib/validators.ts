@@ -190,6 +190,12 @@ const qrConfigField = z
   .refine((c) => JSON.stringify(c).length < 600_000, "QR design is too large")
   .nullable();
 
+// Free-form labels: trimmed, de-duplicated, capped in count and length.
+const tagsField = z
+  .array(z.string().trim().min(1).max(40))
+  .max(20)
+  .transform((arr) => [...new Set(arr.map((t) => t.trim()).filter(Boolean))]);
+
 // The custom domain a link's back-half lives on, or null for the default host.
 const linkDomainId = z.string().uuid().nullable();
 
@@ -201,6 +207,7 @@ export const createLinkSchema = z.object({
   password: linkPassword.optional(),
   slug: slugField.optional(),
   domainId: linkDomainId.optional(),
+  tags: tagsField.optional(),
   expiresAt: isoDate.optional(),
   previewMode: previewMode.optional(),
   ogTitle: ogTitle.optional(),
@@ -220,6 +227,7 @@ export const updateLinkSchema = z.object({
   // alias so old shared links keep redirecting.
   slug: slugField.optional(),
   domainId: linkDomainId.optional(),
+  tags: tagsField.optional(),
   isActive: z.boolean().optional(),
   expiresAt: isoDate.nullable().optional(),
   previewMode: previewMode.optional(),

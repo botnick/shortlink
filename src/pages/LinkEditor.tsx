@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Smartphone,
   Sparkles,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
@@ -312,6 +313,8 @@ export function LinkEditor() {
   // Retired back-halves that still redirect here (edit history).
   const [aliases, setAliases] = useState<LinkAliasDTO[]>([]);
   const [isActive, setIsActive] = useState(true);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [iosUrl, setIosUrl] = useState("");
   const [androidUrl, setAndroidUrl] = useState("");
   const [desktopUrl, setDesktopUrl] = useState("");
@@ -349,6 +352,7 @@ export function LinkEditor() {
         setAlias(l.slug);
         setDomainId(l.domainId);
         setIsActive(l.isActive);
+        setTags(l.tags ?? []);
         setIosUrl(l.iosUrl ?? "");
         setAndroidUrl(l.androidUrl ?? "");
         setDesktopUrl(l.desktopUrl ?? "");
@@ -676,6 +680,16 @@ export function LinkEditor() {
     return link?.hasPassword ? { password: null } : {};
   }
 
+  function addTag(raw: string) {
+    const t = raw.trim().slice(0, 40);
+    if (!t) return;
+    setTags((prev) => (prev.includes(t) || prev.length >= 20 ? prev : [...prev, t]));
+    setTagInput("");
+  }
+  function commitPendingTag() {
+    if (tagInput.trim()) addTag(tagInput);
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!destValid) {
@@ -709,6 +723,10 @@ export function LinkEditor() {
       toast.error("That back-half isn’t available — try another");
       return;
     }
+    // Fold a typed-but-not-committed tag into the set being saved.
+    const effectiveTags = tagInput.trim()
+      ? Array.from(new Set([...tags, tagInput.trim().slice(0, 40)])).slice(0, 20)
+      : tags;
     setSubmitting(true);
     try {
       if (isEdit && link) {
@@ -726,6 +744,9 @@ export function LinkEditor() {
         for (const [k, v] of Object.entries(candidate)) {
           if (v !== ((link as unknown as Record<string, unknown>)[k] ?? null)) patch[k] = v;
         }
+        // Tags are an array — compare by value, not reference.
+        if (JSON.stringify(effectiveTags) !== JSON.stringify(link.tags ?? []))
+          patch.tags = effectiveTags;
         Object.assign(patch, passwordField()); // already only set when changed
         if (Object.keys(patch).length === 0) {
           toast.success("No changes to save");
@@ -746,6 +767,7 @@ export function LinkEditor() {
           slug: aliasTrim || undefined,
           domainId: domainId ?? undefined,
           projectId: selectedId ?? undefined,
+          tags: effectiveTags,
           ...deepLinks(),
           ...passwordField(),
           ...previewPayload(),
@@ -978,6 +1000,49 @@ export function LinkEditor() {
                 switch projects on the dashboard.
               </p>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="tags">
+                Tags <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input px-2 py-1.5 text-sm focus-within:ring-2 focus-within:ring-ring">
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-xs"
+                  >
+                    {t}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${t}`}
+                      onClick={() => setTags(tags.filter((x) => x !== t))}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  id="tags"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.key === "Enter" || e.key === ",") && tagInput.trim()) {
+                      e.preventDefault();
+                      addTag(tagInput);
+                    } else if (e.key === "Backspace" && !tagInput && tags.length) {
+                      setTags(tags.slice(0, -1));
+                    }
+                  }}
+                  onBlur={commitPendingTag}
+                  placeholder={tags.length ? "" : "marketing, q1-campaign…"}
+                  className="min-w-[8ch] flex-1 bg-transparent outline-none"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Press Enter or comma to add. Up to 20.
+              </p>
+            </div>
 
             <div className="space-y-2">
               <label className="flex cursor-pointer items-center justify-between rounded-lg border p-3">

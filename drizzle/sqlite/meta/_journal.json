@@ -85,6 +85,13 @@
       "when": 1781028778634,
       "tag": "0011_easy_wild_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1781029416579,
+      "tag": "0012_next_onslaught",
+      "breakpoints": true
     }
   ]
 }

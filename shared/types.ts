@@ -35,6 +35,8 @@ export interface LinkDTO {
   hasPassword: boolean;
   /** the saved QR design (a QrCfg), or null to use the default */
   qrConfig: Record<string, unknown> | null;
+  /** free-form labels for organising/filtering */
+  tags: string[];
   createdAt: string;
 }
 

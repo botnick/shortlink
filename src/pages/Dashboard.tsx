@@ -10,6 +10,7 @@ import {
   QrCode,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
@@ -41,6 +42,7 @@ export function Dashboard() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const reqId = useRef(0);
   const navigate = useNavigate();
 
@@ -53,11 +55,12 @@ export function Dashboard() {
   }>({ open: false, project: null });
 
   const fetchPage = useCallback(
-    async (q: string, cur: string | null, pid: string | null) => {
+    async (q: string, cur: string | null, pid: string | null, tag: string | null) => {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (cur) params.set("cursor", cur);
       if (pid) params.set("projectId", pid);
+      if (tag) params.set("tag", tag);
       return api.get<LinkListDTO>(`/links?${params}`);
     },
     [],
@@ -73,7 +76,7 @@ export function Dashboard() {
   useEffect(() => {
     const id = ++reqId.current;
     setLoading(true);
-    fetchPage(search, null, selectedId)
+    fetchPage(search, null, selectedId, activeTag)
       .then((data) => {
         if (id !== reqId.current) return;
         setLinks(data.links);
@@ -85,13 +88,13 @@ export function Dashboard() {
       .finally(() => {
         if (id === reqId.current) setLoading(false);
       });
-  }, [search, selectedId, fetchPage]);
+  }, [search, selectedId, activeTag, fetchPage]);
 
   async function loadMore() {
     if (!cursor) return;
     setLoadingMore(true);
     try {
-      const data = await fetchPage(search, cursor, selectedId);
+      const data = await fetchPage(search, cursor, selectedId, activeTag);
       setLinks((prev) => [...prev, ...data.links]);
       setCursor(data.nextCursor);
     } catch {
@@ -173,6 +176,19 @@ export function Dashboard() {
         />
       </div>
 
+      {activeTag && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Filtered by tag</span>
+          <button
+            type="button"
+            onClick={() => setActiveTag(null)}
+            className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
+          >
+            {activeTag} <X className="size-3" />
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -216,6 +232,23 @@ export function Dashboard() {
                 <div className="truncate text-sm text-muted-foreground">
                   {link.destination}
                 </div>
+                {link.tags.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {link.tags.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setActiveTag(t)}
+                        className={cn(
+                          "rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground",
+                          activeTag === t && "bg-primary/10 text-primary",
+                        )}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="hidden flex-col items-end text-xs text-muted-foreground sm:flex">

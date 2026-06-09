@@ -92,6 +92,7 @@ function toLinkDTO(
     domain: domainHost,
     hasPassword: Boolean(row.passwordHash),
     qrConfig: (row.qrConfig as Record<string, unknown> | null) ?? null,
+    tags: (row.tags as string[] | null) ?? [],
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -219,9 +220,15 @@ route.get("/", async (c) => {
   const projectId = c.req.query("projectId");
   const projectCond =
     projectId && UUID_RE.test(projectId) ? eq(links.projectId, projectId) : undefined;
+  const tag = c.req.query("tag")?.trim();
+  const tagCond = tag
+    ? c.var.dialect === "sqlite"
+      ? sql`exists (select 1 from json_each(${links.tags}) where value = ${tag})`
+      : sql`${links.tags} @> ${JSON.stringify([tag])}::jsonb`
+    : undefined;
   const where = and(
     eq(links.userId, user.id),
-    ...([search, cursorCond, projectCond].filter(Boolean) as SQL[]),
+    ...([search, cursorCond, projectCond, tagCond].filter(Boolean) as SQL[]),
   );
 
   const rows = await c.var.db
@@ -301,6 +308,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
           userId: user.id,
           projectId,
           domainId,
+          tags: input.tags ?? null,
           expiresAt,
           previewMode: input.previewMode ?? "off",
           ogTitle: input.ogTitle ?? null,
@@ -539,6 +547,7 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
     patch.passwordHash = input.password ? await hashPassword(input.password) : null;
   }
   if (input.qrConfig !== undefined) patch.qrConfig = input.qrConfig;
+  if (input.tags !== undefined) patch.tags = input.tags;
   if (input.isActive !== undefined) patch.isActive = input.isActive;
   if (input.expiresAt !== undefined) {
     patch.expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
