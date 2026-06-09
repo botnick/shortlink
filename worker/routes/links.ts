@@ -1,11 +1,14 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { type SQL, and, count, desc, eq, lt, sql } from "drizzle-orm";
+import { type SQL, and, count, desc, eq, lt, ne, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "../env";
+import type { DB, DbSchema } from "../db";
 import type { LinkRow } from "../db/schema";
-import { createLinkSchema, updateLinkSchema } from "../lib/validators";
+import { createLinkSchema, slugCheckSchema, updateLinkSchema } from "../lib/validators";
 import { generateSlug, isValidCustomSlug } from "../lib/slug";
-import { deleteCachedLink, putCachedLink, type CachedLink } from "../lib/cache";
+import { deleteCachedLink, putCachedLink } from "../lib/cache";
+import { buildShortUrl, domainBucket } from "../lib/domainScope";
+import { cachePayload, purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
 import { hashPassword } from "../lib/password";
 import { searchCondition } from "../lib/query";
 import { fetchMeta, invalidateLinkPreview } from "../lib/social";
@@ -57,12 +60,18 @@ route.use("*", requireAuth);
 
 const PAGE_SIZE = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Cap retired back-halves per link so repeated edits can't bloat the table.
+const ALIAS_CAP_FALLBACK = 20;
 
-function toLinkDTO(env: AppBindings, row: LinkRow): LinkDTO {
+function toLinkDTO(
+  env: AppBindings,
+  row: LinkRow,
+  domainHost: string | null,
+): LinkDTO {
   return {
     id: row.id,
     slug: row.slug,
-    shortUrl: `${env.APP_URL}/${row.slug}`,
+    shortUrl: buildShortUrl(env, domainHost, row.slug),
     destination: row.destination,
     iosUrl: row.iosUrl,
     androidUrl: row.androidUrl,
@@ -79,23 +88,98 @@ function toLinkDTO(env: AppBindings, row: LinkRow): LinkDTO {
         ? `${env.APP_URL}/ogimg/${row.id}`
         : row.ogImage || null,
     projectId: row.projectId,
+    domainId: row.domainId,
+    domain: domainHost,
     hasPassword: Boolean(row.passwordHash),
     qrConfig: (row.qrConfig as Record<string, unknown> | null) ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
 
-function cachePayload(row: LinkRow): CachedLink {
-  return {
-    id: row.id,
-    destination: row.destination,
-    iosUrl: row.iosUrl,
-    androidUrl: row.androidUrl,
-    desktopUrl: row.desktopUrl,
-    isActive: row.isActive,
-    hasPassword: Boolean(row.passwordHash),
-    expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
-  };
+/** id→hostname for the user's domains (a small set, ≤ the per-user cap). */
+async function userDomainHosts(
+  db: DB,
+  schema: DbSchema,
+  userId: string,
+): Promise<Map<string, string>> {
+  const { domains } = schema;
+  const rows = await db
+    .select({ id: domains.id, hostname: domains.hostname })
+    .from(domains)
+    .where(eq(domains.userId, userId));
+  return new Map(rows.map((r) => [r.id, r.hostname] as const));
+}
+
+/** The hostname for one domain id, or null for the default short host. */
+async function hostFor(
+  db: DB,
+  schema: DbSchema,
+  domainId: string | null,
+): Promise<string | null> {
+  if (!domainId) return null;
+  const { domains } = schema;
+  const r = await db
+    .select({ hostname: domains.hostname })
+    .from(domains)
+    .where(eq(domains.id, domainId))
+    .limit(1);
+  return r[0]?.hostname ?? null;
+}
+
+/** Validate a chosen domain is the user's and usable (verified/active), or null
+ *  for the default host. Returns the hostname, or a client error message. */
+async function resolveLinkDomain(
+  db: DB,
+  schema: DbSchema,
+  userId: string,
+  domainId: string | null | undefined,
+): Promise<{ hostname: string | null } | { error: string }> {
+  if (!domainId) return { hostname: null };
+  const { domains } = schema;
+  const r = await db
+    .select({ hostname: domains.hostname, status: domains.status, userId: domains.userId })
+    .from(domains)
+    .where(eq(domains.id, domainId))
+    .limit(1);
+  const d = r[0];
+  if (!d || d.userId !== userId) return { error: "That domain isn’t available" };
+  if (d.status === "pending") return { error: "Verify that domain before using it" };
+  return { hostname: d.hostname };
+}
+
+/** Is (domain, slug) already a live back-half or a retired alias of another link? */
+async function slugTaken(
+  db: DB,
+  schema: DbSchema,
+  domainId: string | null,
+  slug: string,
+  exceptLinkId?: string,
+): Promise<boolean> {
+  const { links, linkAliases } = schema;
+  const live = await db
+    .select({ id: links.id })
+    .from(links)
+    .where(
+      and(
+        eq(links.slug, slug),
+        domainBucket(links.domainId, domainId),
+        exceptLinkId ? ne(links.id, exceptLinkId) : undefined,
+      ),
+    )
+    .limit(1);
+  if (live[0]) return true;
+  const alias = await db
+    .select({ id: linkAliases.id })
+    .from(linkAliases)
+    .where(
+      and(
+        eq(linkAliases.slug, slug),
+        domainBucket(linkAliases.domainId, domainId),
+        exceptLinkId ? ne(linkAliases.linkId, exceptLinkId) : undefined,
+      ),
+    )
+    .limit(1);
+  return Boolean(alias[0]);
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -149,8 +233,11 @@ route.get("/", async (c) => {
 
   const hasMore = rows.length > PAGE_SIZE;
   const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+  const hosts = await userDomainHosts(c.var.db, c.var.schema, user.id);
   const body: LinkListDTO = {
-    links: page.map((r) => toLinkDTO(c.env, r)),
+    links: page.map((r) =>
+      toLinkDTO(c.env, r, r.domainId ? hosts.get(r.domainId) ?? null : null),
+    ),
     nextCursor: hasMore ? page[page.length - 1].createdAt.toISOString() : null,
   };
   return c.json(body);
@@ -185,6 +272,13 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     }
   }
 
+  // Resolve which domain the back-half lives on (the default host, or one of the
+  // user's verified custom domains).
+  const dom = await resolveLinkDomain(db, schema, user.id, input.domainId);
+  if ("error" in dom) return c.json({ error: dom.error }, 400);
+  const domainId = input.domainId ?? null;
+  const domainHost = dom.hostname;
+
   // Place the link in the requested project (if owned) or the user's default.
   const projectId = await resolveProjectId(db, schema, user.id, user.email, input.projectId);
   const passwordHash = input.password ? await hashPassword(input.password) : null;
@@ -202,6 +296,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
           passwordHash,
           userId: user.id,
           projectId,
+          domainId,
           title: input.title ?? null,
           expiresAt,
           previewMode: input.previewMode ?? "off",
@@ -217,7 +312,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
       row.ogImage = og;
       await db.update(links).set({ ogImage: og }).where(eq(links.id, row.id));
     }
-    await putCachedLink(c.env.LINKS_KV, row.slug, cachePayload(row));
+    await putCachedLink(c.env.LINKS_KV, row.domainId, row.slug, cachePayload(row));
     return row;
   };
 
@@ -225,9 +320,13 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     if (!isValidCustomSlug(input.slug)) {
       return c.json({ error: "That custom alias isn't allowed" }, 400);
     }
+    // Per-domain uniqueness spans both live back-halves and retired aliases.
+    if (await slugTaken(db, schema, domainId, input.slug)) {
+      return c.json({ error: "That custom alias is already taken" }, 409);
+    }
     try {
       const row = await insertOne(input.slug);
-      return c.json({ link: toLinkDTO(c.env, row) }, 201);
+      return c.json({ link: toLinkDTO(c.env, row, domainHost) }, 201);
     } catch (e) {
       if (isUniqueViolation(e)) {
         return c.json({ error: "That custom alias is already taken" }, 409);
@@ -237,9 +336,11 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
   }
 
   for (let attempt = 0; attempt < 6; attempt++) {
+    const slug = generateSlug();
+    if (await slugTaken(db, schema, domainId, slug)) continue;
     try {
-      const row = await insertOne(generateSlug());
-      return c.json({ link: toLinkDTO(c.env, row) }, 201);
+      const row = await insertOne(slug);
+      return c.json({ link: toLinkDTO(c.env, row, domainHost) }, 201);
     } catch (e) {
       if (isUniqueViolation(e)) continue;
       throw e;
@@ -265,8 +366,10 @@ route.get("/meta", async (c) => {
 // READ one
 // Live availability check for the custom back-half (so the editor can tell the
 // user before they submit). Registered before "/:id" so it isn't read as an id.
-route.get("/slug-check", async (c) => {
-  const slug = (c.req.query("slug") ?? "").trim();
+route.get("/slug-check", zValidator("query", slugCheckSchema), async (c) => {
+  const { slug: rawSlug, domainId: rawDomain } = c.req.valid("query");
+  const slug = rawSlug.trim();
+  const domainId = rawDomain ?? null;
   if (!/^[a-zA-Z0-9_-]{3,32}$/.test(slug)) {
     return c.json({ available: false, reason: "format" });
   }
@@ -277,21 +380,16 @@ route.get("/slug-check", async (c) => {
   if (extraReservedFrom(settings).includes(slug.toLowerCase())) {
     return c.json({ available: false, reason: "reserved" });
   }
-  const { links } = c.var.schema;
-  const rows = await c.var.db
-    .select({ id: links.id })
-    .from(links)
-    .where(eq(links.slug, slug))
-    .limit(1);
-  return c.json(
-    rows.length ? { available: false, reason: "taken" } : { available: true },
-  );
+  // Availability is per-domain and spans live back-halves + retired aliases.
+  const taken = await slugTaken(c.var.db, c.var.schema, domainId, slug);
+  return c.json(taken ? { available: false, reason: "taken" } : { available: true });
 });
 
 route.get("/:id", async (c) => {
   const row = await getOwnedLink(c);
   if (!row) return c.json({ error: "Not found" }, 404);
-  return c.json({ link: toLinkDTO(c.env, row) });
+  const host = await hostFor(c.var.db, c.var.schema, row.domainId);
+  return c.json({ link: toLinkDTO(c.env, row, host) });
 });
 
 // STATS (owner or admin)
@@ -330,11 +428,42 @@ route.get("/:id/stats", async (c) => {
 // UPDATE
 route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   const db = c.var.db;
-  const { links } = c.var.schema;
+  const schema = c.var.schema;
+  const { links, linkAliases } = schema;
+  const user = c.var.user!;
   const existing = await getOwnedLink(c);
   if (!existing) return c.json({ error: "Not found" }, 404);
 
   const input = c.req.valid("json");
+
+  // --- Editable back-half (slug) + domain. Changing either retires the old
+  //     (domain, slug) to an alias so previously-shared links keep redirecting.
+  let targetDomainId = existing.domainId;
+  if (input.domainId !== undefined) {
+    const dom = await resolveLinkDomain(db, schema, user.id, input.domainId);
+    if ("error" in dom) return c.json({ error: dom.error }, 400);
+    targetDomainId = input.domainId ?? null;
+  }
+  let targetSlug = existing.slug;
+  if (input.slug !== undefined && input.slug !== existing.slug) {
+    if (!isValidCustomSlug(input.slug)) {
+      return c.json({ error: "That custom alias isn't allowed" }, 400);
+    }
+    const settings = await getAllSettings(db, schema);
+    if (extraReservedFrom(settings).includes(input.slug.toLowerCase())) {
+      return c.json({ error: "That custom alias is reserved" }, 400);
+    }
+    targetSlug = input.slug;
+  }
+  const backHalfChanged =
+    targetDomainId !== existing.domainId || targetSlug !== existing.slug;
+  if (
+    backHalfChanged &&
+    (await slugTaken(db, schema, targetDomainId, targetSlug, existing.id))
+  ) {
+    return c.json({ error: "That custom alias is already taken" }, 409);
+  }
+
   const patch: Partial<typeof links.$inferInsert> = { updatedAt: new Date() };
   if (input.destination !== undefined) patch.destination = input.destination;
   if (input.iosUrl !== undefined) patch.iosUrl = input.iosUrl;
@@ -358,20 +487,68 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   if (input.projectId !== undefined) {
     patch.projectId = await resolveProjectId(
       db,
-      c.var.schema,
-      c.var.user!.id,
-      c.var.user!.email,
+      schema,
+      user.id,
+      user.email,
       input.projectId,
     );
   }
+  if (backHalfChanged) {
+    patch.slug = targetSlug;
+    patch.domainId = targetDomainId;
+  }
 
-  const row = (
-    await db.update(links).set(patch).where(eq(links.id, existing.id)).returning()
-  )[0];
-  await putCachedLink(c.env.LINKS_KV, row.slug, cachePayload(row));
+  let row: LinkRow;
+  try {
+    row = (
+      await db.update(links).set(patch).where(eq(links.id, existing.id)).returning()
+    )[0];
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      return c.json({ error: "That custom alias is already taken" }, 409);
+    }
+    throw e;
+  }
+
+  if (backHalfChanged) {
+    // Reverting to one of this link's own old back-halves? Drop that alias row
+    // so it doesn't duplicate the now-live one.
+    await db
+      .delete(linkAliases)
+      .where(
+        and(
+          eq(linkAliases.linkId, existing.id),
+          eq(linkAliases.slug, targetSlug),
+          domainBucket(linkAliases.domainId, targetDomainId),
+        ),
+      );
+    // Retire the previous (domain, slug) so old shared links keep redirecting,
+    // up to the per-link cap.
+    const [{ n }] = await db
+      .select({ n: count() })
+      .from(linkAliases)
+      .where(eq(linkAliases.linkId, existing.id));
+    if (Number(n) < ALIAS_CAP_FALLBACK) {
+      await db
+        .insert(linkAliases)
+        .values({
+          linkId: existing.id,
+          domainId: existing.domainId,
+          slug: existing.slug,
+        })
+        .onConflictDoNothing();
+    }
+    // The old key no longer maps to a live back-half; clear it so a stale cache
+    // can't serve it ahead of the alias lookup.
+    await deleteCachedLink(c.env.LINKS_KV, existing.domainId, existing.slug);
+  }
+
+  // Warm every entry point (new back-half + retained aliases) with fresh data.
+  await refreshLinkCache(c.env, db, schema, row);
   // Drop any cached destination preview so changes show on the next share.
   await invalidateLinkPreview(c.env, row.id);
-  return c.json({ link: toLinkDTO(c.env, row) });
+  const host = await hostFor(db, schema, row.domainId);
+  return c.json({ link: toLinkDTO(c.env, row, host) });
 });
 
 // DELETE
@@ -379,8 +556,9 @@ route.delete("/:id", async (c) => {
   const { links } = c.var.schema;
   const existing = await getOwnedLink(c);
   if (!existing) return c.json({ error: "Not found" }, 404);
+  // Clear every entry point (live + aliases) before the cascade removes them.
+  await purgeLinkCache(c.env, c.var.db, c.var.schema, existing);
   await c.var.db.delete(links).where(eq(links.id, existing.id));
-  await deleteCachedLink(c.env.LINKS_KV, existing.slug);
   if (existing.ogImage === "r2") {
     await c.env.LOGO_BUCKET.delete(`og/${existing.id}`).catch(() => {});
   }

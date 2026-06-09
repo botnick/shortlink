@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { compressUpload, ogToJpeg, ogToPng, renderOg, renderPhotoOg } from "@/lib/ogTemplates";
 import { loadOgFont } from "@/lib/ogFonts";
 import { composeFrame, makeDefault, renderQrSvg, svgDataUrl, type QrCfg } from "@/lib/qr";
-import type { LinkDTO, PreviewMode, UrlMetaDTO } from "@shared/types";
+import type { DomainDTO, DomainListDTO, LinkDTO, PreviewMode, UrlMetaDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -123,7 +123,7 @@ function suggestSource(destination: string, metaTitle?: string): string {
   }
 }
 const SLUG_OPTIONS = [
-  { kind: "shortest", label: "Shortest", desc: "Shortest random — 4 characters", needsSource: false },
+  { kind: "shortest", label: "Shortest", desc: "Shortest random — 6 characters", needsSource: false },
   { kind: "random", label: "Random", desc: "Longer random — 8 characters", needsSource: false },
   { kind: "plain", label: "Suggested", desc: "Words from the destination, joined", needsSource: true },
   { kind: "dash", label: "Suggested with dash", desc: "Dash-separated (SEO-friendly)", needsSource: true },
@@ -263,6 +263,9 @@ export function LinkEditor() {
   const [destination, setDestination] = useState("");
   const [utm, setUtm] = useState<Utm>(EMPTY_UTM);
   const [alias, setAlias] = useState("");
+  // The custom domain the back-half lives on (null = the default short host).
+  const [domainId, setDomainId] = useState<string | null>(null);
+  const [domains, setDomains] = useState<DomainDTO[]>([]);
   const [title, setTitle] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [iosUrl, setIosUrl] = useState("");
@@ -299,6 +302,8 @@ export function LinkEditor() {
         setLink(l);
         setDestination(l.destination);
         setUtm(parseUtm(l.destination));
+        setAlias(l.slug);
+        setDomainId(l.domainId);
         setTitle(l.title ?? "");
         setIsActive(l.isActive);
         setIosUrl(l.iosUrl ?? "");
@@ -321,6 +326,23 @@ export function LinkEditor() {
     };
   }, [isEdit, id, navigate]);
 
+  // Domains the user can host a back-half on (ownership confirmed → usable).
+  useEffect(() => {
+    let active = true;
+    api
+      .get<DomainListDTO>("/domains")
+      .then((r) => {
+        if (active)
+          setDomains(
+            r.domains.filter((d) => d.status === "verified" || d.status === "active"),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const destValid = isHttpUrl(destination);
   const previewDomain = (() => {
     try {
@@ -329,13 +351,12 @@ export function LinkEditor() {
       return shortHost;
     }
   })();
-  const aliasOrSlug = link?.slug || alias.trim();
-  const shortUrlText = `${shortHost}/${aliasOrSlug || "your-link"}`;
-  const ogCardUrl = link?.shortUrl
-    ? link.shortUrl.replace(/^https?:\/\//, "")
-    : alias.trim()
-      ? `${shortHost}/${alias.trim()}`
-      : shortHost;
+  // The host the short link lives on: the chosen custom domain, or the default.
+  const selectedDomain = domains.find((d) => d.id === domainId) ?? null;
+  const selectedHost = selectedDomain?.hostname ?? shortHost;
+  const aliasOrSlug = alias.trim() || link?.slug || "";
+  const shortUrlText = `${selectedHost}/${aliasOrSlug || "your-link"}`;
+  const ogCardUrl = `${selectedHost}/${aliasOrSlug || "your-link"}`;
 
   const utmCount = Object.values(utm).filter((v) => v.trim()).length;
   const deepCount = [iosUrl, androidUrl, desktopUrl].filter((v) => v.trim()).length;
@@ -385,7 +406,7 @@ export function LinkEditor() {
   }
   function optimizeSlug(kind: (typeof SLUG_OPTIONS)[number]["kind"]) {
     setSlugStrategy(SLUG_OPTIONS.find((o) => o.kind === kind)?.label ?? "");
-    if (kind === "shortest") return setAlias(randomSlug(4));
+    if (kind === "shortest") return setAlias(randomSlug(6));
     if (kind === "random") return setAlias(randomSlug(8));
     const s = toSlug(slugSource, kind);
     setAlias(s.length >= 3 ? s : (s + randomSlug(4)).slice(0, 32));
@@ -482,10 +503,14 @@ export function LinkEditor() {
     };
   }, [config.logoUrl]);
 
-  // Live back-half availability (create only; the back-half can't change on edit).
+  // Live back-half availability, scoped to the chosen domain. The link's own
+  // current (slug, domain) is always available to itself, so skip that case.
   useEffect(() => {
-    if (isEdit) return;
     const s = alias.trim();
+    if (isEdit && link && s === link.slug && domainId === link.domainId) {
+      setSlugStatus("idle");
+      return;
+    }
     if (!s || !/^[a-zA-Z0-9_-]{3,32}$/.test(s)) {
       setSlugStatus("idle");
       return;
@@ -494,8 +519,10 @@ export function LinkEditor() {
     setSlugStatus("checking");
     const t = setTimeout(async () => {
       try {
+        const params = new URLSearchParams({ slug: s });
+        if (domainId) params.set("domainId", domainId);
         const r = await api.get<{ available: boolean; reason?: string }>(
-          `/links/slug-check?slug=${encodeURIComponent(s)}`,
+          `/links/slug-check?${params}`,
         );
         if (!active) return;
         setSlugStatus(r.available ? "available" : r.reason === "reserved" ? "reserved" : "taken");
@@ -507,7 +534,7 @@ export function LinkEditor() {
       active = false;
       clearTimeout(t);
     };
-  }, [alias, isEdit]);
+  }, [alias, domainId, isEdit, link]);
 
   function previewPayload() {
     let image: string | null = null;
@@ -597,6 +624,19 @@ export function LinkEditor() {
       toast.error("Enter a password, or turn off password protection");
       return;
     }
+    const aliasTrim = alias.trim();
+    if (isEdit && !aliasTrim) {
+      toast.error("The back-half can’t be empty");
+      return;
+    }
+    if (aliasTrim && !/^[a-zA-Z0-9_-]{3,32}$/.test(aliasTrim)) {
+      toast.error("Back-half: 3–32 characters — letters, numbers, - or _");
+      return;
+    }
+    if (slugStatus === "taken" || slugStatus === "reserved") {
+      toast.error("That back-half isn’t available — try another");
+      return;
+    }
     setSubmitting(true);
     try {
       if (isEdit && link) {
@@ -604,6 +644,8 @@ export function LinkEditor() {
         // no point re-sending an unchanged destination or a heavy social image.
         const candidate: Record<string, unknown> = {
           destination,
+          slug: aliasTrim,
+          domainId,
           title: title.trim() || null,
           isActive,
           ...deepLinks(),
@@ -629,7 +671,8 @@ export function LinkEditor() {
       } else {
         const { link: created } = await api.post<{ link: LinkDTO }>("/links", {
           destination,
-          slug: alias.trim() || undefined,
+          slug: aliasTrim || undefined,
+          domainId: domainId ?? undefined,
           title: title.trim() || undefined,
           projectId: selectedId ?? undefined,
           ...deepLinks(),
@@ -735,72 +778,113 @@ export function LinkEditor() {
 
           {/* Short link */}
           <section className="space-y-4 rounded-2xl border bg-card p-5">
-            {!isEdit && (
-              <div className="space-y-2">
-                <Label htmlFor="alias">
-                  Custom back-half{" "}
-                  <span className="font-normal text-muted-foreground">(optional)</span>
-                </Label>
-                <div className="flex items-stretch gap-2">
-                  <div className="flex flex-1 items-center overflow-hidden rounded-md border border-input bg-transparent text-sm focus-within:ring-2 focus-within:ring-ring">
-                    <span className="whitespace-nowrap pl-3 text-muted-foreground">{shortHost}/</span>
-                    <input
-                      id="alias"
-                      className="h-9 w-full bg-transparent px-1 text-base outline-none md:text-sm"
-                      placeholder="my-link"
-                      value={alias}
-                      onChange={(e) => {
-                        setAlias(e.target.value);
-                        setSlugStrategy("");
-                      }}
-                    />
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button type="button" variant="outline" className="shrink-0 gap-1.5">
-                        <Sparkles className="size-4" /> Optimize
-                        <ChevronDown className="size-3.5 opacity-60" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-64">
-                      {SLUG_OPTIONS.map((o) => {
-                        const disabled = o.needsSource && !hasSlugSource;
-                        return (
-                          <DropdownMenuItem
-                            key={o.kind}
-                            disabled={disabled}
-                            onClick={() => optimizeSlug(o.kind)}
-                            className="flex-col items-start gap-0.5"
-                          >
-                            <span className="text-sm font-medium">{o.label}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {disabled ? "Enter a destination first" : o.desc}
-                            </span>
+            <div className="space-y-2">
+              <Label htmlFor="alias">
+                {isEdit ? (
+                  "Back-half"
+                ) : (
+                  <>
+                    Custom back-half{" "}
+                    <span className="font-normal text-muted-foreground">(optional)</span>
+                  </>
+                )}
+              </Label>
+              <div className="flex items-stretch gap-2">
+                <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-md border border-input bg-transparent text-sm focus-within:ring-2 focus-within:ring-ring">
+                  {domains.length > 0 ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex max-w-[45%] shrink-0 items-center gap-1 whitespace-nowrap rounded-l-md py-2 pl-3 text-muted-foreground hover:text-foreground"
+                          title="Choose a domain"
+                        >
+                          <span className="truncate">{selectedHost}</span>
+                          <ChevronDown className="size-3 shrink-0 opacity-60" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-w-[16rem]">
+                        <DropdownMenuItem onClick={() => setDomainId(null)}>
+                          <span className="flex-1 truncate">{shortHost}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">default</span>
+                          {domainId === null && <Check className="ml-1 size-3.5" />}
+                        </DropdownMenuItem>
+                        {domains.map((d) => (
+                          <DropdownMenuItem key={d.id} onClick={() => setDomainId(d.id)}>
+                            <span className="flex-1 truncate">{d.hostname}</span>
+                            {domainId === d.id && <Check className="ml-1 size-3.5" />}
                           </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <span className="shrink-0 whitespace-nowrap pl-3 text-muted-foreground">
+                      {shortHost}
+                    </span>
+                  )}
+                  <span className="px-0.5 text-muted-foreground">/</span>
+                  <input
+                    id="alias"
+                    className="h-9 w-full min-w-0 bg-transparent px-1 text-base outline-none md:text-sm"
+                    placeholder="my-link"
+                    value={alias}
+                    onChange={(e) => {
+                      setAlias(e.target.value);
+                      setSlugStrategy("");
+                    }}
+                  />
                 </div>
-                {alias.trim() && !/^[a-zA-Z0-9_-]{3,32}$/.test(alias.trim()) ? (
-                  <p className="text-[11px] text-amber-600">
-                    3–32 characters: letters, numbers, - or _
-                  </p>
-                ) : slugStatus === "checking" ? (
-                  <p className="text-[11px] text-muted-foreground">Checking availability…</p>
-                ) : slugStatus === "taken" ? (
-                  <p className="text-[11px] text-red-600">That back-half is taken — try another.</p>
-                ) : slugStatus === "reserved" ? (
-                  <p className="text-[11px] text-red-600">That back-half is reserved.</p>
-                ) : slugStatus === "available" ? (
-                  <p className="flex items-center gap-1 text-[11px] text-emerald-600">
-                    <Check className="size-3" /> Available
-                  </p>
-                ) : slugStrategy ? (
-                  <p className="text-[11px] text-muted-foreground">{slugStrategy} back-half</p>
-                ) : null}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" className="shrink-0 gap-1.5">
+                      <Sparkles className="size-4" /> Optimize
+                      <ChevronDown className="size-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    {SLUG_OPTIONS.map((o) => {
+                      const disabled = o.needsSource && !hasSlugSource;
+                      return (
+                        <DropdownMenuItem
+                          key={o.kind}
+                          disabled={disabled}
+                          onClick={() => optimizeSlug(o.kind)}
+                          className="flex-col items-start gap-0.5"
+                        >
+                          <span className="text-sm font-medium">{o.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {disabled ? "Enter a destination first" : o.desc}
+                          </span>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-            )}
+              {alias.trim() && !/^[a-zA-Z0-9_-]{3,32}$/.test(alias.trim()) ? (
+                <p className="text-[11px] text-amber-600">
+                  3–32 characters: letters, numbers, - or _
+                </p>
+              ) : slugStatus === "checking" ? (
+                <p className="text-[11px] text-muted-foreground">Checking availability…</p>
+              ) : slugStatus === "taken" ? (
+                <p className="text-[11px] text-red-600">That back-half is taken — try another.</p>
+              ) : slugStatus === "reserved" ? (
+                <p className="text-[11px] text-red-600">That back-half is reserved.</p>
+              ) : slugStatus === "available" ? (
+                <p className="flex items-center gap-1 text-[11px] text-emerald-600">
+                  <Check className="size-3" /> Available
+                </p>
+              ) : slugStrategy ? (
+                <p className="text-[11px] text-muted-foreground">{slugStrategy} back-half</p>
+              ) : null}
+              {isEdit && (
+                <p className="text-[11px] text-muted-foreground">
+                  Changing the back-half or domain keeps the old short link working — it
+                  still redirects here.
+                </p>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="title">
@@ -1229,7 +1313,12 @@ export function LinkEditor() {
           </section>
 
           {isEdit && link ? (
-            <QrCard slug={link.slug} linkId={link.id} savedConfig={link.qrConfig} />
+            <QrCard
+              shortUrl={link.shortUrl}
+              slug={link.slug}
+              linkId={link.id}
+              savedConfig={link.qrConfig}
+            />
           ) : (
             <section className="space-y-3 rounded-2xl border bg-card p-4">
               <span className="text-xs font-medium text-muted-foreground">QR code</span>
@@ -1252,40 +1341,48 @@ export function LinkEditor() {
   );
 }
 
-/** QR block in the preview rail: a live QR plus its public /qr/<slug> share page. */
+/** QR block in the preview rail: a live QR plus its public /qr/<slug> share page.
+ *  Rendered client-side from the link's own short URL + brand so it works the
+ *  same whether the link is on the default host or a custom domain. */
 function QrCard({
+  shortUrl,
   slug,
   linkId,
   savedConfig,
 }: {
+  shortUrl: string;
   slug: string;
   linkId: string;
   savedConfig?: Record<string, unknown> | null;
 }) {
   const { config } = useConfig();
   const [svg, setSvg] = useState("");
-  const qrUrl = `${window.location.origin}/qr/${slug}`;
+  // The QR (and its share page) live on the link's host, not necessarily this one.
+  const origin = (() => {
+    try {
+      return new URL(shortUrl).origin;
+    } catch {
+      return window.location.origin;
+    }
+  })();
+  const qrUrl = `${origin}/qr/${slug}`;
 
   useEffect(() => {
     let active = true;
-    // Same source as the QR studio + the /qr page: brand colour, project logo,
-    // and the canonical short URL — so every QR view of the link is identical.
-    fetch(`/api/qr/${slug}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { shortUrl: string; color: string | null; logo: string | null } | null) => {
-        if (!active || !d) return;
-        const base = makeDefault(d.color || config.brandColor);
-        const withLogo = d.logo ? { ...base, logoSrc: d.logo, logo: true } : base;
-        const cfg = savedConfig ? { ...withLogo, ...(savedConfig as Partial<QrCfg>) } : withLogo;
-        return renderQrSvg(cfg, d.shortUrl).then((raw) => {
-          if (active) setSvg(composeFrame(raw, cfg).svg);
-        });
+    const base = makeDefault(config.brandColor);
+    const withLogo = config.logoUrl
+      ? { ...base, logoSrc: config.logoUrl, logo: true }
+      : base;
+    const cfg = savedConfig ? { ...withLogo, ...(savedConfig as Partial<QrCfg>) } : withLogo;
+    renderQrSvg(cfg, shortUrl)
+      .then((raw) => {
+        if (active) setSvg(composeFrame(raw, cfg).svg);
       })
       .catch(() => {});
     return () => {
       active = false;
     };
-  }, [slug, config.brandColor, savedConfig]);
+  }, [shortUrl, config.brandColor, config.logoUrl, savedConfig]);
 
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4">
@@ -1311,7 +1408,7 @@ function QrCard({
       </div>
       <div className="space-y-1.5 border-t pt-3">
         <span className="text-[11px] text-muted-foreground">Direct image link (SVG)</span>
-        <CopyRow value={`${window.location.origin}/qr/${slug}.svg`} label="Copy direct QR image link" />
+        <CopyRow value={`${origin}/qr/${slug}.svg`} label="Copy direct QR image link" />
       </div>
     </section>
   );

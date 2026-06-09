@@ -5,7 +5,7 @@ import type { AppContext, AppEnv } from "../env";
 import type { ProjectRow } from "../db/schema";
 import { projectCreateSchema, projectUpdateSchema } from "../lib/validators";
 import { ensureDefaultProject } from "../lib/projects";
-import { deleteCachedLink } from "../lib/cache";
+import { purgeLinkCache } from "../lib/linkCache";
 import { requireAuth } from "../middleware/auth";
 import type { ProjectDTO, ProjectListDTO } from "@shared/types";
 
@@ -163,17 +163,23 @@ route.delete("/:id", async (c) => {
 
   if (action === "delete") {
     const doomed = await db
-      .select({ id: links.id, slug: links.slug, ogImage: links.ogImage })
+      .select({
+        id: links.id,
+        slug: links.slug,
+        domainId: links.domainId,
+        ogImage: links.ogImage,
+      })
       .from(links)
       .where(and(eq(links.userId, user.id), eq(links.projectId, proj.id)));
+    // Purge every entry point's cache before the delete cascades the aliases.
+    await Promise.all(doomed.map((l) => purgeLinkCache(c.env, db, c.var.schema, l)));
     await db.delete(links).where(and(eq(links.userId, user.id), eq(links.projectId, proj.id)));
     c.executionCtx.waitUntil(
-      Promise.all([
-        ...doomed.map((l) => deleteCachedLink(c.env.LINKS_KV, l.slug)),
-        ...doomed
+      Promise.all(
+        doomed
           .filter((l) => l.ogImage === "r2")
           .map((l) => c.env.LOGO_BUCKET.delete(`og/${l.id}`).catch(() => {})),
-      ]).then(() => {}),
+      ).then(() => {}),
     );
   } else {
     const target = (to && others.find((o) => o.id === to)?.id) || others[0].id;

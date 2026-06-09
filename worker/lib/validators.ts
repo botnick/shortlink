@@ -186,6 +186,9 @@ const qrConfigField = z
   .refine((c) => JSON.stringify(c).length < 600_000, "QR design is too large")
   .nullable();
 
+// The custom domain a link's back-half lives on, or null for the default host.
+const linkDomainId = z.string().uuid().nullable();
+
 export const createLinkSchema = z.object({
   destination: httpUrl,
   iosUrl: deepLink.optional(),
@@ -193,6 +196,7 @@ export const createLinkSchema = z.object({
   desktopUrl: deepLink.optional(),
   password: linkPassword.optional(),
   slug: slugField.optional(),
+  domainId: linkDomainId.optional(),
   title: z.string().trim().max(120).optional(),
   expiresAt: isoDate.optional(),
   previewMode: previewMode.optional(),
@@ -209,6 +213,10 @@ export const updateLinkSchema = z.object({
   desktopUrl: deepLink.optional(),
   password: linkPassword.optional(),
   qrConfig: qrConfigField.optional(),
+  // Editable back-half + domain. The previous (domain, slug) is retired to an
+  // alias so old shared links keep redirecting.
+  slug: slugField.optional(),
+  domainId: linkDomainId.optional(),
   title: z.string().trim().max(120).nullable().optional(),
   isActive: z.boolean().optional(),
   expiresAt: isoDate.nullable().optional(),
@@ -217,6 +225,12 @@ export const updateLinkSchema = z.object({
   ogDescription: ogDescription.optional(),
   ogImage: ogImage.optional(),
   projectId: z.string().uuid().optional(),
+});
+
+// Live availability check for the editor — slug within a chosen domain bucket.
+export const slugCheckSchema = z.object({
+  slug: z.string().trim(),
+  domainId: linkDomainId.optional(),
 });
 
 const projectName = z.string().trim().min(1).max(60);

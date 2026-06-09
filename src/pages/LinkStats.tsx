@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { shortUrlFor } from "@/lib/utils";
 import { formatDate, formatNumber } from "@/lib/format";
 import type { LinkDTO, NameCount, StatsDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
@@ -128,10 +127,10 @@ export function LinkStats() {
         </div>
         {link && (
           <div className="flex items-center gap-2">
-            <CopyButton value={shortUrlFor(link.slug)} label="Copy" variant="outline" />
+            <CopyButton value={link.shortUrl} label="Copy" variant="outline" />
             <Button asChild variant="outline" size="icon">
               <a
-                href={shortUrlFor(link.slug)}
+                href={link.shortUrl}
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Open link"
@@ -453,7 +452,7 @@ function BarList({
 }
 
 function Share({ link }: { link: LinkDTO }) {
-  const shortUrl = shortUrlFor(link.slug);
+  const shortUrl = link.shortUrl;
   const text = link.title || link.slug;
   const shares = [
     {

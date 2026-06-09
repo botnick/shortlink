@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { BackLink } from "@/components/BackLink";
 import { api } from "@/lib/api";
-import { shortUrlFor } from "@/lib/utils";
 import type { LinkDTO, ProjectDTO, ProjectListDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { QrStudio } from "@/components/QrStudio";
@@ -60,7 +59,7 @@ export function QrPage() {
         <h1 className="display text-2xl sm:text-3xl">QR code</h1>
         {link && (
           <p className="mt-1 text-sm text-muted-foreground">
-            {shortUrlFor(link.slug)}
+            {link.shortUrl}
             {project && <> · {project.name}</>}
           </p>
         )}

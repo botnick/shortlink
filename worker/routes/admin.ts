@@ -14,7 +14,8 @@ import {
   sum,
 } from "drizzle-orm";
 import type { AppEnv } from "../env";
-import { deleteCachedLink, putCachedLink } from "../lib/cache";
+import { buildShortUrl, invalidateDomainHost } from "../lib/domainScope";
+import { purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
 import { dayBucket, searchCondition } from "../lib/query";
 import { hashPassword } from "../lib/password";
 import { computeGlobalStats, parseRange } from "./stats";
@@ -327,7 +328,7 @@ admin.get("/overview", async (c) => {
 // All links across every user — keyset paginated + searchable.
 admin.get("/links", async (c) => {
   const db = c.var.db;
-  const { links, users, projects } = c.var.schema;
+  const { links, users, projects, domains } = c.var.schema;
   const q = c.req.query("q") ?? "";
   const cursor = c.req.query("cursor");
   const userId = c.req.query("userId");
@@ -364,10 +365,12 @@ admin.get("/links", async (c) => {
         createdAt: links.createdAt,
         ownerEmail: users.email,
         projectName: projects.name,
+        domainHost: domains.hostname,
       })
       .from(links)
       .innerJoin(users, eq(links.userId, users.id))
       .leftJoin(projects, eq(links.projectId, projects.id))
+      .leftJoin(domains, eq(links.domainId, domains.id))
       .where(where)
       .orderBy(desc(links.createdAt))
       .limit(PAGE + 1),
@@ -384,7 +387,7 @@ admin.get("/links", async (c) => {
   const items: AdminLinkDTO[] = page.map((r) => ({
     id: r.id,
     slug: r.slug,
-    shortUrl: `${c.env.APP_URL}/${r.slug}`,
+    shortUrl: buildShortUrl(c.env, r.domainHost ?? null, r.slug),
     destination: r.destination,
     title: r.title,
     isActive: r.isActive,
@@ -392,6 +395,7 @@ admin.get("/links", async (c) => {
     createdAt: r.createdAt.toISOString(),
     ownerEmail: r.ownerEmail,
     projectName: r.projectName ?? null,
+    domain: r.domainHost ?? null,
   }));
   return c.json({
     links: items,
@@ -416,16 +420,7 @@ admin.patch(
       .returning();
     const row = rows[0];
     if (!row) return c.json({ error: "Not found" }, 404);
-    await putCachedLink(c.env.LINKS_KV, row.slug, {
-      id: row.id,
-      destination: row.destination,
-      iosUrl: row.iosUrl,
-      androidUrl: row.androidUrl,
-      desktopUrl: row.desktopUrl,
-      isActive: row.isActive,
-      hasPassword: Boolean(row.passwordHash),
-      expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
-    });
+    await refreshLinkCache(c.env, c.var.db, c.var.schema, row);
     return c.json({ ok: true });
   },
 );
@@ -435,14 +430,24 @@ admin.delete("/links/:id", async (c) => {
   const id = c.req.param("id");
   if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
   const { links } = c.var.schema;
-  const rows = await c.var.db
-    .delete(links)
-    .where(eq(links.id, id))
-    .returning({ slug: links.slug, id: links.id, ogImage: links.ogImage });
-  if (!rows[0]) return c.json({ error: "Not found" }, 404);
-  await deleteCachedLink(c.env.LINKS_KV, rows[0].slug);
-  if (rows[0].ogImage === "r2") {
-    await c.env.LOGO_BUCKET.delete(`og/${rows[0].id}`).catch(() => {});
+  const existing = (
+    await c.var.db
+      .select({
+        slug: links.slug,
+        id: links.id,
+        domainId: links.domainId,
+        ogImage: links.ogImage,
+      })
+      .from(links)
+      .where(eq(links.id, id))
+      .limit(1)
+  )[0];
+  if (!existing) return c.json({ error: "Not found" }, 404);
+  // Purge every entry point's cache before the cascade removes the alias rows.
+  await purgeLinkCache(c.env, c.var.db, c.var.schema, existing);
+  await c.var.db.delete(links).where(eq(links.id, id));
+  if (existing.ogImage === "r2") {
+    await c.env.LOGO_BUCKET.delete(`og/${existing.id}`).catch(() => {});
   }
   return c.json({ ok: true });
 });
@@ -505,22 +510,29 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
   const db = c.var.db;
   const { links } = c.var.schema;
   const { ids, action } = c.req.valid("json");
-  const kv = c.env.LINKS_KV;
 
   if (action === "delete") {
-    const rows = await db
-      .delete(links)
-      .where(inArray(links.id, ids))
-      .returning({ slug: links.slug, id: links.id, ogImage: links.ogImage });
+    // Read the targets first so alias cache keys can be purged before the
+    // cascade removes the alias rows.
+    const targets = await db
+      .select({
+        id: links.id,
+        slug: links.slug,
+        domainId: links.domainId,
+        ogImage: links.ogImage,
+      })
+      .from(links)
+      .where(inArray(links.id, ids));
+    await db.delete(links).where(inArray(links.id, ids));
     c.executionCtx.waitUntil(
       Promise.all([
-        ...rows.map((r) => deleteCachedLink(kv, r.slug)),
-        ...rows
+        ...targets.map((r) => purgeLinkCache(c.env, db, c.var.schema, r)),
+        ...targets
           .filter((r) => r.ogImage === "r2")
           .map((r) => c.env.LOGO_BUCKET.delete(`og/${r.id}`).catch(() => {})),
       ]).then(() => {}),
     );
-    return c.json({ ok: true, count: rows.length });
+    return c.json({ ok: true, count: targets.length });
   }
 
   const isActive = action === "activate";
@@ -531,18 +543,7 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
     .returning();
   c.executionCtx.waitUntil(
     Promise.all(
-      rows.map((r) =>
-        putCachedLink(kv, r.slug, {
-          id: r.id,
-          destination: r.destination,
-          iosUrl: r.iosUrl,
-          androidUrl: r.androidUrl,
-          desktopUrl: r.desktopUrl,
-          isActive: r.isActive,
-          hasPassword: Boolean(r.passwordHash),
-          expiresAt: r.expiresAt ? r.expiresAt.getTime() : null,
-        }),
-      ),
+      rows.map((r) => refreshLinkCache(c.env, db, c.var.schema, r)),
     ).then(() => {}),
   );
   return c.json({ ok: true, count: rows.length });
@@ -704,11 +705,25 @@ admin.delete("/domains/:id", async (c) => {
   const id = c.req.param("id");
   if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
   const { domains } = c.var.schema;
-  const rows = await c.var.db
-    .delete(domains)
-    .where(eq(domains.id, id))
-    .returning({ id: domains.id });
-  if (!rows[0]) return c.json({ error: "Not found" }, 404);
+  const existing = (
+    await c.var.db
+      .select({ hostname: domains.hostname })
+      .from(domains)
+      .where(eq(domains.id, id))
+      .limit(1)
+  )[0];
+  if (!existing) return c.json({ error: "Not found" }, 404);
+  // Blocked by the FK while links still point at it — surface a clear message.
+  try {
+    await c.var.db.delete(domains).where(eq(domains.id, id));
+  } catch (e) {
+    const err = e as { code?: string; cause?: { code?: string } } | null;
+    if (err?.code === "23503" || err?.cause?.code === "23503") {
+      return c.json({ error: "That domain still has links — remove them first" }, 409);
+    }
+    throw e;
+  }
+  await invalidateDomainHost(c.env.LINKS_KV, existing.hostname);
   return c.json({ ok: true });
 });
 

@@ -34,26 +34,35 @@ export function routeDestination(
 }
 
 const TTL_SECONDS = 60 * 60; // 1h backstop; we also invalidate on edit/delete
-const key = (slug: string) => `link:${slug}`;
+
+// The cache key is scoped by domain so the same slug can live on more than one
+// host (per-domain custom back-halves). `null` = the default short host bucket.
+const key = (domainId: string | null, slug: string) =>
+  `link:${domainId ?? "_"}:${slug}`;
 
 export async function getCachedLink(
   kv: KVNamespace,
+  domainId: string | null,
   slug: string,
 ): Promise<CachedLink | null> {
-  return kv.get<CachedLink>(key(slug), "json");
+  return kv.get<CachedLink>(key(domainId, slug), "json");
 }
 
 export async function putCachedLink(
   kv: KVNamespace,
+  domainId: string | null,
   slug: string,
   value: CachedLink,
 ): Promise<void> {
-  await kv.put(key(slug), JSON.stringify(value), { expirationTtl: TTL_SECONDS });
+  await kv.put(key(domainId, slug), JSON.stringify(value), {
+    expirationTtl: TTL_SECONDS,
+  });
 }
 
 export async function deleteCachedLink(
   kv: KVNamespace,
+  domainId: string | null,
   slug: string,
 ): Promise<void> {
-  await kv.delete(key(slug));
+  await kv.delete(key(domainId, slug));
 }

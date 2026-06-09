@@ -28,6 +28,10 @@ export interface LinkDTO {
   ogDescription: string | null;
   ogImage: string | null;
   projectId: string | null;
+  /** The custom domain id this back-half lives on, or null for the default host. */
+  domainId: string | null;
+  /** The hostname for `domainId` (e.g. go.brand.com), or null for the default host. */
+  domain: string | null;
   /** true when a password gate is set (the password itself is never returned) */
   hasPassword: boolean;
   /** the saved QR design (a QrCfg), or null to use the default */
@@ -116,6 +120,8 @@ export interface AdminLinkDTO {
   createdAt: string;
   ownerEmail: string;
   projectName: string | null;
+  /** Custom domain hostname this link lives on, or null for the default host. */
+  domain: string | null;
 }
 
 export interface AdminLinkListDTO {

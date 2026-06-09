@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   pgEnum,
@@ -11,6 +12,10 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+// Sentinel used so a NULL domain (the default short host) participates in the
+// per-domain unique slug index — Postgres treats NULLs as distinct otherwise.
+const DEFAULT_DOMAIN = sql`'00000000-0000-0000-0000-000000000000'::uuid`;
 
 export const userRole = pgEnum("user_role", ["user", "admin"]);
 
@@ -61,6 +66,9 @@ export const links = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     projectId: uuid().references(() => projects.id, { onDelete: "set null" }),
+    // The custom domain this link's back-half lives on; null = the default short
+    // host. No onDelete → a domain can't be removed while links still use it.
+    domainId: uuid().references(() => domains.id),
     title: text(),
     isActive: boolean().notNull().default(true),
     expiresAt: timestamp({ withTimezone: true }),
@@ -76,9 +84,39 @@ export const links = pgTable(
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("links_slug_idx").on(t.slug),
+    // A back-half is unique per domain (the same slug can exist on another host).
+    uniqueIndex("links_domain_slug_idx").on(
+      sql`coalesce(${t.domainId}, ${DEFAULT_DOMAIN})`,
+      t.slug,
+    ),
+    // Plain slug index for the redirect lookup (filtered by domain in the query).
+    index("links_slug_idx").on(t.slug),
     index("links_user_created_idx").on(t.userId, t.createdAt),
     index("links_project_created_idx").on(t.projectId, t.createdAt),
+  ],
+);
+
+// Retired back-halves: when a link's domain/slug is edited, the previous
+// (domain, slug) is kept here so old shared links keep redirecting (Bitly-style).
+// Every alias points at its link; clicks are always logged against that link.
+export const linkAliases = pgTable(
+  "link_aliases",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    linkId: uuid()
+      .notNull()
+      .references(() => links.id, { onDelete: "cascade" }),
+    domainId: uuid().references(() => domains.id),
+    slug: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("link_aliases_domain_slug_idx").on(
+      sql`coalesce(${t.domainId}, ${DEFAULT_DOMAIN})`,
+      t.slug,
+    ),
+    index("link_aliases_slug_idx").on(t.slug),
+    index("link_aliases_link_idx").on(t.linkId),
   ],
 );
 
@@ -163,6 +201,7 @@ export const domains = pgTable(
 
 export type UserRow = typeof users.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
+export type LinkAliasRow = typeof linkAliases.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
 export type ClickRow = typeof clicks.$inferSelect;
 export type QrPresetRow = typeof qrPresets.$inferSelect;

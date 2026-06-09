@@ -17,6 +17,7 @@ import {
   deleteCustomHostname,
   getCustomHostname,
 } from "../lib/cloudflare";
+import { invalidateDomainHost } from "../lib/domainScope";
 import type { DomainDnsRecord, DomainDTO, DomainListDTO } from "@shared/types";
 
 const route = new Hono<AppEnv>();
@@ -58,6 +59,15 @@ function isUniqueViolation(e: unknown): boolean {
     err?.code === "23505" ||
     err?.cause?.code === "23505" ||
     /unique|constraint/i.test(String((e as Error)?.message))
+  );
+}
+
+function isForeignKeyViolation(e: unknown): boolean {
+  const err = e as { code?: string; cause?: { code?: string } } | null;
+  return (
+    err?.code === "23503" ||
+    err?.cause?.code === "23503" ||
+    /foreign key|FOREIGN KEY/i.test(String((e as Error)?.message))
   );
 }
 
@@ -133,6 +143,7 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
         })
         .returning()
     )[0];
+    await invalidateDomainHost(c.env.LINKS_KV, hostname);
     return c.json({ domain: toDTO(Boolean(saas), row) }, 201);
   } catch (e) {
     if (saas && cfHostnameId) await deleteCustomHostname(saas, cfHostnameId).catch(() => {});
@@ -183,12 +194,25 @@ route.post("/:id/check", async (c) => {
 route.delete("/:id", async (c) => {
   const row = await ownedDomain(c);
   if (!row) return c.json({ error: "Not found" }, 404);
+  const { domains } = c.var.schema;
+  // A domain can't be removed while links still point at it (FK). Surface that
+  // as a clear message instead of a 500.
+  try {
+    await c.var.db.delete(domains).where(eq(domains.id, row.id));
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return c.json(
+        { error: "Move or delete this domain’s links before removing it" },
+        409,
+      );
+    }
+    throw e;
+  }
   if (row.cfHostnameId) {
     const saas = await loadSaas(c);
     if (saas) await deleteCustomHostname(saas, row.cfHostnameId).catch(() => {});
   }
-  const { domains } = c.var.schema;
-  await c.var.db.delete(domains).where(eq(domains.id, row.id));
+  await invalidateDomainHost(c.env.LINKS_KV, row.hostname);
   return c.json({ ok: true });
 });
 

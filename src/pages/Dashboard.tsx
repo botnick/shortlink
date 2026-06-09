@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import { cn, shortUrlFor } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { formatNumber, timeAgo } from "@/lib/format";
 import type { LinkDTO, LinkListDTO, ProjectDTO } from "@shared/types";
 import { useProjects } from "@/lib/useProjects";
@@ -201,7 +201,7 @@ export function Dashboard() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <a
-                    href={shortUrlFor(link.slug)}
+                    href={link.shortUrl}
                     target="_blank"
                     rel="noreferrer"
                     className={cn(
@@ -226,7 +226,7 @@ export function Dashboard() {
                 <span>{timeAgo(link.createdAt)}</span>
               </div>
 
-              <CopyButton value={shortUrlFor(link.slug)} />
+              <CopyButton value={link.shortUrl} />
 
               <Hint label="Edit">
                 <Button
@@ -265,7 +265,7 @@ export function Dashboard() {
                     </RouterLink>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <a href={shortUrlFor(link.slug)} target="_blank" rel="noreferrer">
+                    <a href={link.shortUrl} target="_blank" rel="noreferrer">
                       <ExternalLink /> Open link
                     </a>
                   </DropdownMenuItem>

@@ -22,6 +22,8 @@ import domainRoutes from "./routes/domains";
 import projectRoutes from "./routes/projects";
 import { getCachedPublicConfig } from "./lib/appconfig";
 import { getCachedLink, putCachedLink, routeDestination } from "./lib/cache";
+import { cachePayload } from "./lib/linkCache";
+import { buildShortUrl, findLinkRow, resolveScope } from "./lib/domainScope";
 import {
   getSeoBundle,
   injectSeo,
@@ -71,29 +73,33 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 app.get("/api/qr/:slug", async (c) => {
   const slug = c.req.param("slug");
   if (!isValidCustomSlug(slug)) return c.json({ error: "Not found" }, 404);
+  const scope = await resolveScope(c, c.req.header("host"));
   const { db, schema, close } = getDbHandle(c.env);
-  const { links, projects } = schema;
+  const { projects } = schema;
   try {
-    const rows = await db
-      .select({
-        slug: links.slug,
-        isActive: links.isActive,
-        expiresAt: links.expiresAt,
-        color: projects.color,
-        logo: projects.logo,
-        qrConfig: links.qrConfig,
-      })
-      .from(links)
-      .leftJoin(projects, eq(links.projectId, projects.id))
-      .where(eq(links.slug, slug))
-      .limit(1);
-    const l = rows[0];
+    const l = await findLinkRow(db, schema, scope.domainId, slug);
     const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l || !l.isActive || expired) return c.json({ error: "Not found" }, 404);
+    const p = l.projectId
+      ? (
+          await db
+            .select({ color: projects.color, logo: projects.logo })
+            .from(projects)
+            .where(eq(projects.id, l.projectId))
+            .limit(1)
+        )[0]
+      : undefined;
     const logo =
-      l.logo && (l.logo.startsWith("data:") || l.logo.startsWith("http")) ? l.logo : null;
+      p?.logo && (p.logo.startsWith("data:") || p.logo.startsWith("http"))
+        ? p.logo
+        : null;
     return c.json(
-      { shortUrl: `${c.env.APP_URL}/${l.slug}`, color: l.color ?? null, logo, qrConfig: l.qrConfig ?? null },
+      {
+        shortUrl: buildShortUrl(c.env, scope.domainId ? scope.host : null, l.slug),
+        color: p?.color ?? null,
+        logo,
+        qrConfig: l.qrConfig ?? null,
+      },
       200,
       { "cache-control": "public, max-age=300" },
     );
@@ -110,24 +116,10 @@ app.post("/api/unlock/:slug", async (c) => {
   if (!isValidCustomSlug(slug)) return spa(c, 404);
   const body = await c.req.parseBody();
   const password = typeof body.password === "string" ? body.password : "";
+  const scope = await resolveScope(c, c.req.header("host"));
   const { db, schema, close } = getDbHandle(c.env);
-  const { links } = schema;
   try {
-    const rows = await db
-      .select({
-        id: links.id,
-        destination: links.destination,
-        iosUrl: links.iosUrl,
-        androidUrl: links.androidUrl,
-        desktopUrl: links.desktopUrl,
-        isActive: links.isActive,
-        expiresAt: links.expiresAt,
-        passwordHash: links.passwordHash,
-      })
-      .from(links)
-      .where(eq(links.slug, slug))
-      .limit(1);
-    const l = rows[0];
+    const l = await findLinkRow(db, schema, scope.domainId, slug);
     const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l || !l.isActive || expired) return spa(c, 410);
     if (l.passwordHash && !(await verifyPassword(password, l.passwordHash))) {
@@ -176,25 +168,22 @@ app.get("/qr/:file", async (c) => {
   const m = /^([a-zA-Z0-9_-]{3,32})\.svg$/.exec(file);
   if (!m) return serveAssets(c); // not a .svg request → serve the SPA page
   const slug = m[1];
+  const scope = await resolveScope(c, c.req.header("host"));
   const { db, schema, close } = getDbHandle(c.env);
-  const { links, projects } = schema;
+  const { projects } = schema;
   try {
-    const rows = await db
-      .select({
-        slug: links.slug,
-        isActive: links.isActive,
-        expiresAt: links.expiresAt,
-        color: projects.color,
-        logo: projects.logo,
-        qrConfig: links.qrConfig,
-      })
-      .from(links)
-      .leftJoin(projects, eq(links.projectId, projects.id))
-      .where(eq(links.slug, slug))
-      .limit(1);
-    const l = rows[0];
+    const l = await findLinkRow(db, schema, scope.domainId, slug);
     const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l || !l.isActive || expired) return spa(c, 404);
+    const projectLogo = l.projectId
+      ? (
+          await db
+            .select({ logo: projects.logo })
+            .from(projects)
+            .where(eq(projects.id, l.projectId))
+            .limit(1)
+        )[0]?.logo ?? null
+      : null;
     // Reflect the saved design's colours + logo (the server can't reproduce
     // qr-code-styling's gradients/frames, but matches the common case).
     const qc = (l.qrConfig as Record<string, unknown> | null) ?? {};
@@ -202,8 +191,9 @@ app.get("/qr/:file", async (c) => {
       typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : fb;
     const fg = hex(qc.fg, "#000000");
     const corner = hex(qc.cornerSquareColor, fg);
-    const logo = qc.logo && typeof qc.logoSrc === "string" ? qc.logoSrc : l.logo;
-    return c.body(qrSvg(`${c.env.APP_URL}/${l.slug}`, { fg, brand: corner, logo }), 200, {
+    const logo = qc.logo && typeof qc.logoSrc === "string" ? qc.logoSrc : projectLogo;
+    const shortUrl = buildShortUrl(c.env, scope.domainId ? scope.host : null, l.slug);
+    return c.body(qrSvg(shortUrl, { fg, brand: corner, logo }), 200, {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "public, max-age=86400",
     });
@@ -219,49 +209,30 @@ app.get("/:slug", async (c) => {
   // app routes, /favicon.ico, and dev module paths like /@react-refresh — is an asset.
   if (!isValidCustomSlug(slug)) return serveAssets(c);
 
+  // Which domain does this host map to? The same slug can exist on several
+  // hosts, so every lookup is scoped to one domain bucket.
+  const scope = await resolveScope(c, c.req.header("host"));
+
   // Social crawlers (FB/X/IG/Slack/…) get an OG-tagged preview instead of the
   // redirect, so a shared link can show a branded card. Bots don't run JS and
   // aren't counted as clicks; humans always fall through to the fast path.
   if (isCrawler(c.req.header("user-agent") ?? null)) {
-    const preview = await serveSocialPreview(c, slug);
+    const preview = await serveSocialPreview(c, scope.domainId, slug);
     if (preview) return preview;
   }
 
   const kv = c.env.LINKS_KV;
-  let cached = await getCachedLink(kv, slug);
+  let cached = await getCachedLink(kv, scope.domainId, slug);
 
   // KV miss → the database is the source of truth; warm the cache for next time.
+  // findLinkRow also follows a retired alias to its live link (old links work).
   if (!cached) {
     const { db, schema, close } = getDbHandle(c.env);
-    const { links } = schema;
     try {
-      const rows = await db
-        .select({
-          id: links.id,
-          destination: links.destination,
-          iosUrl: links.iosUrl,
-          androidUrl: links.androidUrl,
-          desktopUrl: links.desktopUrl,
-          isActive: links.isActive,
-          passwordHash: links.passwordHash,
-          expiresAt: links.expiresAt,
-        })
-        .from(links)
-        .where(eq(links.slug, slug))
-        .limit(1);
-      const l = rows[0];
-      if (l) {
-        cached = {
-          id: l.id,
-          destination: l.destination,
-          iosUrl: l.iosUrl,
-          androidUrl: l.androidUrl,
-          desktopUrl: l.desktopUrl,
-          isActive: l.isActive,
-          hasPassword: Boolean(l.passwordHash),
-          expiresAt: l.expiresAt ? l.expiresAt.getTime() : null,
-        };
-        c.executionCtx.waitUntil(putCachedLink(kv, slug, cached));
+      const row = await findLinkRow(db, schema, scope.domainId, slug);
+      if (row) {
+        cached = cachePayload(row);
+        c.executionCtx.waitUntil(putCachedLink(kv, scope.domainId, slug, cached));
       }
     } finally {
       c.executionCtx.waitUntil(close());
@@ -368,13 +339,12 @@ button{height:44px;border:0;border-radius:10px;background:${brand};color:#fff;fo
  */
 async function serveSocialPreview(
   c: AppContext,
+  domainId: string | null,
   slug: string,
 ): Promise<Response | null> {
   const { db, schema, close } = getDbHandle(c.env);
-  const { links } = schema;
   try {
-    const rows = await db.select().from(links).where(eq(links.slug, slug)).limit(1);
-    const l = rows[0];
+    const l = await findLinkRow(db, schema, domainId, slug);
     if (!l) return null;
     const expired = l.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l.isActive || expired || l.previewMode === "off") return null;

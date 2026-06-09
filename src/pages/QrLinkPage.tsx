@@ -160,7 +160,14 @@ export function QrLinkPage() {
             <button
               type="button"
               onClick={() => {
-                void navigator.clipboard.writeText(`${window.location.origin}/qr/${slug}.svg`);
+                const origin = (() => {
+                  try {
+                    return new URL(data.shortUrl).origin;
+                  } catch {
+                    return window.location.origin;
+                  }
+                })();
+                void navigator.clipboard.writeText(`${origin}/qr/${slug}.svg`);
                 setCopiedDirect(true);
                 setTimeout(() => setCopiedDirect(false), 1500);
               }}

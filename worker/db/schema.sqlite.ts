@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   sqliteTable,
   text,
@@ -5,6 +6,12 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+
+// Coalesce a NULL domain (the default short host) to '' so it participates in
+// the per-domain unique slug index — SQLite treats NULLs as distinct otherwise.
+// Written as a raw expression (no column interpolation) so drizzle-kit emits it
+// verbatim in the generated migration.
+const DOMAIN_BUCKET = sql`coalesce(domain_id, '')`;
 
 // SQLite (Cloudflare D1) mirror of schema.ts. Same table/column names so the
 // query layer is dialect-agnostic; only the column storage types differ
@@ -64,6 +71,8 @@ export const links = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     projectId: text().references(() => projects.id, { onDelete: "set null" }),
+    // Custom domain the back-half lives on; null = default short host.
+    domainId: text().references(() => domains.id),
     title: text(),
     isActive: integer({ mode: "boolean" }).notNull().default(true),
     expiresAt: integer({ mode: "timestamp" }),
@@ -78,9 +87,29 @@ export const links = sqliteTable(
     updatedAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
   },
   (t) => [
-    uniqueIndex("links_slug_idx").on(t.slug),
+    uniqueIndex("links_domain_slug_idx").on(DOMAIN_BUCKET, t.slug),
+    index("links_slug_idx").on(t.slug),
     index("links_user_created_idx").on(t.userId, t.createdAt),
     index("links_project_created_idx").on(t.projectId, t.createdAt),
+  ],
+);
+
+// Retired back-halves kept alive so old shared links still redirect (Bitly-style).
+export const linkAliases = sqliteTable(
+  "link_aliases",
+  {
+    id: text().primaryKey().$defaultFn(uuid),
+    linkId: text()
+      .notNull()
+      .references(() => links.id, { onDelete: "cascade" }),
+    domainId: text().references(() => domains.id),
+    slug: text().notNull(),
+    createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex("link_aliases_domain_slug_idx").on(DOMAIN_BUCKET, t.slug),
+    index("link_aliases_slug_idx").on(t.slug),
+    index("link_aliases_link_idx").on(t.linkId),
   ],
 );
 

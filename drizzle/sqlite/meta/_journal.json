@@ -64,6 +64,13 @@
       "when": 1781023199039,
       "tag": "0008_giant_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1781026414576,
+      "tag": "0009_windy_spectrum",
+      "breakpoints": true
     }
   ]
 }
