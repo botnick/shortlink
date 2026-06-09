@@ -58,6 +58,11 @@ export interface LinkAliasListDTO {
   aliases: LinkAliasDTO[];
 }
 
+export interface BulkImportResultDTO {
+  created: LinkDTO[];
+  errors: { index: number; destination: string; reason: string }[];
+}
+
 export interface ProjectDTO {
   id: string;
   name: string;

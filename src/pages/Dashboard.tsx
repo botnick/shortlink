@@ -10,6 +10,7 @@ import {
   QrCode,
   Search,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ import type { LinkDTO, LinkListDTO, ProjectDTO } from "@shared/types";
 import { useProjects } from "@/lib/useProjects";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { ProjectDialog } from "@/components/ProjectDialog";
+import { BulkImportDialog } from "@/components/BulkImportDialog";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +45,8 @@ export function Dashboard() {
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [nonce, setNonce] = useState(0);
   const reqId = useRef(0);
   const navigate = useNavigate();
 
@@ -88,7 +92,7 @@ export function Dashboard() {
       .finally(() => {
         if (id === reqId.current) setLoading(false);
       });
-  }, [search, selectedId, activeTag, fetchPage]);
+  }, [search, selectedId, activeTag, nonce, fetchPage]);
 
   async function loadMore() {
     if (!cursor) return;
@@ -161,9 +165,19 @@ export function Dashboard() {
             </span>
           )}
         </div>
-        <Button onClick={() => navigate("/dashboard/links/new")} className="shrink-0" aria-label="New link">
-          <Plus /> <span className="hidden sm:inline">New link</span>
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+            aria-label="Import links"
+            title="Import links"
+          >
+            <Upload /> <span className="hidden sm:inline">Import</span>
+          </Button>
+          <Button onClick={() => navigate("/dashboard/links/new")} aria-label="New link">
+            <Plus /> <span className="hidden sm:inline">New link</span>
+          </Button>
+        </div>
       </div>
 
       <div className="relative">
@@ -322,6 +336,15 @@ export function Dashboard() {
           </Button>
         </div>
       )}
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={() => {
+          setNonce((n) => n + 1);
+          void refreshProjects();
+        }}
+      />
 
       <ProjectDialog
         open={projectDialog.open}

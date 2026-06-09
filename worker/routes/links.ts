@@ -4,7 +4,12 @@ import { type SQL, and, count, desc, eq, lt, ne, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "../env";
 import type { DB, DbSchema } from "../db";
 import type { LinkRow } from "../db/schema";
-import { createLinkSchema, slugCheckSchema, updateLinkSchema } from "../lib/validators";
+import {
+  bulkImportSchema,
+  createLinkSchema,
+  slugCheckSchema,
+  updateLinkSchema,
+} from "../lib/validators";
 import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink } from "../lib/cache";
 import { buildShortUrl, domainBucket } from "../lib/domainScope";
@@ -358,6 +363,88 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     }
   }
   return c.json({ error: "Could not generate a unique slug, please retry" }, 500);
+});
+
+// BULK IMPORT — create many links at once. Each row is independent: invalid rows
+// are reported back, valid ones are created. Registered before "/:id".
+route.post("/import", zValidator("json", bulkImportSchema), async (c) => {
+  const db = c.var.db;
+  const schema = c.var.schema;
+  const { links } = schema;
+  const user = c.var.user!;
+  const { rows } = c.req.valid("json");
+
+  const settings = await getAllSettings(db, schema);
+  const blocked = blockedDomainsFrom(settings);
+  const reserved = extraReservedFrom(settings);
+  const maxLinks = maxLinksPerUserFrom(settings);
+  const projectId = await resolveProjectId(db, schema, user.id, user.email, undefined);
+  let total = Number(
+    (await db.select({ n: count() }).from(links).where(eq(links.userId, user.id)))[0].n,
+  );
+
+  const created: LinkDTO[] = [];
+  const errors: { index: number; destination: string; reason: string }[] = [];
+  const fail = (index: number, destination: string, reason: string) =>
+    errors.push({ index, destination, reason });
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    try {
+      if (maxLinks > 0 && total >= maxLinks) {
+        fail(i, r.destination, `Link limit (${maxLinks}) reached`);
+        continue;
+      }
+      if (isBlockedDestination(r.destination, blocked)) {
+        fail(i, r.destination, "Destination domain isn’t allowed");
+        continue;
+      }
+      const dom = await resolveLinkDomain(db, schema, user.id, r.domainId);
+      if ("error" in dom) {
+        fail(i, r.destination, dom.error);
+        continue;
+      }
+      const domainId = r.domainId ?? null;
+
+      let slug = r.slug;
+      if (slug) {
+        if (!isValidCustomSlug(slug) || reserved.includes(slug.toLowerCase())) {
+          fail(i, r.destination, "That alias isn’t allowed");
+          continue;
+        }
+        if (await slugTaken(db, schema, domainId, slug)) {
+          fail(i, r.destination, "That alias is already taken");
+          continue;
+        }
+      } else {
+        slug = generateSlug();
+        for (let t = 0; t < 6 && (await slugTaken(db, schema, domainId, slug)); t++) {
+          slug = generateSlug();
+        }
+      }
+
+      const row = (
+        await db
+          .insert(links)
+          .values({
+            slug,
+            destination: r.destination,
+            userId: user.id,
+            projectId,
+            domainId,
+            tags: r.tags ?? null,
+          })
+          .returning()
+      )[0];
+      await putCachedLink(c.env.LINKS_KV, row.domainId, row.slug, cachePayload(row));
+      created.push(toLinkDTO(c.env, row, dom.hostname));
+      total++;
+    } catch (e) {
+      fail(i, r.destination, isUniqueViolation(e) ? "That alias is already taken" : "Failed to create");
+    }
+  }
+
+  return c.json({ created, errors });
 });
 
 // META — the destination's own title/description/image/favicon, for the rich

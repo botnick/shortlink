@@ -243,6 +243,22 @@ export const slugCheckSchema = z.object({
   domainId: linkDomainId.optional(),
 });
 
+// Bulk import: many links at once (capped). Each row is validated independently;
+// invalid rows are reported back rather than failing the whole batch.
+export const bulkImportSchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        destination: httpUrl,
+        slug: slugField.optional(),
+        domainId: linkDomainId.optional(),
+        tags: tagsField.optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
 const projectName = z.string().trim().min(1).max(60);
 const projectColor = z.union([z.literal(""), brandColor]);
 
