@@ -236,7 +236,9 @@ export interface SettingsDTO {
   /** Closed accounts: days held before purge, then extra days the email stays blocked. */
   accountHoldDays: number;
   emailBlockDays: number;
-  /** Sign-up proof-of-work difficulty in bits (0 = off, ~16–20 recommended). */
+  /** Human check (sign-in & sign-up): off | invisible | game. */
+  challengeMode: "off" | "invisible" | "game";
+  /** Proof-of-work difficulty in bits (0 = off, ~18–20 recommended). */
   powDifficulty: number;
   /** Cloudflare for SaaS — configured via /admin. The token is never returned;
    *  `cfConfigured` reflects whether a token + zone id are set. */
@@ -279,7 +281,9 @@ export interface AppConfigDTO {
   mcpEnabled: boolean;
   /** Length of auto-generated back-halves. */
   slugLength: number;
-  /** Sign-up proof-of-work difficulty in bits (0 = off). */
+  /** Human check on sign-in/sign-up: off | invisible (silent PoW) | game (slider). */
+  challengeMode: "off" | "invisible" | "game";
+  /** Proof-of-work difficulty in bits backing the human check. */
   powDifficulty: number;
 }
 

@@ -32,6 +32,7 @@ export const SETTING_KEYS = {
   accountHoldDays: "account_hold_days",
   emailBlockDays: "email_block_days",
   powDifficulty: "pow_difficulty",
+  challengeMode: "challenge_mode",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
@@ -258,8 +259,18 @@ export function emailBlockDaysFrom(map: Record<string, unknown>): number {
  *  Self-hosted by design — no third-party challenge service. */
 export function powDifficultyFrom(map: Record<string, unknown>): number {
   const v = map[SETTING_KEYS.powDifficulty];
-  const n = typeof v === "number" ? Math.floor(v) : 18;
+  const n = typeof v === "number" ? Math.floor(v) : 19;
   return Math.min(26, Math.max(0, n));
+}
+
+export type ChallengeMode = "off" | "invisible" | "game";
+
+/** Human check on sign-in AND sign-up: off, invisible (silent proof-of-work
+ *  only), or game (a one-swipe slider puzzle on top of the proof-of-work). */
+export function challengeModeFrom(map: Record<string, unknown>): ChallengeMode {
+  const v = map[SETTING_KEYS.challengeMode];
+  if (v === "off" || v === "invisible" || v === "game") return v;
+  return "game";
 }
 
 /** Length of auto-generated back-halves (server defaults + editor suggestions),
@@ -389,7 +400,8 @@ export async function getPublicConfig(
     apiEnabled: apiEnabledFrom(map),
     mcpEnabled: mcpEnabledFrom(map),
     slugLength: slugLengthFrom(map),
-    // Browser proof-of-work difficulty for sign-up (0 = off).
+    // Human check (sign-in & sign-up): mode + proof-of-work difficulty.
+    challengeMode: challengeModeFrom(map),
     powDifficulty: powDifficultyFrom(map),
   };
 }

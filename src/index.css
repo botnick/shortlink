@@ -184,3 +184,13 @@
     line-height: 1.1;
   }
 }
+
+/* Human-check mini-game: gentle miss feedback. */
+@keyframes hc-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+.hc-shake {
+  animation: hc-shake 0.28s ease-in-out;
+}

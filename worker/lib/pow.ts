@@ -18,6 +18,12 @@ interface ChallengePayload {
   ip: string; // caller IP (hashed into the signature only via inclusion here)
   exp: number; // epoch ms
   d: number; // required leading zero bits
+  /** Game target position (12–88, %). Server-issued and covered by the HMAC,
+   *  so the "right answer" can't be chosen by the client. */
+  g: number;
+  /** Which mini-game to play (0 slide / 1 dial / 2 hold). Server-chosen and
+   *  signed, so bots must automate every variant, not learn one pattern. */
+  m: number;
 }
 
 async function hmac(env: AppBindings, data: string): Promise<string> {
@@ -43,11 +49,15 @@ export async function issueChallenge(
   ip: string,
   difficulty: number,
 ): Promise<{ challenge: string; difficulty: number; expiresAt: number }> {
+  // Game target: 12–88 so the goal never hugs an edge; game variant random.
+  const rnd = crypto.getRandomValues(new Uint8Array(2));
   const payload: ChallengePayload = {
     n: randomHex(16),
     ip,
     exp: Date.now() + CHALLENGE_TTL_MS,
     d: difficulty,
+    g: 12 + (rnd[0] % 77),
+    m: rnd[1] % 3,
   };
   const body = b64.enc(JSON.stringify(payload));
   const sig = await hmac(env, body);
@@ -56,6 +66,49 @@ export async function issueChallenge(
     difficulty,
     expiresAt: payload.exp,
   };
+}
+
+/** Decode a challenge's payload WITHOUT verifying it — for reading display
+ *  values (game target/variant). Verification happens in verifySolution. */
+export function parseChallenge(
+  challenge: string,
+): { g: number; m: number } | null {
+  const body = challenge.split(".")[0];
+  if (!body) return null;
+  try {
+    const p = JSON.parse(b64.dec(body)) as ChallengePayload;
+    return typeof p.g === "number"
+      ? { g: p.g, m: typeof p.m === "number" ? p.m : 0 }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Slider-game evidence the client submits alongside the solved challenge. */
+export interface GameEvidence {
+  pos: unknown;
+  duration: unknown;
+  moves: unknown;
+}
+
+const GAME_TOLERANCE = 4; // ± percentage points around the target
+
+/** Does the submitted slide look like a human solving THIS challenge? */
+export function verifyGame(challenge: string, ev: GameEvidence): boolean {
+  const payload = parseChallenge(challenge);
+  if (!payload) return false;
+  const pos = Number(ev.pos);
+  const duration = Number(ev.duration);
+  const moves = Number(ev.moves);
+  if (!Number.isFinite(pos) || !Number.isFinite(duration) || !Number.isFinite(moves)) {
+    return false;
+  }
+  // Released on target, with motion that took human time and human granularity.
+  if (Math.abs(pos - payload.g) > GAME_TOLERANCE) return false;
+  if (duration < 250 || duration > 120_000) return false;
+  if (moves < 8) return false;
+  return true;
 }
 
 /** Count the leading zero bits of a byte array. */

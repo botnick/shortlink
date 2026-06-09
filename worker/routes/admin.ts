@@ -29,6 +29,7 @@ import {
   authRateLimitFrom,
   blockedDomainsFrom,
   brandColorFrom,
+  challengeModeFrom,
   createRateLimitFrom,
   emailBlockDaysFrom,
   maxAliasesPerLinkFrom,
@@ -115,6 +116,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     slugLength: slugLengthFrom(map),
     accountHoldDays: accountHoldDaysFrom(map),
     emailBlockDays: emailBlockDaysFrom(map),
+    challengeMode: challengeModeFrom(map),
     powDifficulty: powDifficultyFrom(map),
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
@@ -212,6 +214,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.powDifficulty !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.powDifficulty, input.powDifficulty);
+  }
+  if (input.challengeMode !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.challengeMode, input.challengeMode);
   }
   // Custom-domain (Cloudflare for SaaS) config — set via the web, no env vars.
   // An empty token clears it; a blank token is ignored so it isn't wiped on save.

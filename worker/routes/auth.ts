@@ -8,10 +8,11 @@ import { clearSessionCookie, setSessionCookie } from "../lib/cookies";
 import {
   SETTING_KEYS,
   authRateLimitFrom,
+  challengeModeFrom,
   getAllSettings,
   powDifficultyFrom,
 } from "../lib/settings";
-import { issueChallenge, verifySolution } from "../lib/pow";
+import { issueChallenge, verifyGame, verifySolution } from "../lib/pow";
 import { isEmailBlocked } from "../lib/accountLifecycle";
 import { isRateLimited } from "../lib/ratelimit";
 import { getClientIp, getCountry, parseUserAgent } from "../lib/geo";
@@ -30,6 +31,50 @@ const AUTH_WINDOW_SEC = 15 * 60; // attempts counted per 15-minute window per IP
 /** Shared per-IP throttle for the auth endpoints. */
 async function authThrottled(c: AppContext, map: Record<string, unknown>) {
   return isRateLimited(c.env, `auth:${getClientIp(c)}`, authRateLimitFrom(map), AUTH_WINDOW_SEC);
+}
+
+interface ChallengeEvidence {
+  challenge?: string;
+  solution?: string;
+  gamePos?: number;
+  gameDuration?: number;
+  gameMoves?: number;
+  website?: string;
+}
+
+/**
+ * The human check shared by sign-in and sign-up. Layers, all of which must
+ * pass when enabled: honeypot empty → proof-of-work (HMAC-signed, IP-bound,
+ * single-use, real CPU burned) → in game mode, the slider released on the
+ * server-chosen target with human-looking motion. Always fails generically.
+ */
+async function verifyHumanity(
+  c: AppContext,
+  map: Record<string, unknown>,
+  body: ChallengeEvidence,
+): Promise<boolean> {
+  if (body.website) return false; // honeypot
+  const mode = challengeModeFrom(map);
+  if (mode === "off") return true;
+  const difficulty = powDifficultyFrom(map);
+  if (difficulty > 0) {
+    const ok = await verifySolution(
+      c.env,
+      getClientIp(c) ?? "",
+      difficulty,
+      body.challenge,
+      body.solution,
+    );
+    if (!ok) return false;
+  }
+  if (mode === "game") {
+    return verifyGame(body.challenge ?? "", {
+      pos: body.gamePos,
+      duration: body.gameDuration,
+      moves: body.gameMoves,
+    });
+  }
+  return true;
 }
 
 const auth = new Hono<AppEnv>();
@@ -59,26 +104,11 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
     return c.json({ error: "Registration is currently closed" }, 403);
   }
 
-  const { email, password, challenge, solution, website } = c.req.valid("json");
+  const body = c.req.valid("json");
+  const { email, password } = body;
 
-  // Honeypot: real users never see (or fill) this field. Fail generically.
-  if (website) {
-    return c.json({ error: "Unable to register with those details" }, 409);
-  }
-
-  // Proof-of-work check (when enforced). Generic error — nothing to learn.
-  const difficulty = powDifficultyFrom(map);
-  if (difficulty > 0) {
-    const ok = await verifySolution(
-      c.env,
-      getClientIp(c) ?? "",
-      difficulty,
-      challenge,
-      solution,
-    );
-    if (!ok) {
-      return c.json({ error: "Verification failed — please try again" }, 403);
-    }
+  if (!(await verifyHumanity(c, map, body))) {
+    return c.json({ error: "Verification failed — please try again" }, 403);
   }
 
   const { deletedAccounts } = schema;
@@ -120,7 +150,12 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   if (await authThrottled(c, map)) {
     return c.json({ error: "Too many attempts — please try again later" }, 429);
   }
-  const { email, password } = c.req.valid("json");
+  const body = c.req.valid("json");
+  const { email, password } = body;
+
+  if (!(await verifyHumanity(c, map, body))) {
+    return c.json({ error: "Verification failed — please try again" }, 403);
+  }
 
   const rows = await db
     .select({

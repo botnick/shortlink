@@ -152,7 +152,8 @@ export function AdminSettings() {
   const [slugLength, setSlugLength] = useState(6);
   const [accountHoldDays, setAccountHoldDays] = useState(180);
   const [emailBlockDays, setEmailBlockDays] = useState(180);
-  const [powDifficulty, setPowDifficulty] = useState(18);
+  const [powDifficulty, setPowDifficulty] = useState(19);
+  const [challengeMode, setChallengeMode] = useState<"off" | "invisible" | "game">("game");
   const [savingLimits, setSavingLimits] = useState(false);
 
   const [cfToken, setCfToken] = useState("");
@@ -195,7 +196,8 @@ export function AdminSettings() {
         setSlugLength(s.slugLength ?? 6);
         setAccountHoldDays(s.accountHoldDays ?? 180);
         setEmailBlockDays(s.emailBlockDays ?? 180);
-        setPowDifficulty(s.powDifficulty ?? 18);
+        setPowDifficulty(s.powDifficulty ?? 19);
+        setChallengeMode(s.challengeMode ?? "game");
         setCfZoneId(s.cfZoneId);
         setCfFallbackHost(s.cfFallbackHost);
         setUnverifiedDays(s.domainUnverifiedDays);
@@ -259,6 +261,7 @@ export function AdminSettings() {
         accountHoldDays: Math.max(0, Math.floor(accountHoldDays) || 0),
         emailBlockDays: Math.max(0, Math.floor(emailBlockDays) || 0),
         powDifficulty: Math.min(26, Math.max(0, Math.floor(powDifficulty) || 0)),
+        challengeMode,
       });
       toast.success("Limits saved");
     } catch (err) {
@@ -690,7 +693,25 @@ export function AdminSettings() {
                     </p>
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="powBits">Sign-up verification (bits)</Label>
+                    <Label htmlFor="hcMode">Human check (sign-in & sign-up)</Label>
+                    <select
+                      id="hcMode"
+                      value={challengeMode}
+                      onChange={(e) =>
+                        setChallengeMode(e.target.value as "off" | "invisible" | "game")
+                      }
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="game">Slider game + proof-of-work</option>
+                      <option value="invisible">Invisible proof-of-work only</option>
+                      <option value="off">Off</option>
+                    </select>
+                    <p className="text-[11px] text-muted-foreground">
+                      One-swipe puzzle for humans; bots must burn CPU per attempt either way.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="powBits">Proof-of-work difficulty (bits)</Label>
                     <Input
                       id="powBits"
                       type="number"
@@ -700,8 +721,8 @@ export function AdminSettings() {
                       onChange={(e) => setPowDifficulty(Number(e.target.value))}
                     />
                     <p className="text-[11px] text-muted-foreground">
-                      Invisible browser proof-of-work on sign-up — humans never notice;
-                      bots pay CPU per attempt. 0 = off, 16–20 recommended.
+                      Each +1 doubles the CPU a bot pays. 18–20 recommended; 0 disables
+                      the proof-of-work layer.
                     </p>
                   </div>
                 </div>

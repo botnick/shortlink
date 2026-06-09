@@ -39,19 +39,28 @@ const longText = z
   .max(800_000, "Image is too large — please use a smaller file");
 const description = z.string().trim().max(300);
 
+// Human-check evidence sent with sign-in and sign-up when the admin enables it:
+// the solved proof-of-work, the slider-game telemetry, and a honeypot field.
+const challengeFields = {
+  challenge: z.string().max(2048).optional(),
+  solution: z.string().max(64).optional(),
+  gamePos: z.number().finite().optional(),
+  gameDuration: z.number().finite().optional(),
+  gameMoves: z.number().finite().optional(),
+  // Honeypot — humans never fill this; bots that do are rejected generically.
+  website: z.string().max(200).optional(),
+};
+
 export const registerSchema = z.object({
   email: emailField,
   password: passwordField,
-  // Browser proof-of-work (required when the admin enables it).
-  challenge: z.string().max(2048).optional(),
-  solution: z.string().max(64).optional(),
-  // Honeypot — humans never fill this; bots that do are rejected generically.
-  website: z.string().max(200).optional(),
+  ...challengeFields,
 });
 
 export const loginSchema = z.object({
   email: emailField,
   password: z.string().min(1).max(200),
+  ...challengeFields,
 });
 
 export const setupSchema = z.object({
@@ -108,6 +117,7 @@ export const settingsSchema = z
     accountHoldDays: z.number().int().min(0).max(3650).optional(),
     emailBlockDays: z.number().int().min(0).max(3650).optional(),
     powDifficulty: z.number().int().min(0).max(26).optional(),
+    challengeMode: z.enum(["off", "invisible", "game"]).optional(),
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),

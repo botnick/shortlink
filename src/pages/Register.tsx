@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { Check, Eye, EyeOff, Loader2, LockKeyhole, ShieldCheck, X } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, LockKeyhole, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useConfig } from "@/lib/config";
-import { api, ApiError } from "@/lib/api";
-import { solvePow } from "@/lib/pow";
+import { ApiError } from "@/lib/api";
+import { HumanCheck, type HumanPayload } from "@/components/HumanCheck";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,42 +50,10 @@ export function Register() {
   // Honeypot — invisible to humans; bots that fill it are rejected.
   const [website, setWebsite] = useState("");
 
-  // Invisible bot check: fetch a proof-of-work puzzle and solve it silently in
-  // the background while the user types. No interaction, ever.
-  const powOn = config.powDifficulty > 0;
-  const [pow, setPow] = useState<{ challenge: string; solution: string } | null>(null);
-  const [powState, setPowState] = useState<"idle" | "solving" | "ready">("idle");
-  const powAbort = useRef<AbortController | null>(null);
-
-  const startPow = useCallback(() => {
-    if (!powOn) return;
-    powAbort.current?.abort();
-    const ctl = new AbortController();
-    powAbort.current = ctl;
-    setPow(null);
-    setPowState("solving");
-    api
-      .get<{ challenge: string | null; difficulty: number }>("/auth/challenge")
-      .then(async (r) => {
-        if (!r.challenge || ctl.signal.aborted) {
-          if (!r.challenge) setPowState("ready"); // turned off server-side
-          return;
-        }
-        const solution = await solvePow(r.challenge, r.difficulty, ctl.signal);
-        if (ctl.signal.aborted) return;
-        setPow({ challenge: r.challenge, solution });
-        setPowState("ready");
-      })
-      .catch(() => {
-        // Network/abort — try once more on submit rather than blocking typing.
-        if (!ctl.signal.aborted) setPowState("idle");
-      });
-  }, [powOn]);
-
-  useEffect(() => {
-    if (!closed) startPow();
-    return () => powAbort.current?.abort();
-  }, [closed, startPow]);
+  // Human check (invisible PoW or slider game, per admin setting).
+  const checkOn = config.challengeMode !== "off";
+  const [human, setHuman] = useState<HumanPayload | null>(null);
+  const [hcNonce, setHcNonce] = useState(0);
 
   if (!loading && user) return <Navigate to="/dashboard" replace />;
 
@@ -94,27 +62,25 @@ export function Register() {
   const longEnough = password.length >= 8;
   const matches = confirm.length > 0 && password === confirm;
   const mismatch = confirm.length > 0 && password !== confirm;
-  const powReady = !powOn || powState === "ready";
+  const humanReady = !checkOn || human !== null;
   const canSubmit =
-    !submitting && longEnough && matches && email.trim().length > 0 && powReady;
+    !submitting && longEnough && matches && email.trim().length > 0 && humanReady;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      await register(email, password, {
-        ...(pow ?? {}),
-        website,
-      });
+      await register(email, password, { ...(human ?? {}), website });
       toast.success("Account created");
       navigate("/dashboard");
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         if (/verification/i.test(err.message)) {
           // Challenge expired or was already used — mint a fresh one quietly.
-          toast.error("Please try again in a moment");
-          startPow();
+          toast.error("Please try that check once more");
+          setHuman(null);
+          setHcNonce((n) => n + 1);
         } else {
           setClosed(true);
         }
@@ -243,25 +209,8 @@ export function Register() {
                 )}
               </div>
 
-              {powOn && (
-                <p
-                  className={cn(
-                    "flex items-center justify-center gap-1.5 text-xs",
-                    powState === "ready" ? "text-emerald-600" : "text-muted-foreground",
-                  )}
-                  aria-live="polite"
-                >
-                  {powState === "ready" ? (
-                    <>
-                      <ShieldCheck className="size-3.5" /> Browser verified
-                    </>
-                  ) : (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" /> Checking your
-                      browser…
-                    </>
-                  )}
-                </p>
+              {checkOn && !closed && (
+                <HumanCheck nonce={hcNonce} onChange={setHuman} />
               )}
 
               <Button type="submit" className="w-full" disabled={!canSubmit}>
