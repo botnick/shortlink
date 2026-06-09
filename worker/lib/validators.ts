@@ -244,6 +244,7 @@ export const projectCreateSchema = z.object({
   name: projectName,
   color: projectColor.optional(),
   logo: longText.nullable().optional(),
+  defaultDomainId: z.string().uuid().nullable().optional(),
 });
 
 export const projectUpdateSchema = z
@@ -251,5 +252,6 @@ export const projectUpdateSchema = z
     name: projectName.optional(),
     color: projectColor.optional(),
     logo: longText.nullable().optional(),
+    defaultDomainId: z.string().uuid().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "No changes provided");

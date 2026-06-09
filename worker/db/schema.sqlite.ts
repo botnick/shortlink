@@ -123,6 +123,8 @@ export const projects = sqliteTable(
     name: text().notNull(),
     color: text(),
     logo: text(),
+    // Default custom domain for new links in this project (null = default host).
+    defaultDomainId: text().references(() => domains.id, { onDelete: "set null" }),
     createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
   },
   (t) => [index("projects_user_idx").on(t.userId, t.createdAt)],

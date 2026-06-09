@@ -37,10 +37,23 @@ function toDTO(row: ProjectRow, linkCount: number, isDefault: boolean): ProjectD
       row.logo && (row.logo.startsWith("data:") || row.logo.startsWith("http"))
         ? row.logo
         : null,
+    defaultDomainId: row.defaultDomainId,
     linkCount,
     isDefault,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/** A domain id the user owns, or null/undefined (= clear / not set). */
+async function ownsDomain(c: AppContext, domainId: string | null | undefined) {
+  if (!domainId) return true;
+  const { domains } = c.var.schema;
+  const r = await c.var.db
+    .select({ id: domains.id })
+    .from(domains)
+    .where(and(eq(domains.id, domainId), eq(domains.userId, c.var.user!.id)))
+    .limit(1);
+  return r.length > 0;
 }
 
 async function ownedProject(c: AppContext): Promise<ProjectRow | null> {
@@ -102,6 +115,9 @@ route.get("/", async (c) => {
 route.post("/", zValidator("json", projectCreateSchema), async (c) => {
   const { projects } = c.var.schema;
   const input = c.req.valid("json");
+  if (!(await ownsDomain(c, input.defaultDomainId))) {
+    return c.json({ error: "That domain isn’t available" }, 400);
+  }
   const row = (
     await c.var.db
       .insert(projects)
@@ -110,6 +126,7 @@ route.post("/", zValidator("json", projectCreateSchema), async (c) => {
         name: input.name,
         color: input.color || null,
         logo: cleanLogo(input.logo),
+        defaultDomainId: input.defaultDomainId ?? null,
       })
       .returning()
   )[0];
@@ -127,6 +144,12 @@ route.patch("/:id", zValidator("json", projectUpdateSchema), async (c) => {
   if (input.name !== undefined) patch.name = input.name;
   if (input.color !== undefined) patch.color = input.color || null;
   if (input.logo !== undefined) patch.logo = cleanLogo(input.logo);
+  if (input.defaultDomainId !== undefined) {
+    if (!(await ownsDomain(c, input.defaultDomainId))) {
+      return c.json({ error: "That domain isn’t available" }, 400);
+    }
+    patch.defaultDomainId = input.defaultDomainId ?? null;
+  }
 
   const row = (
     await c.var.db.update(projects).set(patch).where(eq(projects.id, proj.id)).returning()

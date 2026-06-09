@@ -388,6 +388,14 @@ export function LinkEditor() {
     };
   }, []);
 
+  // On create, start new links on the selected project's default domain.
+  const projectDomainApplied = useRef(false);
+  useEffect(() => {
+    if (isEdit || projectDomainApplied.current || !selected) return;
+    projectDomainApplied.current = true;
+    if (selected.defaultDomainId) setDomainId(selected.defaultDomainId);
+  }, [isEdit, selected]);
+
   // Retired back-halves (history). Refetched after a back-half change saves.
   function loadAliases() {
     if (!isEdit || !id) return;

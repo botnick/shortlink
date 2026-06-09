@@ -63,6 +63,8 @@ export interface ProjectDTO {
   /** Brand presets for this project — null inherits the global brand. */
   color: string | null;
   logo: string | null;
+  /** Default custom domain for new links in this project (null = default host). */
+  defaultDomainId: string | null;
   linkCount: number;
   isDefault: boolean;
   createdAt: string;

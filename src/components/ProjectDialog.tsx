@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { compressImage } from "@/lib/image";
 import { useConfig } from "@/lib/config";
-import type { ProjectDTO } from "@shared/types";
+import type { DomainDTO, DomainListDTO, ProjectDTO } from "@shared/types";
 import {
   Dialog,
   DialogClose,
@@ -43,6 +43,8 @@ export function ProjectDialog({
   const [name, setName] = useState("");
   const [color, setColor] = useState("");
   const [logo, setLogo] = useState("");
+  const [defaultDomainId, setDefaultDomainId] = useState<string | null>(null);
+  const [domains, setDomains] = useState<DomainDTO[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   // Delete sub-view (no native confirm): choose to move links or delete them.
@@ -56,11 +58,30 @@ export function ProjectDialog({
       setName(project?.name ?? "");
       setColor(project?.color ?? "");
       setLogo(project?.logo ?? "");
+      setDefaultDomainId(project?.defaultDomainId ?? null);
       setConfirmDelete(false);
       setDeleteMode("move");
       setMoveTo(projects.find((p) => p.id !== project?.id)?.id ?? "");
     }
   }, [open, project, projects]);
+
+  // Usable custom domains to offer as the project's default.
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    api
+      .get<DomainListDTO>("/domains")
+      .then((r) => {
+        if (active)
+          setDomains(
+            r.domains.filter((d) => d.status === "verified" || d.status === "active"),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [open]);
 
   async function pickLogo(file: File | undefined) {
     if (!file) return;
@@ -80,7 +101,12 @@ export function ProjectDialog({
     if (!name.trim()) return;
     setSubmitting(true);
     try {
-      const body = { name: name.trim(), color: color || "", logo: logo || null };
+      const body = {
+        name: name.trim(),
+        color: color || "",
+        logo: logo || null,
+        defaultDomainId,
+      };
       const { project: saved } = isEdit
         ? await api.patch<{ project: ProjectDTO }>(`/projects/${project!.id}`, body)
         : await api.post<{ project: ProjectDTO }>("/projects", body);
@@ -263,6 +289,31 @@ export function ProjectDialog({
                   )}
                 </div>
               </div>
+
+              {domains.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="proj-domain">
+                    Default domain{" "}
+                    <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <select
+                    id="proj-domain"
+                    value={defaultDomainId ?? ""}
+                    onChange={(e) => setDefaultDomainId(e.target.value || null)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">Default short link host</option>
+                    {domains.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.hostname}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    New links in this project start on this domain.
+                  </p>
+                </div>
+              )}
 
               <DialogFooter className="sm:justify-between">
                 {isEdit && others.length > 0 ? (

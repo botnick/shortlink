@@ -132,6 +132,8 @@ export const projects = pgTable(
     // (the image itself lives in R2 at projlogo/<id>). null = inherit the global.
     color: text(),
     logo: text(),
+    // Default custom domain for new links in this project (null = default host).
+    defaultDomainId: uuid().references(() => domains.id, { onDelete: "set null" }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("projects_user_idx").on(t.userId, t.createdAt)],
