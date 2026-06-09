@@ -20,6 +20,7 @@ import type { LinkDTO, LinkListDTO, ProjectDTO } from "@shared/types";
 import { useProjects } from "@/lib/useProjects";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { ProjectDialog } from "@/components/ProjectDialog";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,6 +45,7 @@ export function Dashboard() {
   const [search, setSearch] = useState("");
   const reqId = useRef(0);
 
+  const confirm = useConfirm();
   const { projects, selected, selectedId, setSelectedId, refresh: refreshProjects } =
     useProjects();
   const [projectDialog, setProjectDialog] = useState<{
@@ -123,7 +125,13 @@ export function Dashboard() {
   }
 
   async function remove(link: LinkDTO) {
-    if (!window.confirm(`Delete /${link.slug}? This can't be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete /${link.slug}?`,
+      description: "This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await api.delete(`/links/${link.id}`);
       setLinks((prev) => prev.filter((l) => l.id !== link.id));
@@ -291,6 +299,7 @@ export function Dashboard() {
         open={projectDialog.open}
         onOpenChange={(o) => setProjectDialog((s) => ({ ...s, open: o }))}
         project={projectDialog.project}
+        projects={projects}
         onSaved={(p) => {
           void refreshProjects();
           if (!projectDialog.project) setSelectedId(p.id);

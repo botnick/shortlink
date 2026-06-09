@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { CopyButton } from "@/components/CopyButton";
+import { useConfirm } from "@/components/ConfirmProvider";
 
 const HOST_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
 
@@ -102,6 +103,7 @@ export function Domains() {
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const confirm = useConfirm();
 
   const toggle = (id: string) =>
     setOpen((s) => {
@@ -160,7 +162,14 @@ export function Domains() {
   }
 
   async function remove(d: DomainDTO) {
-    if (!window.confirm(`Remove ${d.hostname}?`)) return;
+    if (
+      !(await confirm({
+        title: `Remove ${d.hostname}?`,
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
     setBusy(d.id);
     try {
       await api.delete(`/domains/${d.id}`);

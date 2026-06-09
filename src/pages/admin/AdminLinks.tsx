@@ -18,6 +18,7 @@ import type { AdminLinkDTO, AdminLinkListDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useConfirm } from "@/components/ConfirmProvider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +36,7 @@ export function AdminLinks({
   userLabel?: string;
   onClearFilter?: () => void;
 }) {
+  const confirm = useConfirm();
   const list = useSearchList<AdminLinkDTO>(async ({ q, cursor }) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -63,7 +65,16 @@ export function AdminLinks({
   async function bulk(action: "pause" | "activate" | "delete") {
     const ids = [...selected];
     if (ids.length === 0) return;
-    if (action === "delete" && !window.confirm(`Delete ${ids.length} link(s)? This can't be undone.`)) return;
+    if (
+      action === "delete" &&
+      !(await confirm({
+        title: `Delete ${ids.length} link${ids.length === 1 ? "" : "s"}?`,
+        description: "This can't be undone.",
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     setBulking(true);
     try {
       await api.post("/admin/links/bulk", { ids, action });
@@ -92,7 +103,15 @@ export function AdminLinks({
   }
 
   async function remove(l: AdminLinkDTO) {
-    if (!window.confirm(`Delete /${l.slug}? This can't be undone.`)) return;
+    if (
+      !(await confirm({
+        title: `Delete /${l.slug}?`,
+        description: "This can't be undone.",
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await api.delete(`/admin/links/${l.id}`);
       list.removeItem((x) => x.id === l.id);

@@ -7,8 +7,10 @@ import type { AdminDomainDTO, AdminDomainListDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useConfirm } from "@/components/ConfirmProvider";
 
 export function AdminDomains() {
+  const confirm = useConfirm();
   const list = useSearchList<AdminDomainDTO>(async ({ q, cursor }) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -35,7 +37,15 @@ export function AdminDomains() {
   }
 
   async function remove(d: AdminDomainDTO) {
-    if (!window.confirm(`Remove ${d.hostname} (owned by ${d.ownerEmail})?`)) return;
+    if (
+      !(await confirm({
+        title: `Remove ${d.hostname}?`,
+        description: `Owned by ${d.ownerEmail}.`,
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await api.delete(`/admin/domains/${d.id}`);
       list.removeItem((x) => x.id === d.id);

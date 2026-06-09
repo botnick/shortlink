@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, asc, count, eq, ne } from "drizzle-orm";
-import type { AppContext, AppEnv, AppBindings } from "../env";
+import type { AppContext, AppEnv } from "../env";
 import type { ProjectRow } from "../db/schema";
 import { projectCreateSchema, projectUpdateSchema } from "../lib/validators";
 import { ensureDefaultProject } from "../lib/projects";
+import { deleteCachedLink } from "../lib/cache";
 import { requireAuth } from "../middleware/auth";
 import type { ProjectDTO, ProjectListDTO } from "@shared/types";
 
@@ -13,36 +14,12 @@ route.use("*", requireAuth);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Store a project logo in R2 (keyed by project id). Returns the column value:
- *  "r2", an http URL, or "" (none). Mirrors links' resolveOgImage. */
-async function resolveLogo(
-  env: AppBindings,
-  projectId: string,
-  value: string | null | undefined,
-): Promise<string> {
-  const key = `projlogo/${projectId}`;
-  if (!value) {
-    await env.LOGO_BUCKET.delete(key).catch(() => {});
-    return "";
-  }
-  if (value === `/api/projects/${projectId}/logo`) return "r2"; // unchanged pointer
-  if (value.startsWith("http")) return value;
-  const m = /^data:([^;]+);base64,(.+)$/.exec(value);
-  if (!m) return "";
-  try {
-    const bin = atob(m[2]);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    await env.LOGO_BUCKET.put(key, bytes, { httpMetadata: { contentType: m[1] } });
-    return "r2";
-  } catch {
-    return "";
-  }
-}
-
-function logoUrl(id: string, stored: string | null): string | null {
-  if (stored === "r2") return `/api/projects/${id}/logo`;
-  return stored && stored.startsWith("http") ? stored : null;
+/** A project logo is small and there are only a few per account, so it's kept
+ *  inline (a data URL or http URL) — no R2 round-trip, and it renders without an
+ *  authenticated image request. */
+function cleanLogo(value: string | null | undefined): string {
+  if (!value) return "";
+  return value.startsWith("data:image/") || value.startsWith("http") ? value : "";
 }
 
 function toDTO(row: ProjectRow, linkCount: number, isDefault: boolean): ProjectDTO {
@@ -50,7 +27,10 @@ function toDTO(row: ProjectRow, linkCount: number, isDefault: boolean): ProjectD
     id: row.id,
     name: row.name,
     color: row.color || null,
-    logo: logoUrl(row.id, row.logo),
+    logo:
+      row.logo && (row.logo.startsWith("data:") || row.logo.startsWith("http"))
+        ? row.logo
+        : null,
     linkCount,
     isDefault,
     createdAt: row.createdAt.toISOString(),
@@ -102,31 +82,15 @@ route.post("/", zValidator("json", projectCreateSchema), async (c) => {
   const row = (
     await c.var.db
       .insert(projects)
-      .values({ userId: c.var.user!.id, name: input.name, color: input.color || null, logo: "" })
+      .values({
+        userId: c.var.user!.id,
+        name: input.name,
+        color: input.color || null,
+        logo: cleanLogo(input.logo),
+      })
       .returning()
   )[0];
-  if (input.logo) {
-    const logo = await resolveLogo(c.env, row.id, input.logo);
-    if (logo) {
-      row.logo = logo;
-      await c.var.db.update(projects).set({ logo }).where(eq(projects.id, row.id));
-    }
-  }
   return c.json({ project: toDTO(row, 0, false) }, 201);
-});
-
-// SERVE a project's logo bytes from R2 (owner only; cookie-authed <img>).
-route.get("/:id/logo", async (c) => {
-  const proj = await ownedProject(c);
-  if (!proj || proj.logo !== "r2") return new Response("Not found", { status: 404 });
-  const obj = await c.env.LOGO_BUCKET.get(`projlogo/${proj.id}`);
-  if (!obj) return new Response("Not found", { status: 404 });
-  return new Response(obj.body, {
-    headers: {
-      "content-type": obj.httpMetadata?.contentType ?? "image/png",
-      "cache-control": "private, max-age=3600",
-    },
-  });
 });
 
 // UPDATE (name / color / logo)
@@ -139,7 +103,7 @@ route.patch("/:id", zValidator("json", projectUpdateSchema), async (c) => {
   const patch: Partial<typeof projects.$inferInsert> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.color !== undefined) patch.color = input.color || null;
-  if (input.logo !== undefined) patch.logo = await resolveLogo(c.env, proj.id, input.logo);
+  if (input.logo !== undefined) patch.logo = cleanLogo(input.logo);
 
   const row = (
     await c.var.db.update(projects).set(patch).where(eq(projects.id, proj.id)).returning()
@@ -153,32 +117,51 @@ route.patch("/:id", zValidator("json", projectUpdateSchema), async (c) => {
   return c.json({ project: toDTO(row, Number(n), row.id === defaultId) });
 });
 
-// DELETE — reassigns this project's links to the oldest remaining project.
+// DELETE — any project (even the default) as long as one remains. Its links are
+// either moved to a chosen project (?action=move&to=<id>, default) or deleted
+// outright (?action=delete).
 route.delete("/:id", async (c) => {
   const proj = await ownedProject(c);
   if (!proj) return c.json({ error: "Not found" }, 404);
   const user = c.var.user!;
+  const db = c.var.db;
   const { projects, links } = c.var.schema;
+  const action = c.req.query("action");
+  const to = c.req.query("to");
 
-  const target = await c.var.db
+  const others = await db
     .select({ id: projects.id })
     .from(projects)
     .where(and(eq(projects.userId, user.id), ne(projects.id, proj.id)))
-    .orderBy(asc(projects.createdAt))
-    .limit(1);
-  if (!target[0]) {
+    .orderBy(asc(projects.createdAt));
+  if (others.length === 0) {
     return c.json({ error: "You need to keep at least one project" }, 409);
   }
 
-  await c.var.db
-    .update(links)
-    .set({ projectId: target[0].id })
-    .where(and(eq(links.userId, user.id), eq(links.projectId, proj.id)));
-  if (proj.logo === "r2") {
-    await c.env.LOGO_BUCKET.delete(`projlogo/${proj.id}`).catch(() => {});
+  if (action === "delete") {
+    const doomed = await db
+      .select({ id: links.id, slug: links.slug, ogImage: links.ogImage })
+      .from(links)
+      .where(and(eq(links.userId, user.id), eq(links.projectId, proj.id)));
+    await db.delete(links).where(and(eq(links.userId, user.id), eq(links.projectId, proj.id)));
+    c.executionCtx.waitUntil(
+      Promise.all([
+        ...doomed.map((l) => deleteCachedLink(c.env.LINKS_KV, l.slug)),
+        ...doomed
+          .filter((l) => l.ogImage === "r2")
+          .map((l) => c.env.LOGO_BUCKET.delete(`og/${l.id}`).catch(() => {})),
+      ]).then(() => {}),
+    );
+  } else {
+    const target = (to && others.find((o) => o.id === to)?.id) || others[0].id;
+    await db
+      .update(links)
+      .set({ projectId: target })
+      .where(and(eq(links.userId, user.id), eq(links.projectId, proj.id)));
   }
-  await c.var.db.delete(projects).where(eq(projects.id, proj.id));
-  return c.json({ ok: true, reassignedTo: target[0].id });
+
+  await db.delete(projects).where(eq(projects.id, proj.id));
+  return c.json({ ok: true });
 });
 
 export default route;

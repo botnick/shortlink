@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { useSearchList } from "@/lib/useSearchList";
+import { useConfirm } from "@/components/ConfirmProvider";
 import type { AdminUserDTO, AdminUserListDTO, Role } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function AdminTeam({ onViewLinks }: { onViewLinks?: (u: AdminUserDTO) => void }) {
+  const confirm = useConfirm();
   const { user: me } = useAuth();
   const list = useSearchList<AdminUserDTO>(async ({ q, cursor }) => {
     const params = new URLSearchParams();
@@ -49,7 +51,15 @@ export function AdminTeam({ onViewLinks }: { onViewLinks?: (u: AdminUserDTO) => 
   }
 
   async function removeUser(u: AdminUserDTO) {
-    if (!window.confirm(`Delete ${u.email}? This removes their account and links.`)) return;
+    if (
+      !(await confirm({
+        title: `Delete ${u.email}?`,
+        description: "This removes their account and links.",
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await api.delete(`/admin/users/${u.id}`);
       list.removeItem((x) => x.id === u.id);

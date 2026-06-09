@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ConfigProvider, useConfig } from "@/lib/config";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/components/theme";
+import { ConfirmProvider } from "@/components/ConfirmProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { Layout } from "@/components/Layout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -80,10 +81,12 @@ export function App() {
     <ThemeProvider>
       <ConfigProvider>
         <AuthProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-          <Toaster />
+          <ConfirmProvider>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+            <Toaster />
+          </ConfirmProvider>
         </AuthProvider>
       </ConfigProvider>
     </ThemeProvider>
