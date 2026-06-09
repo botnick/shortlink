@@ -43,6 +43,9 @@ const LinkEditor = lazy(() =>
 const ApiKeys = lazy(() =>
   import("@/pages/ApiKeys").then((m) => ({ default: m.ApiKeys })),
 );
+const Account = lazy(() =>
+  import("@/pages/Account").then((m) => ({ default: m.Account })),
+);
 
 function AppRoutes() {
   const { config, loading } = useConfig();
@@ -75,6 +78,7 @@ function AppRoutes() {
                 <Route path="/dashboard/links/:id/edit" element={<LinkEditor />} />
                 <Route path="/domains" element={<Domains />} />
                 <Route path="/apikeys" element={<ApiKeys />} />
+                <Route path="/account" element={<Account />} />
                 <Route path="/links/:id" element={<LinkStats />} />
                 <Route path="/links/:id/qr" element={<QrPage />} />
               </Route>

@@ -32,9 +32,22 @@ export const users = sqliteTable(
       .notNull()
       .default("user"),
     isPrimary: integer({ mode: "boolean" }).notNull().default(false),
+    // Soft delete: purged by cron once the hold window passes.
+    deletedAt: integer({ mode: "timestamp" }),
     createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
   },
   (t) => [uniqueIndex("users_email_idx").on(t.email)],
+);
+
+// Tombstones for closed accounts (keeps the email unregistrable for a window).
+export const deletedAccounts = sqliteTable(
+  "deleted_accounts",
+  {
+    id: text().primaryKey().$defaultFn(uuid),
+    email: text().notNull(),
+    deletedAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
+  },
+  (t) => [uniqueIndex("deleted_accounts_email_idx").on(t.email)],
 );
 
 export const sessions = sqliteTable(

@@ -15,12 +15,14 @@ import {
 } from "drizzle-orm";
 import type { AppEnv } from "../env";
 import { buildShortUrl, invalidateDomainHost } from "../lib/domainScope";
+import { softDeleteUser } from "../lib/accountLifecycle";
 import { purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
 import { dayBucket, searchCondition } from "../lib/query";
 import { hashPassword } from "../lib/password";
 import { computeGlobalStats, parseRange } from "./stats";
 import {
   SETTING_KEYS,
+  accountHoldDaysFrom,
   apiEnabledFrom,
   apiRateLimitFrom,
   appNameFrom,
@@ -28,6 +30,7 @@ import {
   blockedDomainsFrom,
   brandColorFrom,
   createRateLimitFrom,
+  emailBlockDaysFrom,
   maxAliasesPerLinkFrom,
   maxApiKeysPerUserFrom,
   maxDomainsPerUserFrom,
@@ -109,6 +112,8 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     maxApiKeysPerUser: maxApiKeysPerUserFrom(map),
     mcpEnabled: mcpEnabledFrom(map),
     slugLength: slugLengthFrom(map),
+    accountHoldDays: accountHoldDaysFrom(map),
+    emailBlockDays: emailBlockDaysFrom(map),
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
@@ -197,6 +202,12 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   if (input.slugLength !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.slugLength, input.slugLength);
   }
+  if (input.accountHoldDays !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.accountHoldDays, input.accountHoldDays);
+  }
+  if (input.emailBlockDays !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.emailBlockDays, input.emailBlockDays);
+  }
   // Custom-domain (Cloudflare for SaaS) config — set via the web, no env vars.
   // An empty token clears it; a blank token is ignored so it isn't wiped on save.
   if (input.cfApiToken !== undefined && input.cfApiToken !== "") {
@@ -246,7 +257,9 @@ admin.get("/users", async (c) => {
     cursor && !Number.isNaN(Date.parse(cursor))
       ? lt(users.createdAt, new Date(cursor))
       : undefined;
-  const where = and(...([search, cursorCond].filter(Boolean) as SQL[]));
+  // Soft-deleted accounts are held for the purge cron — not shown as members.
+  const alive = sql`${users.deletedAt} is null`;
+  const where = and(alive, ...([search, cursorCond].filter(Boolean) as SQL[]));
 
   const [rows, totalRow] = await Promise.all([
     db
@@ -264,7 +277,11 @@ admin.get("/users", async (c) => {
       .groupBy(users.id)
       .orderBy(desc(users.createdAt))
       .limit(PAGE + 1),
-    db.select({ v: count() }).from(users).where(search).then((r) => Number(r[0]?.v ?? 0)),
+    db
+      .select({ v: count() })
+      .from(users)
+      .where(and(alive, ...([search].filter(Boolean) as SQL[])))
+      .then((r) => Number(r[0]?.v ?? 0)),
   ]);
 
   const hasMore = rows.length > PAGE;
@@ -768,7 +785,9 @@ admin.delete("/domains/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// Delete a user. The primary admin and your own account are protected.
+// Remove a member — same soft-delete lifecycle as self-service account closure
+// (links stop, credentials die, the email is tombstoned, purge by cron).
+// The primary admin and your own account are protected.
 admin.delete("/users/:id", async (c) => {
   const id = c.req.param("id");
   if (!id || !UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
@@ -788,7 +807,7 @@ admin.delete("/users/:id", async (c) => {
     return c.json({ error: "The primary admin can't be deleted" }, 403);
   }
 
-  await c.var.db.delete(users).where(eq(users.id, id));
+  await softDeleteUser(c.env, c.var.db, c.var.schema, id);
   return c.json({ ok: true });
 });
 

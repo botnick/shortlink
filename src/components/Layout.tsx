@@ -83,6 +83,12 @@ export function Layout() {
                       API keys
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/account">
+                      <User />
+                      Account
+                    </Link>
+                  </DropdownMenuItem>
                   {user.role === "admin" && (
                     <DropdownMenuItem asChild>
                       <Link to="/admin">

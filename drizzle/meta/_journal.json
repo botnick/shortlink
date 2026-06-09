@@ -120,6 +120,13 @@
       "when": 1781030515644,
       "tag": "0016_shocking_randall_flagg",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1781034014325,
+      "tag": "0017_aspiring_sabretooth",
+      "breakpoints": true
     }
   ]
 }

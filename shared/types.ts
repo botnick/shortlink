@@ -233,6 +233,9 @@ export interface SettingsDTO {
   mcpEnabled: boolean;
   /** Length of auto-generated back-halves (3–32). */
   slugLength: number;
+  /** Closed accounts: days held before purge, then extra days the email stays blocked. */
+  accountHoldDays: number;
+  emailBlockDays: number;
   /** Cloudflare for SaaS — configured via /admin. The token is never returned;
    *  `cfConfigured` reflects whether a token + zone id are set. */
   cfZoneId: string;

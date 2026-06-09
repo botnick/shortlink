@@ -150,6 +150,8 @@ export function AdminSettings() {
   const [maxApiKeys, setMaxApiKeys] = useState(10);
   const [mcpEnabled, setMcpEnabled] = useState(true);
   const [slugLength, setSlugLength] = useState(6);
+  const [accountHoldDays, setAccountHoldDays] = useState(180);
+  const [emailBlockDays, setEmailBlockDays] = useState(180);
   const [savingLimits, setSavingLimits] = useState(false);
 
   const [cfToken, setCfToken] = useState("");
@@ -190,6 +192,8 @@ export function AdminSettings() {
         setMaxApiKeys(s.maxApiKeysPerUser ?? 10);
         setMcpEnabled(s.mcpEnabled ?? true);
         setSlugLength(s.slugLength ?? 6);
+        setAccountHoldDays(s.accountHoldDays ?? 180);
+        setEmailBlockDays(s.emailBlockDays ?? 180);
         setCfZoneId(s.cfZoneId);
         setCfFallbackHost(s.cfFallbackHost);
         setUnverifiedDays(s.domainUnverifiedDays);
@@ -250,6 +254,8 @@ export function AdminSettings() {
         maxApiKeysPerUser: Math.max(0, Math.floor(maxApiKeys) || 0),
         mcpEnabled,
         slugLength: Math.min(32, Math.max(3, Math.floor(slugLength) || 6)),
+        accountHoldDays: Math.max(0, Math.floor(accountHoldDays) || 0),
+        emailBlockDays: Math.max(0, Math.floor(emailBlockDays) || 0),
       });
       toast.success("Limits saved");
     } catch (err) {
@@ -653,6 +659,32 @@ export function AdminSettings() {
                       value={createRateLimit}
                       onChange={(e) => setCreateRateLimit(Number(e.target.value))}
                     />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="holdDays">Closed-account hold (days)</Label>
+                    <Input
+                      id="holdDays"
+                      type="number"
+                      min={0}
+                      value={accountHoldDays}
+                      onChange={(e) => setAccountHoldDays(Number(e.target.value))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Deleted accounts are kept (disabled) this long before being purged.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="blockDays">Email re-signup block (days)</Label>
+                    <Input
+                      id="blockDays"
+                      type="number"
+                      min={0}
+                      value={emailBlockDays}
+                      onChange={(e) => setEmailBlockDays(Number(e.target.value))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Extra days after the purge before that email can register again.
+                    </p>
                   </div>
                 </div>
               </div>

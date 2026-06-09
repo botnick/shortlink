@@ -29,6 +29,8 @@ export const SETTING_KEYS = {
   maxApiKeysPerUser: "max_api_keys_per_user",
   mcpEnabled: "mcp_enabled",
   slugLength: "slug_length",
+  accountHoldDays: "account_hold_days",
+  emailBlockDays: "email_block_days",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
@@ -238,6 +240,16 @@ export function maxApiKeysPerUserFrom(map: Record<string, unknown>): number {
 /** MCP server (AI-agent transport) — rides under the public-API master switch. */
 export function mcpEnabledFrom(map: Record<string, unknown>): boolean {
   return map[SETTING_KEYS.mcpEnabled] !== false;
+}
+
+/** Days a closed account is held (soft-deleted) before the cron purges it. */
+export function accountHoldDaysFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.accountHoldDays], 180);
+}
+
+/** Days after the purge during which the email still can't register again. */
+export function emailBlockDaysFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.emailBlockDays], 180);
 }
 
 /** Length of auto-generated back-halves (server defaults + editor suggestions),

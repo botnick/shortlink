@@ -100,6 +100,8 @@ export const settingsSchema = z
     maxApiKeysPerUser: z.number().int().min(0).max(1_000).optional(),
     mcpEnabled: z.boolean().optional(),
     slugLength: z.number().int().min(3).max(32).optional(),
+    accountHoldDays: z.number().int().min(0).max(3650).optional(),
+    emailBlockDays: z.number().int().min(0).max(3650).optional(),
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),
@@ -142,6 +144,17 @@ export const settingsSchema = z
 
 export const apiKeyCreateSchema = z.object({
   name: z.string().trim().min(1, "Give the key a name").max(40),
+});
+
+// --- Account self-service (all require the current password) ------------------
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: passwordField,
+});
+
+export const deleteAccountSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
 });
 
 export const qrPresetSchema = z.object({

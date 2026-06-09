@@ -6,6 +6,7 @@ import { createSession, invalidateSession } from "../lib/auth";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { clearSessionCookie, setSessionCookie } from "../lib/cookies";
 import { SETTING_KEYS, authRateLimitFrom, getAllSettings } from "../lib/settings";
+import { isEmailBlocked } from "../lib/accountLifecycle";
 import { isRateLimited } from "../lib/ratelimit";
 import { getClientIp } from "../lib/geo";
 import { loginSchema, registerSchema } from "../lib/validators";
@@ -38,15 +39,23 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
 
   const { email, password } = c.req.valid("json");
 
-  const existing = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1);
+  const { deletedAccounts } = schema;
+  const [existing, tombstone] = await Promise.all([
+    db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1),
+    db
+      .select({ deletedAt: deletedAccounts.deletedAt })
+      .from(deletedAccounts)
+      .where(eq(deletedAccounts.email, email))
+      .limit(1),
+  ]);
 
-  if (existing.length > 0) {
-    // Equalize timing and stay generic — never reveal that the email exists.
-    await hashPassword(password);
+  // Taken, or inside a closed account's no-register window. One generic
+  // message for both — the reason is never disclosed.
+  if (
+    existing.length > 0 ||
+    (tombstone[0] && isEmailBlocked(tombstone[0].deletedAt, map))
+  ) {
+    await hashPassword(password); // equalize timing
     return c.json({ error: "Unable to register with those details" }, 409);
   }
 
@@ -77,6 +86,7 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
       email: users.email,
       role: users.role,
       passwordHash: users.passwordHash,
+      deletedAt: users.deletedAt,
     })
     .from(users)
     .where(eq(users.email, email))
@@ -89,8 +99,12 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
+  // A closed (soft-deleted) account can never sign in; verify first so the
+  // timing matches a wrong password, and keep the message generic.
   const valid = await verifyPassword(password, user.passwordHash);
-  if (!valid) return c.json({ error: "Invalid email or password" }, 401);
+  if (!valid || user.deletedAt) {
+    return c.json({ error: "Invalid email or password" }, 401);
+  }
 
   const session = await createSession(db, c.var.schema, user.id);
   await setSessionCookie(c, session.id, session.expiresAt);

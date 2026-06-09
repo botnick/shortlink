@@ -22,6 +22,8 @@ import assetRoutes from "./routes/assets";
 import domainRoutes from "./routes/domains";
 import projectRoutes from "./routes/projects";
 import keyRoutes from "./routes/keys";
+import accountRoutes from "./routes/account";
+import { purgeDeletedAccounts } from "./lib/accountLifecycle";
 import { handleMcp } from "./mcp";
 import { getCachedPublicConfig, shortOrigin } from "./lib/appconfig";
 import { getCachedLink, putCachedLink, routeDestination } from "./lib/cache";
@@ -81,6 +83,7 @@ api.route("/assets", assetRoutes);
 api.route("/domains", domainRoutes);
 api.route("/projects", projectRoutes);
 api.route("/keys", keyRoutes);
+api.route("/account", accountRoutes);
 // Versioned aliases for the public API — same handlers, stable paths.
 api.route("/v1/links", linkRoutes);
 api.route("/v1/domains", domainRoutes);
@@ -541,5 +544,6 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     ctx.waitUntil(cleanupUnverifiedDomains(env));
+    ctx.waitUntil(purgeDeletedAccounts(env));
   },
 };

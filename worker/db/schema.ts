@@ -27,9 +27,24 @@ export const users = pgTable(
     passwordHash: text().notNull(),
     role: userRole().notNull().default("user"),
     isPrimary: boolean().notNull().default(false),
+    // Soft delete: set when the account is closed; the row (and everything in
+    // it) is purged by cron once the hold window passes.
+    deletedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("users_email_idx").on(t.email)],
+);
+
+// Tombstones for closed accounts. Survives the user-row purge so the email
+// stays unregistrable for the configured window; pruned by cron afterwards.
+export const deletedAccounts = pgTable(
+  "deleted_accounts",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    email: text().notNull(),
+    deletedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("deleted_accounts_email_idx").on(t.email)],
 );
 
 export const sessions = pgTable(
