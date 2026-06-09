@@ -419,6 +419,9 @@ admin.patch(
     await putCachedLink(c.env.LINKS_KV, row.slug, {
       id: row.id,
       destination: row.destination,
+      iosUrl: row.iosUrl,
+      androidUrl: row.androidUrl,
+      desktopUrl: row.desktopUrl,
       isActive: row.isActive,
       expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
     });
@@ -531,6 +534,9 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
         putCachedLink(kv, r.slug, {
           id: r.id,
           destination: r.destination,
+          iosUrl: r.iosUrl,
+          androidUrl: r.androidUrl,
+          desktopUrl: r.desktopUrl,
           isActive: r.isActive,
           expiresAt: r.expiresAt ? r.expiresAt.getTime() : null,
         }),

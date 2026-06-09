@@ -21,7 +21,7 @@ import assetRoutes from "./routes/assets";
 import domainRoutes from "./routes/domains";
 import projectRoutes from "./routes/projects";
 import { getCachedPublicConfig } from "./lib/appconfig";
-import { getCachedLink, putCachedLink } from "./lib/cache";
+import { getCachedLink, putCachedLink, routeDestination } from "./lib/cache";
 import {
   getSeoBundle,
   injectSeo,
@@ -100,6 +100,9 @@ app.get("/:slug", async (c) => {
         .select({
           id: links.id,
           destination: links.destination,
+          iosUrl: links.iosUrl,
+          androidUrl: links.androidUrl,
+          desktopUrl: links.desktopUrl,
           isActive: links.isActive,
           expiresAt: links.expiresAt,
         })
@@ -111,6 +114,9 @@ app.get("/:slug", async (c) => {
         cached = {
           id: l.id,
           destination: l.destination,
+          iosUrl: l.iosUrl,
+          androidUrl: l.androidUrl,
+          desktopUrl: l.desktopUrl,
           isActive: l.isActive,
           expiresAt: l.expiresAt ? l.expiresAt.getTime() : null,
         };
@@ -128,6 +134,10 @@ app.get("/:slug", async (c) => {
 
   // Log the click off the response path so the redirect stays instant.
   c.executionCtx.waitUntil(logClick(c, cached.id));
+  // Per-OS deep-link routing (iOS / Android / desktop), resolved on the cached
+  // payload so it stays on the edge with no extra DB read.
+  const { os, deviceType } = parseUserAgent(c.req.header("user-agent") ?? null);
+  const target = routeDestination(cached, os, deviceType);
   // 302 (not 301) + no-store: never let a browser/proxy cache the hop. This is
   // the deliberate opposite of the big shorteners' cacheable 301 — it guarantees
   // every click reaches us (so analytics are complete) and a destination edit
@@ -135,7 +145,7 @@ app.get("/:slug", async (c) => {
   return new Response(null, {
     status: 302,
     headers: {
-      Location: cached.destination,
+      Location: target,
       "Cache-Control": "private, no-store",
     },
   });

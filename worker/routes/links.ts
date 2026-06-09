@@ -63,6 +63,9 @@ function toLinkDTO(env: AppBindings, row: LinkRow): LinkDTO {
     slug: row.slug,
     shortUrl: `${env.APP_URL}/${row.slug}`,
     destination: row.destination,
+    iosUrl: row.iosUrl,
+    androidUrl: row.androidUrl,
+    desktopUrl: row.desktopUrl,
     title: row.title,
     isActive: row.isActive,
     expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
@@ -83,6 +86,9 @@ function cachePayload(row: LinkRow): CachedLink {
   return {
     id: row.id,
     destination: row.destination,
+    iosUrl: row.iosUrl,
+    androidUrl: row.androidUrl,
+    desktopUrl: row.desktopUrl,
     isActive: row.isActive,
     expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
   };
@@ -185,6 +191,9 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
         .values({
           slug,
           destination: input.destination,
+          iosUrl: input.iosUrl ?? null,
+          androidUrl: input.androidUrl ?? null,
+          desktopUrl: input.desktopUrl ?? null,
           userId: user.id,
           projectId,
           title: input.title ?? null,
@@ -297,6 +306,9 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   const input = c.req.valid("json");
   const patch: Partial<typeof links.$inferInsert> = { updatedAt: new Date() };
   if (input.destination !== undefined) patch.destination = input.destination;
+  if (input.iosUrl !== undefined) patch.iosUrl = input.iosUrl;
+  if (input.androidUrl !== undefined) patch.androidUrl = input.androidUrl;
+  if (input.desktopUrl !== undefined) patch.desktopUrl = input.desktopUrl;
   if (input.title !== undefined) patch.title = input.title;
   if (input.isActive !== undefined) patch.isActive = input.isActive;
   if (input.expiresAt !== undefined) {

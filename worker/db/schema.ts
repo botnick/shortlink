@@ -49,6 +49,11 @@ export const links = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     slug: text().notNull(),
     destination: text().notNull(),
+    // Optional per-OS deep-link targets. When set, the redirect serves the one
+    // matching the visitor's platform (else falls back to `destination`).
+    iosUrl: text(),
+    androidUrl: text(),
+    desktopUrl: text(),
     userId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

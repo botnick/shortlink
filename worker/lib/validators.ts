@@ -169,9 +169,16 @@ const previewMode = z.enum(["off", "custom", "destination"]);
 const ogTitle = z.string().trim().max(120).nullable();
 const ogDescription = z.string().trim().max(300).nullable();
 const ogImage = longText.nullable();
+// Per-OS deep-link target: an http(s) URL (universal/app link or store page),
+// or null to clear. Custom URI schemes are intentionally rejected — they'd need
+// a JS interstitial, which we avoid to keep the redirect clean and instant.
+const deepLink = httpUrl.nullable();
 
 export const createLinkSchema = z.object({
   destination: httpUrl,
+  iosUrl: deepLink.optional(),
+  androidUrl: deepLink.optional(),
+  desktopUrl: deepLink.optional(),
   slug: slugField.optional(),
   title: z.string().trim().max(120).optional(),
   expiresAt: isoDate.optional(),
@@ -184,6 +191,9 @@ export const createLinkSchema = z.object({
 
 export const updateLinkSchema = z.object({
   destination: httpUrl.optional(),
+  iosUrl: deepLink.optional(),
+  androidUrl: deepLink.optional(),
+  desktopUrl: deepLink.optional(),
   title: z.string().trim().max(120).nullable().optional(),
   isActive: z.boolean().optional(),
   expiresAt: isoDate.nullable().optional(),

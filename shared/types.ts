@@ -15,6 +15,10 @@ export interface LinkDTO {
   slug: string;
   shortUrl: string;
   destination: string;
+  /** Optional per-OS deep-link targets; null = use `destination`. */
+  iosUrl: string | null;
+  androidUrl: string | null;
+  desktopUrl: string | null;
   title: string | null;
   isActive: boolean;
   expiresAt: string | null;
