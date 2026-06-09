@@ -371,6 +371,13 @@ export function LinkEditor() {
     setDestination(value);
     setUtm(parseUtm(value));
   }
+  // Friendly: when the user pastes a bare domain, add https:// for them on blur.
+  function normalizeDestination() {
+    const v = destination.trim();
+    if (v && !/^https?:\/\//i.test(v) && /^[\w-]+(\.[\w-]+)+/.test(v)) {
+      onDestinationChange(`https://${v}`);
+    }
+  }
   function optimizeSlug(kind: (typeof SLUG_OPTIONS)[number]["kind"]) {
     setSlugStrategy(SLUG_OPTIONS.find((o) => o.kind === kind)?.label ?? "");
     if (kind === "shortest") return setAlias(randomSlug(4));
@@ -610,7 +617,7 @@ export function LinkEditor() {
       <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>
         Cancel
       </Button>
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" disabled={submitting || !destValid}>
         {submitting && <Loader2 className="animate-spin" />}
         {isEdit ? "Save changes" : "Create link"}
       </Button>
@@ -651,17 +658,27 @@ export function LinkEditor() {
               <Input
                 id="destination"
                 type="url"
-                required
+                inputMode="url"
                 autoFocus={!isEdit}
-                placeholder="https://example.com/a/very/long/link"
+                placeholder="Type or paste a link (https://…)"
                 value={destination}
                 onChange={(e) => onDestinationChange(e.target.value)}
-                className="h-11 pl-9 text-base"
+                onBlur={normalizeDestination}
+                className="h-11 pl-9 pr-9 text-base"
               />
+              {destValid && (
+                <Check className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-emerald-600" />
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Where the short link sends people by default.
-            </p>
+            {destination.trim() && !destValid ? (
+              <p className="text-xs text-amber-600">
+                Enter a valid link, e.g. example.com — we’ll add https:// for you.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Where the short link sends people by default.
+              </p>
+            )}
           </section>
 
           {/* Short link */}
