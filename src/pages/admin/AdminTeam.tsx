@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { KeyRound, Link2, MoreHorizontal, Plus, Search, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
@@ -26,8 +27,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export function AdminTeam({ onViewLinks }: { onViewLinks?: (u: AdminUserDTO) => void }) {
+export function AdminTeam() {
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const { user: me } = useAuth();
   const list = useSearchList<AdminUserDTO>(async ({ q, cursor }) => {
     const params = new URLSearchParams();
@@ -113,8 +115,16 @@ export function AdminTeam({ onViewLinks }: { onViewLinks?: (u: AdminUserDTO) => 
                     <Button variant="ghost" size="icon" aria-label="User actions"><MoreHorizontal /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    {onViewLinks && u.linkCount > 0 && (
-                      <DropdownMenuItem onClick={() => onViewLinks(u)}><Link2 /> View links</DropdownMenuItem>
+                    {u.linkCount > 0 && (
+                      <DropdownMenuItem
+                        onClick={() =>
+                          navigate(
+                            `/admin/links?user=${u.id}&email=${encodeURIComponent(u.email)}`,
+                          )
+                        }
+                      >
+                        <Link2 /> View links
+                      </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={() => setResetUser(u)}><KeyRound /> Reset password</DropdownMenuItem>
                     {!u.isPrimary && !isSelf && (

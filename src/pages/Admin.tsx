@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import { BarChart3, Globe, Link2, LineChart, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AdminUserDTO } from "@shared/types";
 import { AdminOverview } from "@/pages/admin/AdminOverview";
 import { AdminAnalytics } from "@/pages/admin/AdminAnalytics";
 import { AdminLinks } from "@/pages/admin/AdminLinks";
@@ -9,21 +8,32 @@ import { AdminTeam } from "@/pages/admin/AdminTeam";
 import { AdminDomains } from "@/pages/admin/AdminDomains";
 import { AdminSettings } from "@/pages/admin/AdminSettings";
 
-type Tab = "overview" | "analytics" | "links" | "team" | "domains" | "settings";
-
-const TABS: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
-  { id: "overview", label: "Overview", icon: BarChart3 },
-  { id: "analytics", label: "Analytics", icon: LineChart },
-  { id: "links", label: "Links", icon: Link2 },
-  { id: "team", label: "Team", icon: Users },
-  { id: "domains", label: "Domains", icon: Globe },
-  { id: "settings", label: "Settings", icon: Settings },
+const TABS: { to: string; label: string; icon: typeof BarChart3; end?: boolean }[] = [
+  { to: "/admin", label: "Overview", icon: BarChart3, end: true },
+  { to: "/admin/analytics", label: "Analytics", icon: LineChart },
+  { to: "/admin/links", label: "Links", icon: Link2 },
+  { to: "/admin/team", label: "Team", icon: Users },
+  { to: "/admin/domains", label: "Domains", icon: Globe },
+  { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
-export function Admin() {
-  const [tab, setTab] = useState<Tab>("overview");
-  const [focusUser, setFocusUser] = useState<AdminUserDTO | null>(null);
+/** Links tab — reads an optional ?user filter (set from the Team tab) and remounts
+ *  when it changes so the list reloads. */
+function AdminLinksRoute() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const userId = params.get("user") || undefined;
+  return (
+    <AdminLinks
+      key={userId ?? "all"}
+      userId={userId}
+      userLabel={params.get("email") || undefined}
+      onClearFilter={() => navigate("/admin/links")}
+    />
+  );
+}
 
+export function Admin() {
   return (
     <div className="space-y-6">
       <div>
@@ -37,44 +47,34 @@ export function Admin() {
         {TABS.map((t) => {
           const Icon = t.icon;
           return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "inline-flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                tab === t.id
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
+            <NavLink
+              key={t.to}
+              to={t.to}
+              end={t.end}
+              className={({ isActive }) =>
+                cn(
+                  "inline-flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )
+              }
             >
               <Icon className="size-4" />
               {t.label}
-            </button>
+            </NavLink>
           );
         })}
       </div>
 
-      {tab === "overview" && <AdminOverview />}
-      {tab === "analytics" && <AdminAnalytics />}
-      {tab === "links" && (
-        <AdminLinks
-          key={focusUser?.id ?? "all"}
-          userId={focusUser?.id}
-          userLabel={focusUser?.email}
-          onClearFilter={() => setFocusUser(null)}
-        />
-      )}
-      {tab === "team" && (
-        <AdminTeam
-          onViewLinks={(u) => {
-            setFocusUser(u);
-            setTab("links");
-          }}
-        />
-      )}
-      {tab === "domains" && <AdminDomains />}
-      {tab === "settings" && <AdminSettings />}
+      <Routes>
+        <Route index element={<AdminOverview />} />
+        <Route path="analytics" element={<AdminAnalytics />} />
+        <Route path="links" element={<AdminLinksRoute />} />
+        <Route path="team" element={<AdminTeam />} />
+        <Route path="domains" element={<AdminDomains />} />
+        <Route path="settings" element={<AdminSettings />} />
+      </Routes>
     </div>
   );
 }

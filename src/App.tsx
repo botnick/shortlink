@@ -65,7 +65,7 @@ function AppRoutes() {
                 <Route path="/links/:id/qr" element={<QrPage />} />
               </Route>
               <Route element={<ProtectedRoute adminOnly />}>
-                <Route path="/admin" element={<Admin />} />
+                <Route path="/admin/*" element={<Admin />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </>
