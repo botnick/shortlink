@@ -3,7 +3,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { compressUpload, ogToPng, renderOg } from "@/lib/ogTemplates";
+import { compressUpload, ogToJpeg, ogToPng, renderOg, renderPhotoOg } from "@/lib/ogTemplates";
 import { loadOgFont } from "@/lib/ogFonts";
 import type { LinkDTO, PreviewMode, UrlMetaDTO } from "@shared/types";
 import {
@@ -242,15 +242,38 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
     return { previewMode, ogTitle: pTitle, ogDescription: pDesc, ogImage: image };
   }
 
+  // Brand an uploaded photo: cover-fit to 1200×630 and stamp our badge, so an
+  // uploaded card carries our credit just like the generated templates.
+  async function brandUpload(rawDataUrl: string): Promise<string> {
+    const [photo, family] = await Promise.all([
+      new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = rawDataUrl;
+      }),
+      loadOgFont(config.ogFont),
+    ]);
+    const c = document.createElement("canvas");
+    renderPhotoOg(c, {
+      photo,
+      font: family,
+      appName: config.ogLabel,
+      brandColor: config.ogAccent,
+      logo: brandLogo,
+    });
+    return ogToJpeg(c);
+  }
+
   async function pickOgImage(file: File | undefined) {
     if (!file) return;
     if (file.size > 10_000_000) {
       toast.error("Image is too large (max ~10MB)");
       return;
     }
-    // Downscale + re-encode to JPEG so the stored image stays small and sharp.
+    // Downscale, then composite our brand badge before storing.
     try {
-      setOgImage(await compressUpload(file));
+      setOgImage(await brandUpload(await compressUpload(file)));
     } catch {
       toast.error("Couldn't read that image");
     }
@@ -480,8 +503,9 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }:
                     </>
                   ) : (
                     <>
-                      Shared as <span className="font-medium">{previewDomain}</span> —
-                      title and description appear under the image.
+                      Badged with <span className="font-medium">{config.ogLabel}</span> and
+                      shared under <span className="font-medium">{shortHost}</span> — title
+                      and description appear under the image.
                     </>
                   )}
                 </p>

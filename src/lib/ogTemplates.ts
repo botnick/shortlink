@@ -713,10 +713,93 @@ export function renderOg(canvas: HTMLCanvasElement, o: OgOptions) {
   }
 }
 
+/** A small white "watermark" chip (brand logo + app name) drawn bottom-left, so
+ *  it stays legible over any photo. Shared by the uploaded-image branding path. */
+function drawBrandBadge(
+  ctx: CanvasRenderingContext2D,
+  o: { font: string; appName: string; brandColor: string; logo?: HTMLImageElement | null },
+) {
+  const fam = `"${o.font || "IBM Plex Sans Thai"}", "IBM Plex Sans Thai", system-ui, sans-serif`;
+  const app = (o.appName || DEFAULT_APP_NAME).trim();
+  const h = 64;
+  const padIn = 22;
+  const logoSize = 40;
+  const gap = 14;
+  const hasLogo = !!(o.logo && o.logo.width > 0 && o.logo.height > 0);
+  ctx.font = `600 28px ${fam}`;
+  const textW = ctx.measureText(app).width;
+  const markW = hasLogo ? logoSize : 18;
+  const w = padIn + markW + gap + textW + padIn;
+  const x = 48;
+  const y = OG_H - 48 - h;
+
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.28)";
+  ctx.shadowBlur = 26;
+  ctx.shadowOffsetY = 6;
+  ctx.fillStyle = "#ffffff";
+  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.restore();
+
+  let cx = x + padIn;
+  const mid = y + h / 2;
+  if (hasLogo && o.logo) {
+    ctx.save();
+    roundRect(ctx, cx, mid - logoSize / 2, logoSize, logoSize, 10);
+    ctx.clip();
+    const r = Math.max(logoSize / o.logo.width, logoSize / o.logo.height);
+    const dw = o.logo.width * r;
+    const dh = o.logo.height * r;
+    ctx.drawImage(o.logo, cx + (logoSize - dw) / 2, mid - dh / 2, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = rgbStr(hexToRgb(o.brandColor));
+    ctx.beginPath();
+    ctx.arc(cx + 9, mid, 9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  cx += markW + gap;
+  ctx.fillStyle = "#18181b";
+  ctx.font = `600 28px ${fam}`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(app, cx, mid + 1);
+}
+
+/** Cover-fit a user-uploaded photo into a 1200×630 card and stamp the brand
+ *  badge, so an uploaded social image still carries our credit like the
+ *  generated templates do. */
+export function renderPhotoOg(
+  canvas: HTMLCanvasElement,
+  o: {
+    photo: HTMLImageElement;
+    font: string;
+    appName: string;
+    brandColor: string;
+    logo?: HTMLImageElement | null;
+  },
+) {
+  canvas.width = OG_W;
+  canvas.height = OG_H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !o.photo.width || !o.photo.height) return;
+  const r = Math.max(OG_W / o.photo.width, OG_H / o.photo.height);
+  const dw = o.photo.width * r;
+  const dh = o.photo.height * r;
+  ctx.drawImage(o.photo, (OG_W - dw) / 2, (OG_H - dh) / 2, dw, dh);
+  drawBrandBadge(ctx, o);
+}
+
 /** Generated cards are flat-colour with crisp text → PNG keeps edges sharp and
  *  still compresses small (~30–80KB), unlike JPEG which fringes the type. */
 export function ogToPng(canvas: HTMLCanvasElement): string {
   return canvas.toDataURL("image/png");
+}
+
+/** Photos (incl. a branded upload) compress far better as JPEG than PNG. */
+export function ogToJpeg(canvas: HTMLCanvasElement, quality = 0.86): string {
+  return canvas.toDataURL("image/jpeg", quality);
 }
 
 /** Downscale an uploaded photo to ≤maxW and re-encode as JPEG so user uploads
