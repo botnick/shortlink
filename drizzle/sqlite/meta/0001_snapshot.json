@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "171bd725-6bda-4f2c-a15c-0fda495b5816",
+  "id": "c498a435-bf78-41d9-be78-2e579f450664",
   "prevId": "7dda783d-3651-4734-a1c9-e26fee789d0f",
   "tables": {
     "clicks": {
@@ -132,16 +132,16 @@
           "autoincrement": false,
           "default": "'pending'"
         },
-        "cf_hostname_id": {
-          "name": "cf_hostname_id",
+        "verify_token": {
+          "name": "verify_token",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
-        "verification": {
-          "name": "verification",
-          "type": "text",
+        "verified_at": {
+          "name": "verified_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

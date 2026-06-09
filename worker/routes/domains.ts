@@ -6,11 +6,11 @@ import type { DomainRow } from "../db/schema";
 import { domainSchema } from "../lib/validators";
 import { requireAuth } from "../middleware/auth";
 import {
-  createCustomHostname,
-  customDomainsEnabled,
-  deleteCustomHostname,
-  getCustomHostname,
-} from "../lib/cloudflare";
+  checkTxtVerification,
+  newVerifyToken,
+  verifyRecordName,
+  verifyRecordValue,
+} from "../lib/dns";
 import type { DomainDTO, DomainListDTO } from "@shared/types";
 
 const route = new Hono<AppEnv>();
@@ -24,7 +24,9 @@ function toDTO(row: DomainRow): DomainDTO {
     id: row.id,
     hostname: row.hostname,
     status: row.status,
-    records: (row.verification as DomainDTO["records"]) ?? [],
+    verifyName: verifyRecordName(row.hostname),
+    verifyValue: verifyRecordValue(row.verifyToken),
+    verifiedAt: row.verifiedAt ? row.verifiedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -38,71 +40,6 @@ function isUniqueViolation(e: unknown): boolean {
   );
 }
 
-// LIST — the signed-in user's domains + whether the feature is configured.
-route.get("/", async (c) => {
-  const { domains } = c.var.schema;
-  const rows = await c.var.db
-    .select()
-    .from(domains)
-    .where(eq(domains.userId, c.var.user!.id))
-    .orderBy(desc(domains.createdAt));
-  const body: DomainListDTO = {
-    enabled: customDomainsEnabled(c.env),
-    fallbackHost: c.env.CF_FALLBACK_HOST ?? "",
-    domains: rows.map(toDTO),
-  };
-  return c.json(body);
-});
-
-// ADD — register the hostname with Cloudflare for SaaS, store the DNS records.
-route.post("/", zValidator("json", domainSchema), async (c) => {
-  if (!customDomainsEnabled(c.env)) {
-    return c.json({ error: "Custom domains aren’t enabled on this server" }, 503);
-  }
-  const { domains } = c.var.schema;
-  const user = c.var.user!;
-  const { hostname } = c.req.valid("json");
-
-  const [{ n }] = await c.var.db
-    .select({ n: domains.id })
-    .from(domains)
-    .where(eq(domains.userId, user.id))
-    .then((r) => [{ n: r.length }]);
-  if (n >= MAX_PER_USER) {
-    return c.json({ error: "You've reached the domain limit" }, 409);
-  }
-
-  let cf;
-  try {
-    cf = await createCustomHostname(c.env, hostname);
-  } catch (e) {
-    return c.json({ error: (e as Error).message }, 502);
-  }
-
-  try {
-    const row = (
-      await c.var.db
-        .insert(domains)
-        .values({
-          userId: user.id,
-          hostname,
-          status: cf.status,
-          cfHostnameId: cf.cfId,
-          verification: cf.records,
-        })
-        .returning()
-    )[0];
-    return c.json({ domain: toDTO(row) }, 201);
-  } catch (e) {
-    // Roll back the Cloudflare hostname if we couldn't persist it.
-    await deleteCustomHostname(c.env, cf.cfId).catch(() => {});
-    if (isUniqueViolation(e)) {
-      return c.json({ error: "That domain is already added" }, 409);
-    }
-    throw e;
-  }
-});
-
 async function ownedDomain(c: AppContext): Promise<DomainRow | null> {
   const id = c.req.param("id");
   if (!id || !UUID_RE.test(id)) return null;
@@ -115,36 +52,76 @@ async function ownedDomain(c: AppContext): Promise<DomainRow | null> {
   return rows[0] ?? null;
 }
 
-// REFRESH — re-check verification/SSL status with Cloudflare.
-route.post("/:id/refresh", async (c) => {
-  const row = await ownedDomain(c);
-  if (!row) return c.json({ error: "Not found" }, 404);
-  if (!customDomainsEnabled(c.env) || !row.cfHostnameId) {
-    return c.json({ domain: toDTO(row) });
+// LIST — the signed-in user's domains.
+route.get("/", async (c) => {
+  const { domains } = c.var.schema;
+  const rows = await c.var.db
+    .select()
+    .from(domains)
+    .where(eq(domains.userId, c.var.user!.id))
+    .orderBy(desc(domains.createdAt));
+  const body: DomainListDTO = { domains: rows.map(toDTO) };
+  return c.json(body);
+});
+
+// ADD — register a domain (pending) with a DNS TXT challenge to prove ownership.
+route.post("/", zValidator("json", domainSchema), async (c) => {
+  const { domains } = c.var.schema;
+  const user = c.var.user!;
+  const { hostname } = c.req.valid("json");
+
+  const existing = await c.var.db
+    .select({ id: domains.id })
+    .from(domains)
+    .where(eq(domains.userId, user.id));
+  if (existing.length >= MAX_PER_USER) {
+    return c.json({ error: "You've reached the domain limit" }, 409);
   }
+
   try {
-    const cf = await getCustomHostname(c.env, row.cfHostnameId);
-    const { domains } = c.var.schema;
-    const updated = (
+    const row = (
       await c.var.db
-        .update(domains)
-        .set({ status: cf.status, verification: cf.records })
-        .where(eq(domains.id, row.id))
+        .insert(domains)
+        .values({ userId: user.id, hostname, verifyToken: newVerifyToken() })
         .returning()
     )[0];
-    return c.json({ domain: toDTO(updated) });
+    return c.json({ domain: toDTO(row) }, 201);
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 502);
+    if (isUniqueViolation(e)) {
+      return c.json({ error: "That domain is already added" }, 409);
+    }
+    throw e;
   }
 });
 
-// DELETE — remove from Cloudflare and our DB.
+// VERIFY — look up the DNS TXT record and mark the domain verified if it matches.
+route.post("/:id/verify", async (c) => {
+  const row = await ownedDomain(c);
+  if (!row) return c.json({ error: "Not found" }, 404);
+  if (row.status === "verified") return c.json({ domain: toDTO(row) });
+
+  const ok = await checkTxtVerification(row.hostname, row.verifyToken);
+  if (!ok) {
+    return c.json(
+      { error: "TXT record not found yet — DNS can take a few minutes" },
+      400,
+    );
+  }
+  const { domains } = c.var.schema;
+  const updated = (
+    await c.var.db
+      .update(domains)
+      .set({ status: "verified", verifiedAt: new Date() })
+      .where(eq(domains.id, row.id))
+      .returning()
+  )[0];
+  return c.json({ domain: toDTO(updated) });
+});
+
+// DELETE
 route.delete("/:id", async (c) => {
   const row = await ownedDomain(c);
   if (!row) return c.json({ error: "Not found" }, 404);
-  if (row.cfHostnameId && customDomainsEnabled(c.env)) {
-    await deleteCustomHostname(c.env, row.cfHostnameId).catch(() => {});
-  }
   const { domains } = c.var.schema;
   await c.var.db.delete(domains).where(eq(domains.id, row.id));
   return c.json({ ok: true });

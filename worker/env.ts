@@ -15,12 +15,6 @@ export interface AppBindings extends Env {
    *  from the generated Env, so it's declared optional here). DB_DRIVER itself
    *  comes from the generated Env (a wrangler var). */
   DB?: D1Database;
-  /** Cloudflare for SaaS — custom hostnames (optional feature). Secret token
-   *  (Custom Hostnames edit), the SaaS zone id, and the CNAME target users point
-   *  their domain at. When unset, the custom-domains feature is disabled. */
-  CF_API_TOKEN?: string;
-  CF_ZONE_ID?: string;
-  CF_FALLBACK_HOST?: string;
 }
 
 export interface SessionUser {

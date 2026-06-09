@@ -1,5 +1,5 @@
 {
-  "id": "cb44bcff-49fa-4956-93b0-218c3759eeaf",
+  "id": "76623c24-8174-4ad5-b44e-a73365ace27f",
   "prevId": "b9ae1c5d-9545-44a5-8f62-a8bb8803c74b",
   "version": "7",
   "dialect": "postgresql",
@@ -138,15 +138,15 @@
           "notNull": true,
           "default": "'pending'"
         },
-        "cf_hostname_id": {
-          "name": "cf_hostname_id",
+        "verify_token": {
+          "name": "verify_token",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "verification": {
-          "name": "verification",
-          "type": "jsonb",
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

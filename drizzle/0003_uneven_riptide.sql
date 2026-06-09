@@ -3,8 +3,8 @@ CREATE TABLE "domains" (
 	"user_id" uuid NOT NULL,
 	"hostname" text NOT NULL,
 	"status" text DEFAULT 'pending' NOT NULL,
-	"cf_hostname_id" text,
-	"verification" jsonb,
+	"verify_token" text NOT NULL,
+	"verified_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

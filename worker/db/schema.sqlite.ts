@@ -113,9 +113,9 @@ export const domains = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     hostname: text().notNull(),
-    status: text().notNull().default("pending"),
-    cfHostnameId: text(),
-    verification: text({ mode: "json" }),
+    status: text().notNull().default("pending"), // "pending" | "verified"
+    verifyToken: text().notNull(),
+    verifiedAt: integer({ mode: "timestamp" }),
     createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
   },
   (t) => [

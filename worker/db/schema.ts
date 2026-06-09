@@ -110,9 +110,9 @@ export const domains = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     hostname: text().notNull(),
-    status: text().notNull().default("pending"),
-    cfHostnameId: text(),
-    verification: jsonb(),
+    status: text().notNull().default("pending"), // "pending" | "verified"
+    verifyToken: text().notNull(),
+    verifiedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

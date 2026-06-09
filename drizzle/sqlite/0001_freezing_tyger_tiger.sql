@@ -3,8 +3,8 @@ CREATE TABLE `domains` (
 	`user_id` text NOT NULL,
 	`hostname` text NOT NULL,
 	`status` text DEFAULT 'pending' NOT NULL,
-	`cf_hostname_id` text,
-	`verification` text,
+	`verify_token` text NOT NULL,
+	`verified_at` integer,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );

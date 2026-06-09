@@ -144,23 +144,17 @@ export interface AssetDTO {
   url: string;
 }
 
-export interface DomainDnsRecord {
-  type: string;
-  name: string;
-  value: string;
-}
-
 export interface DomainDTO {
   id: string;
   hostname: string;
-  status: string;
-  records: DomainDnsRecord[];
+  status: string; // "pending" | "verified"
+  verifyName: string; // the TXT record name to add
+  verifyValue: string; // the TXT record value to add
+  verifiedAt: string | null;
   createdAt: string;
 }
 
 export interface DomainListDTO {
-  enabled: boolean;
-  fallbackHost: string;
   domains: DomainDTO[];
 }
 
