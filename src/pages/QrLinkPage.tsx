@@ -17,6 +17,7 @@ interface QrData {
   shortUrl: string;
   color: string | null;
   logo: string | null;
+  qrConfig?: Record<string, unknown> | null;
 }
 
 type Status = "loading" | "ready" | "notfound";
@@ -51,12 +52,13 @@ export function QrLinkPage() {
     };
   }, [slug]);
 
-  // Same config as the QR studio (the source of truth): makeDefault(brand) plus
-  // the project logo. Keeps every QR view of a link identical.
+  // Same config as the QR studio + editor: makeDefault(brand) + project logo,
+  // then the design saved on the link — so every QR view stays in sync.
   const cfg = useMemo<QrCfg | null>(() => {
     if (!data) return null;
     const base = makeDefault(data.color || config.brandColor);
-    return data.logo ? { ...base, logoSrc: data.logo, logo: true } : base;
+    const withLogo = data.logo ? { ...base, logoSrc: data.logo, logo: true } : base;
+    return data.qrConfig ? { ...withLogo, ...(data.qrConfig as Partial<QrCfg>) } : withLogo;
   }, [data, config.brandColor]);
 
   useEffect(() => {

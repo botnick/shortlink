@@ -81,6 +81,7 @@ app.get("/api/qr/:slug", async (c) => {
         expiresAt: links.expiresAt,
         color: projects.color,
         logo: projects.logo,
+        qrConfig: links.qrConfig,
       })
       .from(links)
       .leftJoin(projects, eq(links.projectId, projects.id))
@@ -92,7 +93,7 @@ app.get("/api/qr/:slug", async (c) => {
     const logo =
       l.logo && (l.logo.startsWith("data:") || l.logo.startsWith("http")) ? l.logo : null;
     return c.json(
-      { shortUrl: `${c.env.APP_URL}/${l.slug}`, color: l.color ?? null, logo },
+      { shortUrl: `${c.env.APP_URL}/${l.slug}`, color: l.color ?? null, logo, qrConfig: l.qrConfig ?? null },
       200,
       { "cache-control": "public, max-age=300" },
     );
@@ -185,6 +186,7 @@ app.get("/qr/:file", async (c) => {
         expiresAt: links.expiresAt,
         color: projects.color,
         logo: projects.logo,
+        qrConfig: links.qrConfig,
       })
       .from(links)
       .leftJoin(projects, eq(links.projectId, projects.id))
@@ -193,8 +195,15 @@ app.get("/qr/:file", async (c) => {
     const l = rows[0];
     const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l || !l.isActive || expired) return spa(c, 404);
-    // Match the studio's makeDefault look: black modules + project logo.
-    return c.body(qrSvg(`${c.env.APP_URL}/${l.slug}`, { logo: l.logo }), 200, {
+    // Reflect the saved design's colours + logo (the server can't reproduce
+    // qr-code-styling's gradients/frames, but matches the common case).
+    const qc = (l.qrConfig as Record<string, unknown> | null) ?? {};
+    const hex = (v: unknown, fb: string) =>
+      typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : fb;
+    const fg = hex(qc.fg, "#000000");
+    const corner = hex(qc.cornerSquareColor, fg);
+    const logo = qc.logo && typeof qc.logoSrc === "string" ? qc.logoSrc : l.logo;
+    return c.body(qrSvg(`${c.env.APP_URL}/${l.slug}`, { fg, brand: corner, logo }), 200, {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "public, max-age=86400",
     });
