@@ -28,14 +28,24 @@ function extractError(body: unknown, status: number): string {
   if (body && typeof body === "object") {
     const e = (body as Record<string, unknown>).error;
     if (typeof e === "string") return e;
-    const issues =
-      e && typeof e === "object" && "issues" in e
-        ? (e as { issues?: Array<{ message?: string }> }).issues
-        : Array.isArray(e)
-          ? (e as Array<{ message?: string }>)
-          : undefined;
-    if (Array.isArray(issues) && typeof issues[0]?.message === "string") {
-      return issues[0].message;
+    if (e && typeof e === "object") {
+      const obj = e as { message?: unknown; issues?: Array<{ message?: string }> };
+      // Zod v4 serializes a ZodError to { name, message } where message is the
+      // JSON-encoded issues array; older shapes expose `issues` directly.
+      if (typeof obj.message === "string") {
+        try {
+          const parsed = JSON.parse(obj.message);
+          if (Array.isArray(parsed) && typeof parsed[0]?.message === "string") {
+            return parsed[0].message;
+          }
+        } catch {
+          /* message isn't JSON — use it verbatim */
+        }
+        return obj.message;
+      }
+      if (Array.isArray(obj.issues) && typeof obj.issues[0]?.message === "string") {
+        return obj.issues[0].message;
+      }
     }
   }
   return `Request failed (${status})`;
