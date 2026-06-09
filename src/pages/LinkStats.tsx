@@ -13,7 +13,6 @@ import {
   YAxis,
 } from "recharts";
 import {
-  ArrowLeft,
   ExternalLink,
   MousePointerClick,
   QrCode,
@@ -26,6 +25,7 @@ import { shortUrlFor } from "@/lib/utils";
 import { formatDate, formatNumber } from "@/lib/format";
 import type { LinkDTO, NameCount, StatsDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
+import { BackLink } from "@/components/BackLink";
 import {
   Card,
   CardContent,
@@ -108,12 +108,7 @@ export function LinkStats() {
 
   return (
     <div className="space-y-6">
-      <RouterLink
-        to="/dashboard"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" /> Back
-      </RouterLink>
+      <BackLink to="/dashboard" />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">

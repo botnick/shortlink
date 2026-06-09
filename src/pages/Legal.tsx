@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, FileText, ShieldCheck } from "lucide-react";
+import { FileText, ShieldCheck } from "lucide-react";
 import { useConfig } from "@/lib/config";
+import { BackLink } from "@/components/BackLink";
 import type { ReactNode } from "react";
 
 function Shell({
@@ -14,12 +15,7 @@ function Shell({
 }) {
   return (
     <div className="mx-auto max-w-2xl py-2">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" /> Back home
-      </Link>
+      <BackLink to="/" label="Back home" />
 
       <div className="mt-6 flex items-center gap-3.5">
         <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">

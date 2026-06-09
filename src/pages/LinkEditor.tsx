@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import {
-  Apple,
-  ArrowLeft,
   Check,
   ChevronDown,
   Copy,
@@ -38,6 +36,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useConfig, useShortHost } from "@/lib/config";
 import { useProjects } from "@/lib/useProjects";
+import { BackLink } from "@/components/BackLink";
+import { AppleLogo, AndroidLogo } from "@/components/icons";
 
 // --- UTM helpers ------------------------------------------------------------
 const UTM_KEYS = ["source", "medium", "campaign", "term", "content"] as const;
@@ -631,7 +631,7 @@ export function LinkEditor() {
 
   if (!loaded) {
     return (
-      <div className="mx-auto max-w-5xl space-y-4 px-4 py-8">
+      <div className="space-y-4">
         <Skeleton className="h-8 w-40" />
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="space-y-4">
@@ -660,24 +660,22 @@ export function LinkEditor() {
   );
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
-      <header className="mb-6 flex items-center gap-3">
-        <Button variant="ghost" size="icon" asChild>
-          <RouterLink to="/dashboard" aria-label="Back to dashboard">
-            <ArrowLeft />
-          </RouterLink>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">
-            {isEdit ? "Edit branded link" : "Create a branded link & QR"}
-          </h1>
-          <p className="hidden text-sm text-muted-foreground sm:block">
-            {isEdit
-              ? "Update where it points and how it’s shared."
-              : "One link with campaign tracking, device routing and a social card."}
-          </p>
+    <form onSubmit={handleSubmit}>
+      <header className="mb-6">
+        <BackLink to="/dashboard" />
+        <div className="mt-3 flex items-start gap-3">
+          <div className="flex-1">
+            <h1 className="text-xl font-semibold tracking-tight">
+              {isEdit ? "Edit branded link" : "Create a branded link & QR"}
+            </h1>
+            <p className="hidden text-sm text-muted-foreground sm:block">
+              {isEdit
+                ? "Update where it points and how it’s shared."
+                : "One link with campaign tracking, device routing and a social card."}
+            </p>
+          </div>
+          <div className="hidden items-center gap-2 lg:flex">{actions}</div>
         </div>
-        <div className="hidden items-center gap-2 lg:flex">{actions}</div>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
@@ -908,7 +906,7 @@ export function LinkEditor() {
                 {
                   label: "iOS",
                   sub: "iPhone & iPad",
-                  Icon: Apple,
+                  Icon: AppleLogo,
                   chip: "bg-foreground/5 text-foreground",
                   value: iosUrl,
                   set: setIosUrl,
@@ -917,7 +915,7 @@ export function LinkEditor() {
                 {
                   label: "Android",
                   sub: "Phones & tablets",
-                  Icon: Smartphone,
+                  Icon: AndroidLogo,
                   chip: "bg-emerald-500/10 text-emerald-600",
                   value: androidUrl,
                   set: setAndroidUrl,

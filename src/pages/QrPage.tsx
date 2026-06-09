@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { BackLink } from "@/components/BackLink";
 import { api } from "@/lib/api";
 import { shortUrlFor } from "@/lib/utils";
 import type { LinkDTO, ProjectDTO, ProjectListDTO } from "@shared/types";
@@ -54,12 +54,7 @@ export function QrPage() {
 
   return (
     <div className="space-y-6">
-      <RouterLink
-        to={link ? `/links/${link.id}` : "/dashboard"}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" /> Back
-      </RouterLink>
+      <BackLink to={link ? `/links/${link.id}` : "/dashboard"} />
 
       <div>
         <h1 className="display text-2xl sm:text-3xl">QR code</h1>

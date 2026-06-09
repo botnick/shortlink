@@ -32,7 +32,7 @@ export function CopyButton({
     <Button
       type="button"
       variant={variant}
-      size={label ? "sm" : size}
+      size={label ? "default" : size}
       onClick={copy}
       {...props}
     >
