@@ -13,6 +13,7 @@ import {
   Plus,
   QrCode,
   Share2,
+  ChevronRight,
   Smartphone,
   Sparkles,
 } from "lucide-react";
@@ -260,11 +261,14 @@ function AliasRow({ alias }: { alias: LinkAliasDTO }) {
   const [copied, setCopied] = useState(false);
   const display = alias.shortUrl.replace(/^https?:\/\//, "");
   return (
-    <li className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-1.5">
-      <span className="min-w-0 flex-1 truncate font-mono text-xs" title={alias.shortUrl}>
+    <li className="flex items-center gap-2 px-2.5 py-1.5">
+      <span
+        className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+        title={alias.shortUrl}
+      >
         {display}
       </span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">
+      <span className="shrink-0 text-[10px] text-muted-foreground/70">
         {timeAgo(alias.createdAt)}
       </span>
       <button
@@ -948,17 +952,18 @@ export function LinkEditor() {
                 </p>
               )}
               {isEdit && aliases.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <p className="text-[11px] font-medium text-muted-foreground">
-                    Previous back-halves{" "}
-                    <span className="font-normal">· still redirect here</span>
-                  </p>
-                  <ul className="space-y-1">
+                <details className="group pt-0.5">
+                  <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground">
+                    <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
+                    {aliases.length} previous back-half{aliases.length > 1 ? "es" : ""} ·
+                    still redirect here
+                  </summary>
+                  <ul className="mt-1 divide-y rounded-md border">
                     {aliases.map((a) => (
                       <AliasRow key={a.id} alias={a} />
                     ))}
                   </ul>
-                </div>
+                </details>
               )}
             </div>
 
