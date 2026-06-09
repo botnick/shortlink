@@ -95,6 +95,10 @@ export const settingsSchema = z
     createRateLimit: z.number().int().min(0).max(100_000).optional(),
     maxDomainsPerUser: z.number().int().min(0).max(10_000).optional(),
     maxAliasesPerLink: z.number().int().min(0).max(1_000).optional(),
+    apiEnabled: z.boolean().optional(),
+    apiRateLimit: z.number().int().min(0).max(100_000).optional(),
+    maxApiKeysPerUser: z.number().int().min(0).max(1_000).optional(),
+    slugLength: z.number().int().min(3).max(32).optional(),
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),
@@ -134,6 +138,10 @@ export const settingsSchema = z
       .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "No settings provided");
+
+export const apiKeyCreateSchema = z.object({
+  name: z.string().trim().min(1, "Give the key a name").max(40),
+});
 
 export const qrPresetSchema = z.object({
   name: z.string().trim().min(1).max(40),

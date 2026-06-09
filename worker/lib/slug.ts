@@ -1,6 +1,8 @@
 // Unambiguous base-56 alphabet (no 0/O/1/l/I) for readable random slugs.
 const ALPHABET = "23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
-const DEFAULT_LENGTH = 7;
+// Fallback only — the actual length is the admin setting `slugLength`
+// (see slugLengthFrom), passed in by callers that have settings loaded.
+const DEFAULT_LENGTH = 6;
 
 // Slugs that must never be claimed — anything that collides with a route, leaks
 // authority, or invites phishing. Kept deliberately broad. Grouped for review.
@@ -46,7 +48,7 @@ const RESERVED_LIST = [
 
   // --- Auth / security words ---
   "password", "passwd", "reset", "forgot", "verify", "verification", "confirm",
-  "activate", "token", "secret", "secrets", "key", "keys", "apikey", "api-key",
+  "activate", "token", "secret", "secrets", "key", "keys", "apikey", "apikeys", "api-key",
   "2fa", "mfa", "otp", "captcha", "session", "sessions",
 
   // --- High-risk impersonation brands (phishing) ---

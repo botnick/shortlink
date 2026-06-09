@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { csrf } from "hono/csrf";
+import { HTTPException } from "hono/http-exception";
 import { and, eq, lt, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "./env";
 import { getDbHandle } from "./db";
@@ -10,7 +11,7 @@ import {
 } from "./lib/settings";
 import { deleteCustomHostname } from "./lib/cloudflare";
 import { dbMiddleware } from "./middleware/db";
-import { loadSession } from "./middleware/auth";
+import { apiKeyAuth, loadSession } from "./middleware/auth";
 import { requireSameOrigin, securityHeaders } from "./middleware/security";
 import authRoutes from "./routes/auth";
 import linkRoutes from "./routes/links";
@@ -20,6 +21,7 @@ import qrPresetRoutes from "./routes/qr-presets";
 import assetRoutes from "./routes/assets";
 import domainRoutes from "./routes/domains";
 import projectRoutes from "./routes/projects";
+import keyRoutes from "./routes/keys";
 import { getCachedPublicConfig } from "./lib/appconfig";
 import { getCachedLink, putCachedLink, routeDestination } from "./lib/cache";
 import { cachePayload } from "./lib/linkCache";
@@ -51,9 +53,24 @@ app.use("*", securityHeaders);
 // --- JSON API ---------------------------------------------------------------
 const api = new Hono<AppEnv>();
 api.use("*", dbMiddleware);
-api.use("*", csrf());
-api.use("*", requireSameOrigin);
+// CSRF protections guard cookie-based sessions. Bearer-key requests are
+// CSRF-immune by construction (a browser can't attach the header cross-site),
+// and non-browser clients often omit Content-Type/Origin — so they skip these
+// two checks and authenticate via apiKeyAuth instead.
+const csrfMw = csrf();
+api.use("*", (c, next) =>
+  c.req.header("authorization")?.startsWith("Bearer ") ? next() : csrfMw(c, next),
+);
+api.use("*", (c, next) =>
+  c.req.header("authorization")?.startsWith("Bearer ")
+    ? next()
+    : requireSameOrigin(c, next),
+);
 api.use("*", loadSession);
+// Bearer API-key auth (the public API). Hono's csrf() only inspects form
+// content types and requireSameOrigin allows requests without an Origin, so
+// JSON+Bearer clients pass both untouched.
+api.use("*", apiKeyAuth);
 api.route("/auth", authRoutes);
 api.route("/links", linkRoutes);
 api.route("/admin", adminRoutes);
@@ -62,6 +79,11 @@ api.route("/qr-presets", qrPresetRoutes);
 api.route("/assets", assetRoutes);
 api.route("/domains", domainRoutes);
 api.route("/projects", projectRoutes);
+api.route("/keys", keyRoutes);
+// Versioned aliases for the public API — same handlers, stable paths.
+api.route("/v1/links", linkRoutes);
+api.route("/v1/domains", domainRoutes);
+api.route("/v1/projects", projectRoutes);
 
 // Public, cacheable endpoints — registered before the API group so they skip the
 // per-request DB client + auth/CSRF middleware entirely. /config is served from
@@ -273,6 +295,14 @@ app.get("/:slug", async (c) => {
 app.all("*", (c) => serveAssets(c));
 
 app.onError((err, c) => {
+  // Middleware (csrf, validators) signals intent via HTTPException — keep the
+  // real status instead of masking everything as a 500.
+  if (err instanceof HTTPException) {
+    if (err.status === 403) {
+      return c.json({ error: "Cross-origin request blocked" }, 403);
+    }
+    return err.getResponse();
+  }
   console.error("Unhandled error:", err);
   return c.json({ error: "Internal Server Error" }, 500);
 });

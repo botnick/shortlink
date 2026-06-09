@@ -57,6 +57,7 @@ import {
   isBlockedDestination,
   maxAliasesPerLinkFrom,
   maxLinksPerUserFrom,
+  slugLengthFrom,
 } from "../lib/settings";
 import { isRateLimited } from "../lib/ratelimit";
 import { requireAuth } from "../middleware/auth";
@@ -351,8 +352,9 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     }
   }
 
+  const slugLen = slugLengthFrom(settings);
   for (let attempt = 0; attempt < 6; attempt++) {
-    const slug = generateSlug();
+    const slug = generateSlug(slugLen);
     if (await slugTaken(db, schema, domainId, slug)) continue;
     try {
       const row = await insertOne(slug);
@@ -378,6 +380,7 @@ route.post("/import", zValidator("json", bulkImportSchema), async (c) => {
   const blocked = blockedDomainsFrom(settings);
   const reserved = extraReservedFrom(settings);
   const maxLinks = maxLinksPerUserFrom(settings);
+  const slugLen = slugLengthFrom(settings);
   const projectId = await resolveProjectId(db, schema, user.id, user.email, undefined);
   let total = Number(
     (await db.select({ n: count() }).from(links).where(eq(links.userId, user.id)))[0].n,
@@ -417,9 +420,9 @@ route.post("/import", zValidator("json", bulkImportSchema), async (c) => {
           continue;
         }
       } else {
-        slug = generateSlug();
+        slug = generateSlug(slugLen);
         for (let t = 0; t < 6 && (await slugTaken(db, schema, domainId, slug)); t++) {
-          slug = generateSlug();
+          slug = generateSlug(slugLen);
         }
       }
 

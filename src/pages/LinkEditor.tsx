@@ -133,9 +133,11 @@ function suggestSource(destination: string, metaTitle?: string): string {
     return "";
   }
 }
+// "shortest"/"random" lengths come from the admin setting (config.slugLength);
+// desc strings for those two are computed at render time.
 const SLUG_OPTIONS = [
-  { kind: "shortest", label: "Shortest", desc: "Shortest random — 6 characters", needsSource: false },
-  { kind: "random", label: "Random", desc: "Longer random — 8 characters", needsSource: false },
+  { kind: "shortest", label: "Shortest", desc: "", needsSource: false },
+  { kind: "random", label: "Random", desc: "", needsSource: false },
   { kind: "plain", label: "Suggested", desc: "Words from the destination, joined", needsSource: true },
   { kind: "dash", label: "Suggested with dash", desc: "Dash-separated (SEO-friendly)", needsSource: true },
   { kind: "camel", label: "Suggested camel case", desc: "camelCase from the destination", needsSource: true },
@@ -480,10 +482,13 @@ export function LinkEditor() {
       onDestinationChange(`https://${v}`);
     }
   }
+  // Random lengths follow the admin-configured default (config.slugLength).
+  const shortLen = Math.min(32, Math.max(3, config.slugLength));
+  const longLen = Math.min(32, shortLen + 2);
   function optimizeSlug(kind: (typeof SLUG_OPTIONS)[number]["kind"]) {
     setSlugStrategy(SLUG_OPTIONS.find((o) => o.kind === kind)?.label ?? "");
-    if (kind === "shortest") return setAlias(randomSlug(6));
-    if (kind === "random") return setAlias(randomSlug(8));
+    if (kind === "shortest") return setAlias(randomSlug(shortLen));
+    if (kind === "random") return setAlias(randomSlug(longLen));
     const s = toSlug(slugSource, kind);
     setAlias(s.length >= 3 ? s : (s + randomSlug(4)).slice(0, 32));
   }
@@ -883,7 +888,7 @@ export function LinkEditor() {
                 )}
               </Label>
               <div className="flex items-stretch gap-2">
-                <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-md border border-input bg-transparent text-sm focus-within:ring-2 focus-within:ring-ring">
+                <div className="flex h-9 min-w-0 flex-1 items-center overflow-hidden rounded-md border border-input bg-transparent text-sm focus-within:ring-2 focus-within:ring-ring">
                   {domains.length > 0 ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -918,7 +923,7 @@ export function LinkEditor() {
                   <span className="px-0.5 text-muted-foreground">/</span>
                   <input
                     id="alias"
-                    className="h-9 w-full min-w-0 bg-transparent px-1 text-base outline-none md:text-sm"
+                    className="h-full w-full min-w-0 bg-transparent px-1 text-base outline-none md:text-sm"
                     placeholder="my-link"
                     value={alias}
                     onChange={(e) => {
@@ -937,6 +942,12 @@ export function LinkEditor() {
                   <DropdownMenuContent align="end" className="w-64">
                     {SLUG_OPTIONS.map((o) => {
                       const disabled = o.needsSource && !hasSlugSource;
+                      const desc =
+                        o.kind === "shortest"
+                          ? `Shortest random — ${shortLen} characters`
+                          : o.kind === "random"
+                            ? `Longer random — ${longLen} characters`
+                            : o.desc;
                       return (
                         <DropdownMenuItem
                           key={o.kind}
@@ -946,7 +957,7 @@ export function LinkEditor() {
                         >
                           <span className="text-sm font-medium">{o.label}</span>
                           <span className="text-xs text-muted-foreground">
-                            {disabled ? "Enter a destination first" : o.desc}
+                            {disabled ? "Enter a destination first" : desc}
                           </span>
                         </DropdownMenuItem>
                       );

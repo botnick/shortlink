@@ -24,6 +24,10 @@ export const SETTING_KEYS = {
   createRateLimit: "create_rate_limit",
   maxDomainsPerUser: "max_domains_per_user",
   maxAliasesPerLink: "max_aliases_per_link",
+  apiEnabled: "api_enabled",
+  apiRateLimit: "api_rate_limit",
+  maxApiKeysPerUser: "max_api_keys_per_user",
+  slugLength: "slug_length",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
@@ -213,6 +217,31 @@ export function maxAliasesPerLinkFrom(map: Record<string, unknown>): number {
   return asCount(map[SETTING_KEYS.maxAliasesPerLink], 5);
 }
 
+// --- Public API (all admin-configurable) -------------------------------------
+
+/** Master switch for the public API (bearer keys). Default: on. */
+export function apiEnabledFrom(map: Record<string, unknown>): boolean {
+  return map[SETTING_KEYS.apiEnabled] !== false;
+}
+
+/** Public-API requests allowed per key per minute. 0 = unlimited. */
+export function apiRateLimitFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.apiRateLimit], 120);
+}
+
+/** API keys a single member may hold. 0 = unlimited. */
+export function maxApiKeysPerUserFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.maxApiKeysPerUser], 10);
+}
+
+/** Length of auto-generated back-halves (server defaults + editor suggestions),
+ *  clamped to the slug rules (3–32). */
+export function slugLengthFrom(map: Record<string, unknown>): number {
+  const v = map[SETTING_KEYS.slugLength];
+  const n = typeof v === "number" ? Math.floor(v) : 6;
+  return Math.min(32, Math.max(3, n));
+}
+
 export interface SaasConfig {
   token: string;
   zoneId: string;
@@ -284,6 +313,7 @@ export function isBlockedDestination(
 export async function getPublicConfig(
   db: DB,
   schema: DbSchema,
+  appUrl: string,
 ): Promise<AppConfigDTO> {
   const map = await getAllSettings(db, schema);
 
@@ -293,10 +323,22 @@ export async function getPublicConfig(
     needsSetup = Number(row?.c ?? 0) === 0;
   }
 
+  // The canonical public origin — used for display and docs so the UI never
+  // leaks a dev host like localhost.
+  const appOrigin = appUrl.replace(/\/+$/, "");
+  let appHost = "";
+  try {
+    appHost = new URL(appOrigin).host;
+  } catch {
+    appHost = "";
+  }
+
   return {
     needsSetup,
     appName: appNameFrom(map),
-    shortDomain: shortDomainFrom(map),
+    // Display host for short links: the admin setting, else the app's own host.
+    shortDomain: shortDomainFrom(map) || appHost,
+    appOrigin,
     brandColor: brandColorFrom(map),
     logoUrl: logoFrom(map),
     description: descriptionFrom(map),
@@ -309,5 +351,7 @@ export async function getPublicConfig(
     ogTagline: ogTaglineFrom(map),
     ogAccent: ogAccentFrom(map),
     domainUnverifiedDays: domainUnverifiedDaysFrom(map),
+    apiEnabled: apiEnabledFrom(map),
+    slugLength: slugLengthFrom(map),
   };
 }

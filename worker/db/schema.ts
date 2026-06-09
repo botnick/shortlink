@@ -205,6 +205,27 @@ export const domains = pgTable(
   ],
 );
 
+// Programmatic access tokens. Only a SHA-256 of the key is stored — the key
+// itself is shown once at creation. `prefix` (first chars) identifies it in UI.
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    keyHash: text().notNull(),
+    prefix: text().notNull(),
+    lastUsedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("api_keys_hash_idx").on(t.keyHash),
+    index("api_keys_user_idx").on(t.userId, t.createdAt),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
 export type LinkAliasRow = typeof linkAliases.$inferSelect;

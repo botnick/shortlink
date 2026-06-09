@@ -21,13 +21,17 @@ import { hashPassword } from "../lib/password";
 import { computeGlobalStats, parseRange } from "./stats";
 import {
   SETTING_KEYS,
+  apiEnabledFrom,
+  apiRateLimitFrom,
   appNameFrom,
   authRateLimitFrom,
   blockedDomainsFrom,
   brandColorFrom,
   createRateLimitFrom,
   maxAliasesPerLinkFrom,
+  maxApiKeysPerUserFrom,
   maxDomainsPerUserFrom,
+  slugLengthFrom,
   cfConfiguredFrom,
   cfFallbackHostFrom,
   cfZoneIdFrom,
@@ -99,6 +103,10 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     createRateLimit: createRateLimitFrom(map),
     maxDomainsPerUser: maxDomainsPerUserFrom(map),
     maxAliasesPerLink: maxAliasesPerLinkFrom(map),
+    apiEnabled: apiEnabledFrom(map),
+    apiRateLimit: apiRateLimitFrom(map),
+    maxApiKeysPerUser: maxApiKeysPerUserFrom(map),
+    slugLength: slugLengthFrom(map),
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
@@ -171,6 +179,18 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.maxAliasesPerLink !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.maxAliasesPerLink, input.maxAliasesPerLink);
+  }
+  if (input.apiEnabled !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.apiEnabled, input.apiEnabled);
+  }
+  if (input.apiRateLimit !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.apiRateLimit, input.apiRateLimit);
+  }
+  if (input.maxApiKeysPerUser !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.maxApiKeysPerUser, input.maxApiKeysPerUser);
+  }
+  if (input.slugLength !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.slugLength, input.slugLength);
   }
   // Custom-domain (Cloudflare for SaaS) config — set via the web, no env vars.
   // An empty token clears it; a blank token is ignored so it isn't wiped on save.

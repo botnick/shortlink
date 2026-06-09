@@ -225,6 +225,12 @@ export interface SettingsDTO {
   createRateLimit: number;
   maxDomainsPerUser: number;
   maxAliasesPerLink: number;
+  /** Public API (bearer keys). */
+  apiEnabled: boolean;
+  apiRateLimit: number;
+  maxApiKeysPerUser: number;
+  /** Length of auto-generated back-halves (3–32). */
+  slugLength: number;
   /** Cloudflare for SaaS — configured via /admin. The token is never returned;
    *  `cfConfigured` reflects whether a token + zone id are set. */
   cfZoneId: string;
@@ -243,7 +249,10 @@ export interface SettingsDTO {
 export interface AppConfigDTO {
   needsSetup: boolean;
   appName: string;
+  /** Display host for short links (admin setting, falling back to the app host). */
   shortDomain: string;
+  /** Canonical public origin (from APP_URL) — for docs/display, never localhost. */
+  appOrigin: string;
   brandColor: string;
   logoUrl: string;
   description: string;
@@ -257,6 +266,10 @@ export interface AppConfigDTO {
   ogTagline: string;
   ogAccent: string;
   domainUnverifiedDays: number;
+  /** Whether the public (bearer-key) API is enabled. */
+  apiEnabled: boolean;
+  /** Length of auto-generated back-halves. */
+  slugLength: number;
 }
 
 /** A destination URL's own metadata, for the rich link-preview card. */
@@ -301,6 +314,26 @@ export interface DomainDTO {
 export interface DomainListDTO {
   mode: "dns" | "saas";
   domains: DomainDTO[];
+}
+
+/** A programmatic access token (the key itself is only returned at creation). */
+export interface ApiKeyDTO {
+  id: string;
+  name: string;
+  /** First characters of the key (e.g. "sk_ab12cd34") for identification. */
+  prefix: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export interface ApiKeyListDTO {
+  keys: ApiKeyDTO[];
+}
+
+export interface ApiKeyCreatedDTO {
+  /** The full secret — shown exactly once; only a hash is stored. */
+  key: string;
+  apiKey: ApiKeyDTO;
 }
 
 export interface ApiError {

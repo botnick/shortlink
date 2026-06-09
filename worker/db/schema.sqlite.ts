@@ -174,6 +174,26 @@ export const qrPresets = sqliteTable(
   ],
 );
 
+// Programmatic access tokens (hash-only storage; key shown once at creation).
+export const apiKeys = sqliteTable(
+  "api_keys",
+  {
+    id: text().primaryKey().$defaultFn(uuid),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    keyHash: text().notNull(),
+    prefix: text().notNull(),
+    lastUsedAt: integer({ mode: "timestamp" }),
+    createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex("api_keys_hash_idx").on(t.keyHash),
+    index("api_keys_user_idx").on(t.userId, t.createdAt),
+  ],
+);
+
 export const domains = sqliteTable(
   "domains",
   {

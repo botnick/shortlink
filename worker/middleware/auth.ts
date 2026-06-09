@@ -1,6 +1,9 @@
 import { createMiddleware } from "hono/factory";
 import type { AppEnv } from "../env";
 import { validateSession } from "../lib/auth";
+import { resolveApiKey, touchApiKey } from "../lib/apikeys";
+import { isRateLimited } from "../lib/ratelimit";
+import { apiEnabledFrom, apiRateLimitFrom, getAllSettings } from "../lib/settings";
 import {
   clearSessionCookie,
   readSessionCookie,
@@ -26,6 +29,48 @@ export const loadSession = createMiddleware<AppEnv>(async (c, next) => {
     }
   }
 
+  await next();
+});
+
+/**
+ * Bearer API-key auth for the public API. Runs after `loadSession`: a session
+ * (cookie) wins; otherwise `Authorization: Bearer sk_…` resolves to the key's
+ * owner. Bearer requests are CSRF-immune by construction (browsers can't set
+ * the header cross-site), so they pass the origin checks untouched.
+ */
+export const apiKeyAuth = createMiddleware<AppEnv>(async (c, next) => {
+  if (!c.var.user) {
+    const auth = c.req.header("authorization");
+    if (auth?.startsWith("Bearer ")) {
+      const settings = await getAllSettings(c.var.db, c.var.schema);
+      if (!apiEnabledFrom(settings)) {
+        return c.json({ error: "The API is currently disabled" }, 403);
+      }
+      const resolved = await resolveApiKey(
+        c.env,
+        c.var.db,
+        c.var.schema,
+        auth.slice(7).trim(),
+      );
+      if (!resolved) {
+        return c.json({ error: "Invalid or revoked API key" }, 401);
+      }
+      if (
+        await isRateLimited(
+          c.env,
+          `api:${resolved.keyId}`,
+          apiRateLimitFrom(settings),
+          60,
+        )
+      ) {
+        return c.json({ error: "Rate limit exceeded — slow down" }, 429);
+      }
+      c.set("user", resolved.user);
+      c.executionCtx.waitUntil(
+        touchApiKey(c.env, resolved.keyId).catch(() => {}),
+      );
+    }
+  }
   await next();
 });
 

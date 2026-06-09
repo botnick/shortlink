@@ -3,7 +3,7 @@ import type { AppBindings } from "../env";
 import { getPublicConfig } from "./settings";
 import type { AppConfigDTO } from "@shared/types";
 
-const KEY = "config:v1";
+const KEY = "config:v2"; // v2: + appOrigin, shortDomain falls back to the app host
 
 /**
  * Public app config, cached in KV. The SPA fetches this on every page load, so
@@ -17,7 +17,7 @@ export async function getCachedPublicConfig(env: AppBindings): Promise<AppConfig
 
   const { db, schema, close } = getDbHandle(env);
   try {
-    const cfg = await getPublicConfig(db, schema);
+    const cfg = await getPublicConfig(db, schema, env.APP_URL);
     await env.LINKS_KV.put(KEY, JSON.stringify(cfg), { expirationTtl: 3600 });
     return cfg;
   } finally {

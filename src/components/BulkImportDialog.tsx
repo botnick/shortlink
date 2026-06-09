@@ -1,8 +1,9 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import type { BulkImportResultDTO } from "@shared/types";
+import { useShortHost } from "@/lib/config";
+import type { BulkImportResultDTO, DomainDTO, DomainListDTO } from "@shared/types";
 import {
   Dialog,
   DialogContent,
@@ -51,8 +52,29 @@ export function BulkImportDialog({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<BulkImportResultDTO | null>(null);
+  // Host the whole batch lands on (null = the default short host).
+  const [domainId, setDomainId] = useState<string | null>(null);
+  const [domains, setDomains] = useState<DomainDTO[]>([]);
+  const shortHost = useShortHost();
 
   const rows = useMemo(() => parseRows(text), [text]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    api
+      .get<DomainListDTO>("/domains")
+      .then((r) => {
+        if (active)
+          setDomains(
+            r.domains.filter((d) => d.status === "verified" || d.status === "active"),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [open]);
 
   function reset() {
     setText("");
@@ -76,7 +98,9 @@ export function BulkImportDialog({
     }
     setBusy(true);
     try {
-      const res = await api.post<BulkImportResultDTO>("/links/import", { rows });
+      const res = await api.post<BulkImportResultDTO>("/links/import", {
+        rows: rows.map((r) => ({ ...r, domainId: domainId ?? undefined })),
+      });
       setResult(res);
       if (res.created.length) onImported();
       toast.success(`Imported ${res.created.length} link${res.created.length === 1 ? "" : "s"}`);
@@ -137,6 +161,24 @@ export function BulkImportDialog({
           </div>
         ) : (
           <div className="space-y-3">
+            {domains.length > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Create on</span>
+                <select
+                  value={domainId ?? ""}
+                  onChange={(e) => setDomainId(e.target.value || null)}
+                  className="h-8 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Domain for imported links"
+                >
+                  <option value="">{shortHost} (default)</option>
+                  {domains.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.hostname}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}

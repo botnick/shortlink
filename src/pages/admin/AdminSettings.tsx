@@ -145,6 +145,10 @@ export function AdminSettings() {
   const [createRateLimit, setCreateRateLimit] = useState(60);
   const [maxDomains, setMaxDomains] = useState(10);
   const [maxAliases, setMaxAliases] = useState(5);
+  const [apiEnabled, setApiEnabled] = useState(true);
+  const [apiRateLimit, setApiRateLimit] = useState(120);
+  const [maxApiKeys, setMaxApiKeys] = useState(10);
+  const [slugLength, setSlugLength] = useState(6);
   const [savingLimits, setSavingLimits] = useState(false);
 
   const [cfToken, setCfToken] = useState("");
@@ -179,6 +183,11 @@ export function AdminSettings() {
         setCreateRateLimit(s.createRateLimit);
         setMaxDomains(s.maxDomainsPerUser);
         setMaxAliases(s.maxAliasesPerLink);
+        // Guard with defaults so a stale/older payload can't silently flip these.
+        setApiEnabled(s.apiEnabled ?? true);
+        setApiRateLimit(s.apiRateLimit ?? 120);
+        setMaxApiKeys(s.maxApiKeysPerUser ?? 10);
+        setSlugLength(s.slugLength ?? 6);
         setCfZoneId(s.cfZoneId);
         setCfFallbackHost(s.cfFallbackHost);
         setUnverifiedDays(s.domainUnverifiedDays);
@@ -234,6 +243,10 @@ export function AdminSettings() {
         createRateLimit: Math.max(0, Math.floor(createRateLimit) || 0),
         maxDomainsPerUser: Math.max(0, Math.floor(maxDomains) || 0),
         maxAliasesPerLink: Math.max(0, Math.floor(maxAliases) || 0),
+        apiEnabled,
+        apiRateLimit: Math.max(0, Math.floor(apiRateLimit) || 0),
+        maxApiKeysPerUser: Math.max(0, Math.floor(maxApiKeys) || 0),
+        slugLength: Math.min(32, Math.max(3, Math.floor(slugLength) || 6)),
       });
       toast.success("Limits saved");
     } catch (err) {
@@ -568,6 +581,25 @@ export function AdminSettings() {
                   className="max-w-[12rem]"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="slugLength">
+                  Random back-half length{" "}
+                  <span className="font-normal text-muted-foreground">(3–32)</span>
+                </Label>
+                <Input
+                  id="slugLength"
+                  type="number"
+                  min={3}
+                  max={32}
+                  value={slugLength}
+                  onChange={(e) => setSlugLength(Number(e.target.value))}
+                  className="max-w-[12rem]"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Used for auto-generated links (no custom back-half), imports and the
+                  editor’s “Shortest” suggestion.
+                </p>
+              </div>
 
               <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
                 <p className="text-sm font-medium">Abuse limits</p>
@@ -620,6 +652,46 @@ export function AdminSettings() {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Public API</p>
+                    <p className="text-xs text-muted-foreground">
+                      Programmatic access with bearer API keys (/api/v1).
+                    </p>
+                  </div>
+                  <Switch
+                    checked={apiEnabled}
+                    onCheckedChange={setApiEnabled}
+                    aria-label="Enable the public API"
+                  />
+                </div>
+                {apiEnabled && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="apiRate">Requests / minute / key</Label>
+                      <Input
+                        id="apiRate"
+                        type="number"
+                        min={0}
+                        value={apiRateLimit}
+                        onChange={(e) => setApiRateLimit(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="maxKeys">API keys per member</Label>
+                      <Input
+                        id="maxKeys"
+                        type="number"
+                        min={0}
+                        value={maxApiKeys}
+                        onChange={(e) => setMaxApiKeys(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Button type="submit" disabled={savingLimits}>

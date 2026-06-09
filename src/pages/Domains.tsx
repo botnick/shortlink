@@ -65,10 +65,11 @@ function RecordRow({ label, value, copy }: { label: string; value: string; copy?
   );
 }
 
-/** A DNS record shown as a clean three-row table (Type / Name / Value). */
+/** A DNS record shown as a clean three-row table (Type / Name / Value).
+ *  No overflow-hidden — it would clip the copy buttons' tooltips. */
 function DnsRecord({ type, name, value }: { type: string; name: string; value: string }) {
   return (
-    <div className="overflow-hidden rounded-lg border bg-background">
+    <div className="rounded-lg border bg-background">
       <RecordRow label="Type" value={type} />
       <RecordRow label="Name" value={name} copy />
       <RecordRow label="Value" value={value} copy />

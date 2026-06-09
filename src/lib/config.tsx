@@ -19,6 +19,7 @@ const DEFAULT: AppConfigDTO = {
   needsSetup: false,
   appName: DEFAULT_APP_NAME,
   shortDomain: "",
+  appOrigin: "",
   brandColor: DEFAULT_BRAND_COLOR,
   logoUrl: "",
   description: "",
@@ -31,6 +32,8 @@ const DEFAULT: AppConfigDTO = {
   ogTagline: "",
   ogAccent: DEFAULT_BRAND_COLOR,
   domainUnverifiedDays: 90,
+  apiEnabled: true,
+  slugLength: 6,
 };
 
 function upsertMeta(key: "name" | "property", keyName: string, content: string) {
