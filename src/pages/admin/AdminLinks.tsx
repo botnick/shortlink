@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatDate, formatNumber } from "@/lib/format";
 import { useSearchList } from "@/lib/useSearchList";
 import type { AdminLinkDTO, AdminLinkListDTO } from "@shared/types";
@@ -149,10 +150,17 @@ export function AdminLinks({
       )}
 
       {!list.loading && list.items.length > 0 && (
-        <label className="flex w-fit items-center gap-2 px-1 text-sm text-muted-foreground">
-          <input type="checkbox" checked={allChecked} onChange={toggleAll} className="size-4 accent-primary" aria-label="Select all on this page" />
-          Select all on this page
-        </label>
+        <div className="flex w-fit items-center gap-2 px-1 text-sm text-muted-foreground">
+          <Checkbox
+            checked={allChecked}
+            indeterminate={selected.size > 0 && !allChecked}
+            onCheckedChange={toggleAll}
+            aria-label="Select all on this page"
+          />
+          <span className="cursor-pointer hover:text-foreground" onClick={toggleAll}>
+            Select all on this page
+          </span>
+        </div>
       )}
 
       {list.loading ? (
@@ -171,12 +179,11 @@ export function AdminLinks({
                 selected.has(l.id) && "ring-1 ring-primary",
               )}
             >
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={selected.has(l.id)}
-                onChange={() => toggle(l.id)}
+                onCheckedChange={() => toggle(l.id)}
                 aria-label={`Select ${l.slug}`}
-                className="mt-1 size-4 shrink-0 accent-primary"
+                className="mt-0.5"
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">

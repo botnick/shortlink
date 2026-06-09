@@ -66,31 +66,45 @@ const FRAME_STYLES: { value: FrameStyle; label: string }[] = [
   { value: "underline", label: "Underline" },
 ];
 
-// A lightweight QR-like placeholder so each frame option can show a thumbnail
-// without rendering a real QR per cell.
+// A realistic 21×21 QR placeholder (finder + timing patterns + dense data) so
+// each frame option's thumbnail reads as a real QR, without rendering one per cell.
 function miniQr(cfg: QrCfg): string {
-  const S = 1000;
-  const c = 100;
+  const N = 21;
+  const c = 48;
+  const S = N * c;
   const round =
     cfg.dotsType === "dots" ||
     cfg.dotsType.includes("rounded") ||
     cfg.dotsType === "classy-rounded";
-  const eye = (x: number, y: number) =>
-    `<rect x="${x}" y="${y}" width="${c * 3}" height="${c * 3}" rx="${round ? 26 : 4}" fill="${cfg.cornerSquareColor}"/>` +
-    `<rect x="${x + c * 0.72}" y="${y + c * 0.72}" width="${c * 1.56}" height="${c * 1.56}" rx="${round ? 16 : 2}" fill="#ffffff"/>` +
-    `<rect x="${x + c}" y="${y + c}" width="${c}" height="${c}" rx="${round ? 12 : 2}" fill="${cfg.cornerDotColor}"/>`;
-  const inEye = (cx: number, cy: number) =>
-    (cx < 3 && cy < 3) || (cx > 6 && cy < 3) || (cx < 3 && cy > 6);
+  const dotR = round ? c * 0.42 : c * 0.1;
+
+  const finder = (gx: number, gy: number) => {
+    const x = gx * c;
+    const y = gy * c;
+    return (
+      `<rect x="${x}" y="${y}" width="${7 * c}" height="${7 * c}" rx="${round ? c * 0.95 : c * 0.5}" fill="${cfg.cornerSquareColor}"/>` +
+      `<rect x="${x + c}" y="${y + c}" width="${5 * c}" height="${5 * c}" rx="${round ? c * 0.75 : c * 0.3}" fill="#ffffff"/>` +
+      `<rect x="${x + 2 * c}" y="${y + 2 * c}" width="${3 * c}" height="${3 * c}" rx="${round ? c * 0.55 : c * 0.2}" fill="${cfg.cornerDotColor}"/>`
+    );
+  };
+  const inFinder = (gx: number, gy: number) =>
+    (gx < 8 && gy < 8) || (gx >= N - 8 && gy < 8) || (gx < 8 && gy >= N - 8);
+
+  const m = c * 0.86;
+  const off = (c - m) / 2;
   let dots = "";
-  for (let cx = 0; cx < 10; cx++) {
-    for (let cy = 0; cy < 10; cy++) {
-      if (inEye(cx, cy)) continue;
-      if ((cx * 3 + cy * 7 + cx * cy * 2) % 5 < 2) {
-        dots += `<rect x="${cx * c + 10}" y="${cy * c + 10}" width="${c * 0.8}" height="${c * 0.8}" rx="${round ? c * 0.4 : 4}" fill="${cfg.fg}"/>`;
-      }
+  for (let gx = 0; gx < N; gx++) {
+    for (let gy = 0; gy < N; gy++) {
+      if (inFinder(gx, gy)) continue;
+      const on =
+        gx === 6 || gy === 6
+          ? (gx + gy) % 2 === 0 // timing pattern
+          : (((gx ^ gy) * 7 + gx * 3 + gy * 5) & 7) < 4; // ~50% pseudo-random data
+      if (!on) continue;
+      dots += `<rect x="${gx * c + off}" y="${gy * c + off}" width="${m}" height="${m}" rx="${dotR}" fill="${cfg.fg}"/>`;
     }
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}"><rect width="${S}" height="${S}" fill="#ffffff"/>${eye(0, 0)}${eye(700, 0)}${eye(0, 700)}${dots}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}"><rect width="${S}" height="${S}" fill="#ffffff"/>${dots}${finder(0, 0)}${finder(N - 7, 0)}${finder(0, N - 7)}</svg>`;
 }
 
 // --- primitives -------------------------------------------------------------
