@@ -121,9 +121,13 @@ export const qrPresets = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text().notNull(),
     config: text({ mode: "json" }).notNull(),
+    projectId: text().references(() => projects.id, { onDelete: "cascade" }),
     createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
   },
-  (t) => [index("qr_presets_user_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("qr_presets_user_idx").on(t.userId, t.createdAt),
+    index("qr_presets_project_idx").on(t.projectId, t.createdAt),
+  ],
 );
 
 export const domains = sqliteTable(

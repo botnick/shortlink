@@ -130,6 +130,7 @@ export const qrPresetSchema = z.object({
   config: z
     .record(z.string(), z.unknown())
     .refine((c) => JSON.stringify(c).length < 600_000, "Preset is too large"),
+  projectId: z.string().uuid().optional(),
 });
 
 export const domainSchema = z.object({

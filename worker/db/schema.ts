@@ -121,9 +121,13 @@ export const qrPresets = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text().notNull(),
     config: jsonb().notNull(),
+    projectId: uuid().references(() => projects.id, { onDelete: "cascade" }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("qr_presets_user_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("qr_presets_user_idx").on(t.userId, t.createdAt),
+    index("qr_presets_project_idx").on(t.projectId, t.createdAt),
+  ],
 );
 
 export const domains = pgTable(

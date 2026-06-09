@@ -27,7 +27,7 @@ import {
   type FrameStyle,
   type QrCfg,
 } from "@/lib/qr";
-import type { AssetDTO, QrPresetDTO } from "@shared/types";
+import type { AssetDTO, ProjectDTO, QrPresetDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ColorPicker } from "@/components/ColorPicker";
@@ -251,16 +251,29 @@ const CHECKER = {
 } as const;
 
 // --- studio -----------------------------------------------------------------
-export function QrStudio({ url, downloadName }: { url: string; downloadName: string }) {
+export function QrStudio({
+  url,
+  downloadName,
+  project,
+}: {
+  url: string;
+  downloadName: string;
+  project?: ProjectDTO;
+}) {
   const { config } = useConfig();
-  const [cfg, setCfg] = useState<QrCfg>(() => makeDefault(config.brandColor));
+  // Default to the project's brand presets (color + logo), falling back to global.
+  const brand = project?.color || config.brandColor;
+  const [cfg, setCfg] = useState<QrCfg>(() => {
+    const base = makeDefault(brand);
+    return project?.logo ? { ...base, logoSrc: project.logo, logo: true } : base;
+  });
   const [markup, setMarkup] = useState("");
   const [extracted, setExtracted] = useState<string[]>([]);
   const [saved, setSaved] = useState<QrPresetDTO[]>([]);
   const [assets, setAssets] = useState<AssetDTO[]>([]);
   const [naming, setNaming] = useState(false);
   const [presetName, setPresetName] = useState("");
-  const [mainColor, setMainColor] = useState(config.brandColor);
+  const [mainColor, setMainColor] = useState(brand);
   const [format, setFormat] = useState<"png" | "svg" | "jpeg">("png");
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -313,9 +326,13 @@ export function QrStudio({ url, downloadName }: { url: string; downloadName: str
   }, [cfg, url]);
 
   useEffect(() => {
-    api.get<{ presets: QrPresetDTO[] }>("/qr-presets").then((r) => setSaved(r.presets)).catch(() => {});
+    const q = project ? `?projectId=${project.id}` : "";
+    api
+      .get<{ presets: QrPresetDTO[] }>(`/qr-presets${q}`)
+      .then((r) => setSaved(r.presets))
+      .catch(() => {});
     api.get<{ assets: AssetDTO[] }>("/assets").then((r) => setAssets(r.assets)).catch(() => {});
-  }, []);
+  }, [project]);
 
   function onExtract(file: File | undefined) {
     if (!file) return;
@@ -365,7 +382,7 @@ export function QrStudio({ url, downloadName }: { url: string; downloadName: str
   function savePreset() {
     const name = presetName.trim();
     if (!name) return;
-    api.post<{ preset: QrPresetDTO }>("/qr-presets", { name, config: { ...cfg, palette: extracted } })
+    api.post<{ preset: QrPresetDTO }>("/qr-presets", { name, config: { ...cfg, palette: extracted }, projectId: project?.id })
       .then((r) => {
         setSaved((s) => [r.preset, ...s.filter((p) => p.name !== name)]);
         setActivePresetId(r.preset.id);

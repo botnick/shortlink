@@ -4,6 +4,7 @@ import { and, count, desc, eq } from "drizzle-orm";
 import type { AppEnv } from "../env";
 import type { QrPresetRow } from "../db/schema";
 import { qrPresetSchema } from "../lib/validators";
+import { resolveProjectId } from "../lib/projects";
 import { requireAuth } from "../middleware/auth";
 import type { QrPresetDTO } from "@shared/types";
 
@@ -22,13 +23,18 @@ function toDTO(row: QrPresetRow): QrPresetDTO {
   };
 }
 
-// LIST — the signed-in user's presets, newest first.
+// LIST — the signed-in user's presets for a project (scoped; never cross-project).
 route.get("/", async (c) => {
   const { qrPresets } = c.var.schema;
+  const projectId = c.req.query("projectId");
+  const where = and(
+    eq(qrPresets.userId, c.var.user!.id),
+    ...(projectId && UUID_RE.test(projectId) ? [eq(qrPresets.projectId, projectId)] : []),
+  );
   const rows = await c.var.db
     .select()
     .from(qrPresets)
-    .where(eq(qrPresets.userId, c.var.user!.id))
+    .where(where)
     .orderBy(desc(qrPresets.createdAt));
   return c.json({ presets: rows.map(toDTO) });
 });
@@ -39,19 +45,26 @@ route.post("/", zValidator("json", qrPresetSchema), async (c) => {
   const { qrPresets } = c.var.schema;
   const user = c.var.user!;
   const input = c.req.valid("json");
+  const projectId = await resolveProjectId(
+    db,
+    c.var.schema,
+    user.id,
+    user.email,
+    input.projectId,
+  );
 
   const [{ n }] = await db
     .select({ n: count() })
     .from(qrPresets)
-    .where(eq(qrPresets.userId, user.id));
+    .where(and(eq(qrPresets.userId, user.id), eq(qrPresets.projectId, projectId)));
   if (Number(n) >= MAX_PRESETS) {
-    return c.json({ error: "You've reached the preset limit" }, 409);
+    return c.json({ error: "You've reached the preset limit for this project" }, 409);
   }
 
   const row = (
     await db
       .insert(qrPresets)
-      .values({ userId: user.id, name: input.name, config: input.config })
+      .values({ userId: user.id, name: input.name, config: input.config, projectId })
       .returning()
   )[0];
   return c.json({ preset: toDTO(row) }, 201);

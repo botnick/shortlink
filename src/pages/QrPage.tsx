@@ -3,20 +3,42 @@ import { Link as RouterLink, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { shortUrlFor } from "@/lib/utils";
-import type { LinkDTO } from "@shared/types";
+import type { LinkDTO, ProjectDTO, ProjectListDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { QrStudio } from "@/components/QrStudio";
 
 export function QrPage() {
   const { id } = useParams<{ id: string }>();
   const [link, setLink] = useState<LinkDTO | null>(null);
+  const [project, setProject] = useState<ProjectDTO | null>(null);
+  const [ready, setReady] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    setReady(false);
     api
       .get<{ link: LinkDTO }>(`/links/${id}`)
-      .then((r) => setLink(r.link))
-      .catch(() => setNotFound(true));
+      .then(async (r) => {
+        if (!active) return;
+        setLink(r.link);
+        // Load the link's project so the QR can default to its brand presets.
+        if (r.link.projectId) {
+          try {
+            const pl = await api.get<ProjectListDTO>("/projects");
+            if (active) {
+              setProject(pl.projects.find((p) => p.id === r.link.projectId) ?? null);
+            }
+          } catch {
+            /* fall back to the global brand */
+          }
+        }
+        if (active) setReady(true);
+      })
+      .catch(() => active && setNotFound(true));
+    return () => {
+      active = false;
+    };
   }, [id]);
 
   if (notFound) {
@@ -44,11 +66,18 @@ export function QrPage() {
         {link && (
           <p className="mt-1 text-sm text-muted-foreground">
             {shortUrlFor(link.slug)}
+            {project && <> · {project.name}</>}
           </p>
         )}
       </div>
 
-      {link && <QrStudio url={shortUrlFor(link.slug)} downloadName={link.slug} />}
+      {ready && link && (
+        <QrStudio
+          url={shortUrlFor(link.slug)}
+          downloadName={link.slug}
+          project={project ?? undefined}
+        />
+      )}
     </div>
   );
 }

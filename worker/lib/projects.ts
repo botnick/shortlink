@@ -9,20 +9,27 @@ export async function ensureDefaultProject(
   userId: string,
   email: string,
 ): Promise<string> {
-  const { projects, links } = schema;
+  const { projects, links, qrPresets } = schema;
   const rows = await db
     .select({ id: projects.id })
     .from(projects)
     .where(eq(projects.userId, userId))
     .orderBy(asc(projects.createdAt))
     .limit(1);
-  if (rows[0]) return rows[0].id;
-  const created = (await db.insert(projects).values({ userId, name: email }).returning())[0];
+  const defaultId =
+    rows[0]?.id ??
+    (await db.insert(projects).values({ userId, name: email }).returning())[0].id;
+
+  // Backfill any project-less links / presets into the default (idempotent).
   await db
     .update(links)
-    .set({ projectId: created.id })
+    .set({ projectId: defaultId })
     .where(and(eq(links.userId, userId), isNull(links.projectId)));
-  return created.id;
+  await db
+    .update(qrPresets)
+    .set({ projectId: defaultId })
+    .where(and(eq(qrPresets.userId, userId), isNull(qrPresets.projectId)));
+  return defaultId;
 }
 
 /** Resolve the project a link should live in: the requested one if the user owns
