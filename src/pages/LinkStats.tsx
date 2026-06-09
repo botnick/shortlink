@@ -130,7 +130,13 @@ export function LinkStats() {
           <div className="flex items-center gap-2">
             <CopyButton value={shortUrlFor(link.slug)} label="Copy" variant="outline" />
             <Button asChild variant="outline" size="icon">
-              <a href={shortUrlFor(link.slug)} target="_blank" rel="noreferrer">
+              <a
+                href={shortUrlFor(link.slug)}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open link"
+                title="Open link"
+              >
                 <ExternalLink />
               </a>
             </Button>

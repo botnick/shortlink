@@ -109,7 +109,7 @@ export function AdminDomains() {
                   Check
                 </Button>
               )}
-              <Button variant="ghost" size="icon" onClick={() => remove(d)} aria-label="Remove domain"><Trash2 /></Button>
+              <Button variant="ghost" size="icon" onClick={() => remove(d)} aria-label="Remove domain" title="Remove domain"><Trash2 /></Button>
             </li>
           ))}
         </ul>

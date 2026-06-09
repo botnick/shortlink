@@ -217,7 +217,7 @@ export function AdminLinks({
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Link actions"><MoreHorizontal /></Button>
+                  <Button variant="ghost" size="icon" aria-label="Link actions" title="More actions"><MoreHorizontal /></Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                   <DropdownMenuItem asChild>

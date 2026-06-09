@@ -249,7 +249,7 @@ export function Dashboard() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Link actions">
+                  <Button variant="ghost" size="icon" aria-label="Link actions" title="More actions">
                     <MoreHorizontal />
                   </Button>
                 </DropdownMenuTrigger>

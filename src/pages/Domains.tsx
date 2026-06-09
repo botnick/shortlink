@@ -302,6 +302,7 @@ export function Domains() {
                       onClick={() => remove(d)}
                       disabled={loading}
                       aria-label="Remove domain"
+                      title="Remove domain"
                     >
                       <Trash2 />
                     </Button>
