@@ -127,6 +127,13 @@
       "when": 1781034014325,
       "tag": "0017_aspiring_sabretooth",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781034260220,
+      "tag": "0018_bouncy_sasquatch",
+      "breakpoints": true
     }
   ]
 }

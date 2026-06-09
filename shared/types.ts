@@ -343,6 +343,23 @@ export interface ApiKeyCreatedDTO {
   apiKey: ApiKeyDTO;
 }
 
+/** One signed-in device on the account page (`id` is a safe public id). */
+export interface SessionDTO {
+  id: string;
+  current: boolean;
+  browser: string | null;
+  os: string | null;
+  deviceType: string | null;
+  country: string | null;
+  lastActiveAt: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface SessionListDTO {
+  sessions: SessionDTO[];
+}
+
 export interface ApiError {
   error: string;
 }

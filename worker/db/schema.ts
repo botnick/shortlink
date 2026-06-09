@@ -51,13 +51,23 @@ export const sessions = pgTable(
   "sessions",
   {
     id: text().primaryKey(),
+    // Safe identifier for listing/revoking in the UI — `id` is the secret token
+    // and must never leave the server.
+    publicId: uuid().notNull().defaultRandom(),
     userId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Device snapshot from sign-in, for the account page's session list.
+    browser: text(),
+    os: text(),
+    deviceType: text(),
+    country: text(),
+    lastActiveAt: timestamp({ withTimezone: true }),
     expiresAt: timestamp({ withTimezone: true }).notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    uniqueIndex("sessions_public_idx").on(t.publicId),
     index("sessions_user_idx").on(t.userId),
     index("sessions_expires_idx").on(t.expiresAt),
   ],

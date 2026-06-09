@@ -1,10 +1,22 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { KeyRound, Loader2, LogOut, ShieldAlert, User } from "lucide-react";
+import {
+  KeyRound,
+  Loader2,
+  LogOut,
+  Monitor,
+  ShieldAlert,
+  Smartphone,
+  Tablet,
+  Trash2,
+  User,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatDate } from "@/lib/format";
+import type { SessionDTO, SessionListDTO } from "@shared/types";
+import { formatDate, timeAgo } from "@/lib/format";
+import { Hint } from "@/components/ui/tooltip";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +51,7 @@ export function Account() {
   const navigate = useNavigate();
 
   const [info, setInfo] = useState<AccountDTO | null>(null);
+  const [sessions, setSessions] = useState<SessionDTO[] | null>(null);
 
   // Change password
   const [curPw, setCurPw] = useState("");
@@ -55,8 +68,28 @@ export function Account() {
       .get<AccountDTO>("/account")
       .then(setInfo)
       .catch(() => toast.error("Couldn't load your account"));
+    api
+      .get<SessionListDTO>("/account/sessions")
+      .then((r) => setSessions(r.sessions))
+      .catch(() => {});
   }
   useEffect(load, []);
+
+  async function revokeSession(s: SessionDTO) {
+    const ok = await confirm({
+      title: "Sign out this device?",
+      description: `${s.browser ?? "Unknown browser"} on ${s.os ?? "unknown OS"} will need to sign in again.`,
+      confirmLabel: "Sign out device",
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/account/sessions/${s.id}`);
+      load();
+      toast.success("Device signed out");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't sign it out");
+    }
+  }
 
   async function changePassword(e: FormEvent) {
     e.preventDefault();
@@ -134,15 +167,89 @@ export function Account() {
               {info.role === "admin" && <Badge>Admin</Badge>}
             </div>
             <div className="truncate text-xs text-muted-foreground">
-              Joined {formatDate(info.createdAt)} ·{" "}
-              {info.activeSessions} active session{info.activeSessions === 1 ? "" : "s"}
+              Joined {formatDate(info.createdAt)}
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={signOutOthers}>
-            <LogOut /> Sign out others
-          </Button>
         </div>
       )}
+
+      {/* Active sessions */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Monitor className="size-4 text-muted-foreground" /> Active sessions
+              </CardTitle>
+              <CardDescription>
+                Everywhere this account is signed in right now.
+              </CardDescription>
+            </div>
+            {sessions !== null && sessions.length > 1 && (
+              <Button variant="outline" size="sm" onClick={signOutOthers}>
+                <LogOut /> Sign out others
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {sessions === null ? (
+            <div className="space-y-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {sessions.map((s) => {
+                const DeviceIcon =
+                  s.deviceType === "mobile"
+                    ? Smartphone
+                    : s.deviceType === "tablet"
+                      ? Tablet
+                      : Monitor;
+                return (
+                  <li key={s.id} className="flex items-center gap-3 py-2.5">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <DeviceIcon className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <span className="truncate">
+                          {[s.browser, s.os].filter(Boolean).join(" · ") ||
+                            "Unknown device"}
+                        </span>
+                        {s.current && (
+                          <Badge variant="success" className="shrink-0">
+                            This device
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {s.country ? `${s.country} · ` : ""}
+                        Active {timeAgo(s.lastActiveAt)} · signed in{" "}
+                        {formatDate(s.createdAt)}
+                      </div>
+                    </div>
+                    {!s.current && (
+                      <Hint label="Sign out this device">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Sign out this device"
+                          onClick={() => revokeSession(s)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </Hint>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Change password */}
       <Card>

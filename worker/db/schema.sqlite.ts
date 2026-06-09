@@ -54,13 +54,21 @@ export const sessions = sqliteTable(
   "sessions",
   {
     id: text().primaryKey(),
+    // Safe identifier for listing/revoking — `id` is the secret token.
+    publicId: text().notNull().$defaultFn(uuid),
     userId: text()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    browser: text(),
+    os: text(),
+    deviceType: text(),
+    country: text(),
+    lastActiveAt: integer({ mode: "timestamp" }),
     expiresAt: integer({ mode: "timestamp" }).notNull(),
     createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
   },
   (t) => [
+    uniqueIndex("sessions_public_idx").on(t.publicId),
     index("sessions_user_idx").on(t.userId),
     index("sessions_expires_idx").on(t.expiresAt),
   ],

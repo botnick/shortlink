@@ -8,7 +8,14 @@ import { clearSessionCookie, setSessionCookie } from "../lib/cookies";
 import { SETTING_KEYS, authRateLimitFrom, getAllSettings } from "../lib/settings";
 import { isEmailBlocked } from "../lib/accountLifecycle";
 import { isRateLimited } from "../lib/ratelimit";
-import { getClientIp } from "../lib/geo";
+import { getClientIp, getCountry, parseUserAgent } from "../lib/geo";
+import type { AppContext as Ctx } from "../env";
+
+/** Device snapshot for the session list on the account page. */
+function sessionMeta(c: Ctx) {
+  const ua = parseUserAgent(c.req.header("user-agent") ?? null);
+  return { ...ua, country: getCountry(c) };
+}
 import { loginSchema, registerSchema } from "../lib/validators";
 import type { UserDTO } from "@shared/types";
 
@@ -66,7 +73,7 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
     .returning({ id: users.id, email: users.email, role: users.role });
 
   const user = inserted[0];
-  const session = await createSession(db, schema, user.id);
+  const session = await createSession(db, schema, user.id, sessionMeta(c));
   await setSessionCookie(c, session.id, session.expiresAt);
   return c.json({ user: toUserDTO(user) }, 201);
 });
@@ -106,7 +113,7 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
-  const session = await createSession(db, c.var.schema, user.id);
+  const session = await createSession(db, c.var.schema, user.id, sessionMeta(c));
   await setSessionCookie(c, session.id, session.expiresAt);
   return c.json({ user: toUserDTO(user) });
 });

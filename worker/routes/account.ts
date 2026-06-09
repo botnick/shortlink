@@ -94,6 +94,64 @@ route.patch("/password", zValidator("json", changePasswordSchema), async (c) => 
   return c.json({ ok: true });
 });
 
+// Active sessions — current first, then most recently active. `publicId` is the
+// only identifier exposed; the session token itself never leaves the server.
+route.get("/sessions", async (c) => {
+  const { sessions } = c.var.schema;
+  const rows = await c.var.db
+    .select({
+      publicId: sessions.publicId,
+      tokenId: sessions.id,
+      browser: sessions.browser,
+      os: sessions.os,
+      deviceType: sessions.deviceType,
+      country: sessions.country,
+      lastActiveAt: sessions.lastActiveAt,
+      createdAt: sessions.createdAt,
+      expiresAt: sessions.expiresAt,
+    })
+    .from(sessions)
+    .where(eq(sessions.userId, c.var.user!.id));
+  const items = rows
+    .map((r) => ({
+      id: r.publicId,
+      current: r.tokenId === c.var.sessionId,
+      browser: r.browser,
+      os: r.os,
+      deviceType: r.deviceType,
+      country: r.country,
+      lastActiveAt: (r.lastActiveAt ?? r.createdAt).toISOString(),
+      createdAt: r.createdAt.toISOString(),
+      expiresAt: r.expiresAt.toISOString(),
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.current) - Number(a.current) ||
+        Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt),
+    );
+  return c.json({ sessions: items });
+});
+
+// Revoke one session by its public id. The current one is excluded — that's
+// what Sign out is for.
+route.delete("/sessions/:publicId", async (c) => {
+  const publicId = c.req.param("publicId");
+  if (!/^[0-9a-f-]{8,64}$/i.test(publicId)) return c.json({ error: "Not found" }, 404);
+  const { sessions } = c.var.schema;
+  const removed = await c.var.db
+    .delete(sessions)
+    .where(
+      and(
+        eq(sessions.userId, c.var.user!.id),
+        eq(sessions.publicId, publicId),
+        ne(sessions.id, c.var.sessionId!),
+      ),
+    )
+    .returning({ id: sessions.id });
+  if (!removed[0]) return c.json({ error: "Not found" }, 404);
+  return c.json({ ok: true });
+});
+
 // Sign out everywhere else (keeps this session).
 route.post("/sessions/revoke-others", async (c) => {
   const { sessions } = c.var.schema;
