@@ -8,6 +8,37 @@ import { generateSlug, isValidCustomSlug } from "../lib/slug";
 import { deleteCachedLink, putCachedLink, type CachedLink } from "../lib/cache";
 import { searchCondition } from "../lib/query";
 import { invalidateLinkPreview } from "../lib/social";
+
+/**
+ * Store a link's OG image in R2 (cheap blob storage) instead of bloating the DB
+ * row with a base64 data URL. Returns the value to persist in `links.ogImage`:
+ * "r2" (stored at og/<id>), the http URL as-is, or "" (none / removed).
+ */
+async function resolveOgImage(
+  env: AppBindings,
+  linkId: string,
+  value: string | null | undefined,
+): Promise<string> {
+  const key = `og/${linkId}`;
+  if (!value) {
+    await env.LOGO_BUCKET.delete(key).catch(() => {});
+    return "";
+  }
+  // Our own pointer URL (edit without changing the image) → keep the R2 object.
+  if (value === `${env.APP_URL}/ogimg/${linkId}`) return "r2";
+  if (value.startsWith("http")) return value;
+  const m = /^data:([^;]+);base64,(.+)$/.exec(value);
+  if (!m) return "";
+  try {
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    await env.LOGO_BUCKET.put(key, bytes, { httpMetadata: { contentType: m[1] } });
+    return "r2";
+  } catch {
+    return ""; // malformed image → store nothing rather than failing the request
+  }
+}
 import {
   blockedDomainsFrom,
   extraReservedFrom,
@@ -38,7 +69,10 @@ function toLinkDTO(env: AppBindings, row: LinkRow): LinkDTO {
     previewMode: (row.previewMode as LinkDTO["previewMode"]) ?? "off",
     ogTitle: row.ogTitle,
     ogDescription: row.ogDescription,
-    ogImage: row.ogImage,
+    ogImage:
+      row.ogImage === "r2"
+        ? `${env.APP_URL}/ogimg/${row.id}`
+        : row.ogImage || null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -149,10 +183,16 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
           previewMode: input.previewMode ?? "off",
           ogTitle: input.ogTitle ?? null,
           ogDescription: input.ogDescription ?? null,
-          ogImage: input.ogImage ?? null,
+          ogImage: "",
         })
         .returning()
     )[0];
+    // OG image lives in R2 (keyed by the new id), not as a base64 blob in the DB.
+    const og = await resolveOgImage(c.env, row.id, input.ogImage);
+    if (og) {
+      row.ogImage = og;
+      await db.update(links).set({ ogImage: og }).where(eq(links.id, row.id));
+    }
     await putCachedLink(c.env.LINKS_KV, row.slug, cachePayload(row));
     return row;
   };
@@ -242,7 +282,9 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   if (input.previewMode !== undefined) patch.previewMode = input.previewMode;
   if (input.ogTitle !== undefined) patch.ogTitle = input.ogTitle;
   if (input.ogDescription !== undefined) patch.ogDescription = input.ogDescription;
-  if (input.ogImage !== undefined) patch.ogImage = input.ogImage;
+  if (input.ogImage !== undefined) {
+    patch.ogImage = await resolveOgImage(c.env, existing.id, input.ogImage);
+  }
 
   const row = (
     await db.update(links).set(patch).where(eq(links.id, existing.id)).returning()
@@ -260,6 +302,9 @@ route.delete("/:id", async (c) => {
   if (!existing) return c.json({ error: "Not found" }, 404);
   await c.var.db.delete(links).where(eq(links.id, existing.id));
   await deleteCachedLink(c.env.LINKS_KV, existing.slug);
+  if (existing.ogImage === "r2") {
+    await c.env.LOGO_BUCKET.delete(`og/${existing.id}`).catch(() => {});
+  }
   return c.json({ ok: true });
 });
 

@@ -177,8 +177,8 @@ async function serveSocialPreview(
     if (l.previewMode === "destination") {
       preview = await destinationPreview(c.env, l.id, l.destination);
     } else {
-      // og:image must be a public URL (social ignores data: URLs), so a stored
-      // data-URL image is served via the public /ogimg/:id endpoint.
+      // og:image must be a public URL (social ignores data: URLs). A custom
+      // image lives in R2 ("r2") and is served via the public /ogimg/:id endpoint.
       const image = l.ogImage
         ? l.ogImage.startsWith("http")
           ? l.ogImage
@@ -200,7 +200,7 @@ async function serveSocialPreview(
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Serve a link's custom OG image bytes publicly (decoded from its data URL). */
+/** Serve a link's custom OG image bytes publicly from R2 (keyed by link id). */
 async function serveLinkOgImage(c: AppContext, id: string): Promise<Response> {
   if (!UUID_RE.test(id)) return new Response("Not found", { status: 404 });
   const { db, schema, close } = getDbHandle(c.env);
@@ -213,14 +213,13 @@ async function serveLinkOgImage(c: AppContext, id: string): Promise<Response> {
       .limit(1);
     const src = rows[0]?.ogImage ?? "";
     if (src.startsWith("http")) return Response.redirect(src, 302);
-    const m = /^data:([^;]+);base64,(.+)$/.exec(src);
-    if (!m) return new Response("Not found", { status: 404 });
-    const bin = atob(m[2]);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new Response(bytes, {
+    // Custom OG images are stored as a blob in R2 (keyed by link id), not in the DB.
+    if (src !== "r2") return new Response("Not found", { status: 404 });
+    const obj = await c.env.LOGO_BUCKET.get(`og/${id}`);
+    if (!obj) return new Response("Not found", { status: 404 });
+    return new Response(obj.body, {
       headers: {
-        "content-type": m[1],
+        "content-type": obj.httpMetadata?.contentType ?? "image/jpeg",
         "cache-control": "public, max-age=86400",
       },
     });

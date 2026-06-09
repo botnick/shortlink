@@ -398,9 +398,12 @@ admin.delete("/links/:id", async (c) => {
   const rows = await c.var.db
     .delete(links)
     .where(eq(links.id, id))
-    .returning({ slug: links.slug });
+    .returning({ slug: links.slug, id: links.id, ogImage: links.ogImage });
   if (!rows[0]) return c.json({ error: "Not found" }, 404);
   await deleteCachedLink(c.env.LINKS_KV, rows[0].slug);
+  if (rows[0].ogImage === "r2") {
+    await c.env.LOGO_BUCKET.delete(`og/${rows[0].id}`).catch(() => {});
+  }
   return c.json({ ok: true });
 });
 
@@ -468,9 +471,14 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
     const rows = await db
       .delete(links)
       .where(inArray(links.id, ids))
-      .returning({ slug: links.slug });
+      .returning({ slug: links.slug, id: links.id, ogImage: links.ogImage });
     c.executionCtx.waitUntil(
-      Promise.all(rows.map((r) => deleteCachedLink(kv, r.slug))).then(() => {}),
+      Promise.all([
+        ...rows.map((r) => deleteCachedLink(kv, r.slug)),
+        ...rows
+          .filter((r) => r.ogImage === "r2")
+          .map((r) => c.env.LOGO_BUCKET.delete(`og/${r.id}`).catch(() => {})),
+      ]).then(() => {}),
     );
     return c.json({ ok: true, count: rows.length });
   }
