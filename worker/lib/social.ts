@@ -44,13 +44,16 @@ export interface Preview {
 /** A tiny OG/Twitter-card HTML doc for crawlers, with a redirect fallback so a
  *  real browser that somehow lands here still continues to the destination. */
 export function previewHtml(p: Preview, destination: string, siteName: string): string {
+  const title = p.title;
   const m: string[] = [
+    `<meta name="robots" content="noindex">`,
+    `<title>${esc(title)}</title>`,
     `<meta property="og:type" content="website">`,
     `<meta property="og:site_name" content="${esc(siteName)}">`,
-    `<meta property="og:title" content="${esc(p.title)}">`,
+    `<meta property="og:title" content="${esc(title)}">`,
     `<meta property="og:url" content="${esc(destination)}">`,
-    `<title>${esc(p.title)}</title>`,
-    `<meta name="twitter:title" content="${esc(p.title)}">`,
+    `<meta property="og:locale" content="en_US">`,
+    `<meta name="twitter:title" content="${esc(title)}">`,
   ];
   if (p.description) {
     m.push(`<meta name="description" content="${esc(p.description)}">`);
@@ -58,14 +61,20 @@ export function previewHtml(p: Preview, destination: string, siteName: string): 
     m.push(`<meta name="twitter:description" content="${esc(p.description)}">`);
   }
   if (p.image) {
-    m.push(`<meta property="og:image" content="${esc(p.image)}">`);
-    m.push(`<meta name="twitter:image" content="${esc(p.image)}">`);
+    const img = esc(p.image);
+    m.push(`<meta property="og:image" content="${img}">`);
+    if (p.image.startsWith("https:")) {
+      m.push(`<meta property="og:image:secure_url" content="${img}">`);
+    }
+    m.push(`<meta property="og:image:alt" content="${esc(title)}">`);
+    m.push(`<meta name="twitter:image" content="${img}">`);
+    m.push(`<meta name="twitter:image:alt" content="${esc(title)}">`);
     m.push(`<meta name="twitter:card" content="summary_large_image">`);
   } else {
     m.push(`<meta name="twitter:card" content="summary">`);
   }
   const dest = esc(destination);
-  return `<!doctype html><html><head><meta charset="utf-8">${m.join("")}<meta http-equiv="refresh" content="0;url=${dest}"></head><body><a href="${dest}">Continue</a><script>location.replace(${JSON.stringify(destination)})</script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${m.join("")}<meta http-equiv="refresh" content="0;url=${dest}"></head><body><a href="${dest}">Continue</a><script>location.replace(${JSON.stringify(destination)})</script></body></html>`;
 }
 
 function pick(html: string, patterns: RegExp[]): string {

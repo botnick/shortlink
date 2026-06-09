@@ -62,6 +62,8 @@ app.get("/robots.txt", async (c) =>
 );
 app.get("/icon", (c) => serveBrandImage(c.env, "icon"));
 app.get("/og", (c) => serveBrandImage(c.env, "og"));
+// Public per-link OG image (so social crawlers can fetch a real URL).
+app.get("/ogimg/:id", (c) => serveLinkOgImage(c, c.req.param("id")));
 
 // --- Redirect hot path ------------------------------------------------------
 app.get("/:slug", async (c) => {
@@ -171,17 +173,57 @@ async function serveSocialPreview(
     const expired = l.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l.isActive || expired || l.previewMode === "off") return null;
 
-    const preview =
-      l.previewMode === "destination"
-        ? await destinationPreview(c.env, l.id, l.destination)
-        : {
-            title: l.ogTitle ?? l.title ?? "",
-            description: l.ogDescription ?? "",
-            image: l.ogImage ?? "",
-          };
+    let preview;
+    if (l.previewMode === "destination") {
+      preview = await destinationPreview(c.env, l.id, l.destination);
+    } else {
+      // og:image must be a public URL (social ignores data: URLs), so a stored
+      // data-URL image is served via the public /ogimg/:id endpoint.
+      const image = l.ogImage
+        ? l.ogImage.startsWith("http")
+          ? l.ogImage
+          : `${c.env.APP_URL}/ogimg/${l.id}`
+        : "";
+      preview = {
+        title: l.ogTitle ?? l.title ?? "",
+        description: l.ogDescription ?? "",
+        image,
+      };
+    }
     if (!preview.title) preview.title = l.title ?? l.slug;
     const bundle = await getSeoBundle(c.env);
     return c.html(previewHtml(preview, l.destination, bundle.appName));
+  } finally {
+    c.executionCtx.waitUntil(close());
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Serve a link's custom OG image bytes publicly (decoded from its data URL). */
+async function serveLinkOgImage(c: AppContext, id: string): Promise<Response> {
+  if (!UUID_RE.test(id)) return new Response("Not found", { status: 404 });
+  const { db, schema, close } = getDbHandle(c.env);
+  const { links } = schema;
+  try {
+    const rows = await db
+      .select({ ogImage: links.ogImage })
+      .from(links)
+      .where(eq(links.id, id))
+      .limit(1);
+    const src = rows[0]?.ogImage ?? "";
+    if (src.startsWith("http")) return Response.redirect(src, 302);
+    const m = /^data:([^;]+);base64,(.+)$/.exec(src);
+    if (!m) return new Response("Not found", { status: 404 });
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Response(bytes, {
+      headers: {
+        "content-type": m[1],
+        "cache-control": "public, max-age=86400",
+      },
+    });
   } finally {
     c.executionCtx.waitUntil(close());
   }

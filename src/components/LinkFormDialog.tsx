@@ -1,7 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { OG_TEMPLATES, ogDataUrl, renderOg } from "@/lib/ogTemplates";
 import type { LinkDTO, PreviewMode } from "@shared/types";
 import {
   Dialog,
@@ -16,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useShortHost } from "@/lib/config";
+import { useConfig, useShortHost } from "@/lib/config";
 
 interface Props {
   open: boolean;
@@ -28,6 +30,7 @@ interface Props {
 export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
   const isEdit = Boolean(link);
   const shortHost = useShortHost();
+  const { config } = useConfig();
   const [destination, setDestination] = useState("");
   const [alias, setAlias] = useState("");
   const [title, setTitle] = useState("");
@@ -36,7 +39,10 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
   const [ogTitle, setOgTitle] = useState("");
   const [ogDescription, setOgDescription] = useState("");
   const [ogImage, setOgImage] = useState("");
+  const [ogSource, setOgSource] = useState<"generate" | "upload">("generate");
+  const [ogTemplate, setOgTemplate] = useState("minimal");
   const [submitting, setSubmitting] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -48,15 +54,36 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
       setOgTitle(link?.ogTitle ?? "");
       setOgDescription(link?.ogDescription ?? "");
       setOgImage(link?.ogImage ?? "");
+      setOgSource(link?.ogImage ? "upload" : "generate");
+      setOgTemplate("minimal");
     }
   }, [open, link]);
 
+  // Re-draw the generated card whenever its inputs change.
+  useEffect(() => {
+    if (previewMode === "custom" && ogSource === "generate" && canvasRef.current) {
+      renderOg(canvasRef.current, {
+        template: ogTemplate,
+        title: ogTitle || title,
+        appName: config.appName,
+        brandColor: config.brandColor,
+      });
+    }
+  }, [previewMode, ogSource, ogTemplate, ogTitle, title, config.appName, config.brandColor, open]);
+
   function previewPayload() {
+    let image: string | null = null;
+    if (previewMode === "custom") {
+      image =
+        ogSource === "generate" && canvasRef.current
+          ? ogDataUrl(canvasRef.current)
+          : ogImage.trim() || null;
+    }
     return {
       previewMode,
       ogTitle: previewMode === "custom" ? ogTitle.trim() || null : null,
       ogDescription: previewMode === "custom" ? ogDescription.trim() || null : null,
-      ogImage: previewMode === "custom" ? ogImage.trim() || null : null,
+      ogImage: image,
     };
   }
 
@@ -67,6 +94,14 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
     reader.onload = () => setOgImage(String(reader.result));
     reader.readAsDataURL(file);
   }
+
+  const previewDomain = (() => {
+    try {
+      return new URL(destination).hostname.replace(/^www\./, "");
+    } catch {
+      return shortHost;
+    }
+  })();
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -204,7 +239,7 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
               </p>
             )}
             {previewMode === "custom" && (
-              <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
                 <Input
                   placeholder="Preview title"
                   value={ogTitle}
@@ -219,24 +254,74 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
                   maxLength={300}
                   className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
-                <div className="flex items-center gap-3">
-                  {ogImage ? (
-                    <img src={ogImage} alt="" className="h-11 w-20 rounded border object-cover" />
-                  ) : (
-                    <span className="flex h-11 w-20 items-center justify-center rounded border bg-muted text-xs text-muted-foreground">
-                      image
-                    </span>
-                  )}
-                  <label className="cursor-pointer rounded-lg border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent">
-                    Upload
-                    <input type="file" accept="image/*" className="sr-only" onChange={(e) => pickOgImage(e.target.files?.[0])} />
-                  </label>
-                  {ogImage && (
-                    <button type="button" onClick={() => setOgImage("")} className="text-sm text-muted-foreground hover:text-foreground">
-                      Remove
+
+                <div className="flex gap-1 rounded-lg bg-muted p-1">
+                  {(["generate", "upload"] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setOgSource(s)}
+                      className={cn(
+                        "flex-1 rounded-md px-2.5 py-1 text-xs font-medium capitalize",
+                        ogSource === s ? "bg-card shadow-sm" : "text-muted-foreground",
+                      )}
+                    >
+                      {s === "generate" ? "Generate image" : "Upload image"}
                     </button>
-                  )}
+                  ))}
                 </div>
+
+                {ogSource === "generate" ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {OG_TEMPLATES.map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setOgTemplate(t.id)}
+                          className={cn(
+                            "rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
+                            ogTemplate === t.id
+                              ? "border-primary bg-primary/5"
+                              : "hover:bg-accent",
+                          )}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                    <canvas
+                      ref={canvasRef}
+                      className="aspect-[1.91/1] w-full rounded-lg border"
+                    />
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <label className="cursor-pointer rounded-lg border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent">
+                        {ogImage ? "Replace image" : "Upload image"}
+                        <input type="file" accept="image/*" className="sr-only" onChange={(e) => pickOgImage(e.target.files?.[0])} />
+                      </label>
+                      {ogImage && (
+                        <button type="button" onClick={() => setOgImage("")} className="text-sm text-muted-foreground hover:text-foreground">
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {ogImage ? (
+                      <img src={ogImage} alt="" className="aspect-[1.91/1] w-full rounded-lg border object-cover" />
+                    ) : (
+                      <div className="flex aspect-[1.91/1] w-full items-center justify-center rounded-lg border bg-muted text-xs text-muted-foreground">
+                        Recommended 1200×630
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-[11px] text-muted-foreground">
+                  Shared as <span className="font-medium">{previewDomain}</span> — title
+                  and description appear under the image.
+                </p>
               </div>
             )}
           </div>
