@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { HexColorInput, HexColorPicker } from "react-colorful";
-import { Pipette } from "lucide-react";
+import { ChevronDown, Pipette } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -109,26 +109,44 @@ export function ColorPicker({
   value,
   onChange,
   presets,
+  block,
 }: {
   value: string;
   onChange: (v: string) => void;
   presets?: string[];
+  /** Full-width, input-styled trigger (for forms). Default is a compact pill. */
+  block?: boolean;
 }) {
   const desktop = useIsDesktop();
   const [open, setOpen] = useState(false);
 
-  const trigger: ReactNode = (
+  const swatch = (
+    <span
+      className="size-5 shrink-0 rounded shadow-sm ring-1 ring-inset ring-foreground/10"
+      style={{ backgroundColor: value }}
+    />
+  );
+  const hex = (
+    <span className="font-mono text-sm font-medium tabular-nums text-foreground">
+      {value.toUpperCase()}
+    </span>
+  );
+  const trigger: ReactNode = block ? (
+    <button
+      type="button"
+      className="flex h-9 w-full items-center gap-2.5 rounded-md border border-input bg-transparent px-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {swatch}
+      {hex}
+      <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
+    </button>
+  ) : (
     <button
       type="button"
       className="inline-flex items-center gap-2.5 rounded-lg border bg-background py-1.5 pl-1.5 pr-3 shadow-sm transition-colors hover:bg-accent"
     >
-      <span
-        className="size-6 rounded-md shadow-sm ring-1 ring-inset ring-foreground/10"
-        style={{ backgroundColor: value }}
-      />
-      <span className="font-mono text-sm font-medium tabular-nums text-foreground">
-        {value.toUpperCase()}
-      </span>
+      {swatch}
+      {hex}
     </button>
   );
 

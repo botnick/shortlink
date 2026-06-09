@@ -123,7 +123,7 @@ export function Setup() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="brandColor">Brand color</Label>
-                <ColorPicker value={brandColor} onChange={setBrandColor} />
+                <ColorPicker block value={brandColor} onChange={setBrandColor} />
               </div>
             </div>
 

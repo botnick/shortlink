@@ -311,7 +311,7 @@ export function AdminSettings() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="brandColor">Brand color</Label>
-                <ColorPicker value={brandColor} onChange={setBrandColor} />
+                <ColorPicker block value={brandColor} onChange={setBrandColor} />
               </div>
               <div className="space-y-2">
                 <Label>Logo</Label>
@@ -421,12 +421,14 @@ export function AdminSettings() {
                 <div className="space-y-2">
                   <Label htmlFor="ogAccent">Accent color</Label>
                   <div className="flex items-center gap-2">
-                    <ColorPicker value={cardAccent} onChange={setOgAccent} />
+                    <div className="flex-1">
+                      <ColorPicker block value={cardAccent} onChange={setOgAccent} />
+                    </div>
                     {ogAccent && (
                       <button
                         type="button"
                         onClick={() => setOgAccent("")}
-                        className="text-xs text-muted-foreground hover:text-foreground"
+                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
                       >
                         Inherit brand
                       </button>
