@@ -42,6 +42,11 @@ const description = z.string().trim().max(300);
 export const registerSchema = z.object({
   email: emailField,
   password: passwordField,
+  // Browser proof-of-work (required when the admin enables it).
+  challenge: z.string().max(2048).optional(),
+  solution: z.string().max(64).optional(),
+  // Honeypot — humans never fill this; bots that do are rejected generically.
+  website: z.string().max(200).optional(),
 });
 
 export const loginSchema = z.object({
@@ -102,6 +107,7 @@ export const settingsSchema = z
     slugLength: z.number().int().min(3).max(32).optional(),
     accountHoldDays: z.number().int().min(0).max(3650).optional(),
     emailBlockDays: z.number().int().min(0).max(3650).optional(),
+    powDifficulty: z.number().int().min(0).max(26).optional(),
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),

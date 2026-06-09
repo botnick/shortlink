@@ -5,7 +5,13 @@ import type { AppContext, AppEnv, SessionUser } from "../env";
 import { createSession, invalidateSession } from "../lib/auth";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { clearSessionCookie, setSessionCookie } from "../lib/cookies";
-import { SETTING_KEYS, authRateLimitFrom, getAllSettings } from "../lib/settings";
+import {
+  SETTING_KEYS,
+  authRateLimitFrom,
+  getAllSettings,
+  powDifficultyFrom,
+} from "../lib/settings";
+import { issueChallenge, verifySolution } from "../lib/pow";
 import { isEmailBlocked } from "../lib/accountLifecycle";
 import { isRateLimited } from "../lib/ratelimit";
 import { getClientIp, getCountry, parseUserAgent } from "../lib/geo";
@@ -32,6 +38,15 @@ function toUserDTO(u: SessionUser): UserDTO {
   return { id: u.id, email: u.email, role: u.role };
 }
 
+// Sign-up bot deterrence: hand the browser a proof-of-work puzzle it solves
+// silently in the background (humans never interact with it).
+auth.get("/challenge", async (c) => {
+  const map = await getAllSettings(c.var.db, c.var.schema);
+  const difficulty = powDifficultyFrom(map);
+  if (difficulty <= 0) return c.json({ challenge: null, difficulty: 0 });
+  return c.json(await issueChallenge(c.env, getClientIp(c) ?? "", difficulty));
+});
+
 auth.post("/register", zValidator("json", registerSchema), async (c) => {
   const db = c.var.db;
   const schema = c.var.schema;
@@ -44,7 +59,27 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
     return c.json({ error: "Registration is currently closed" }, 403);
   }
 
-  const { email, password } = c.req.valid("json");
+  const { email, password, challenge, solution, website } = c.req.valid("json");
+
+  // Honeypot: real users never see (or fill) this field. Fail generically.
+  if (website) {
+    return c.json({ error: "Unable to register with those details" }, 409);
+  }
+
+  // Proof-of-work check (when enforced). Generic error — nothing to learn.
+  const difficulty = powDifficultyFrom(map);
+  if (difficulty > 0) {
+    const ok = await verifySolution(
+      c.env,
+      getClientIp(c) ?? "",
+      difficulty,
+      challenge,
+      solution,
+    );
+    if (!ok) {
+      return c.json({ error: "Verification failed — please try again" }, 403);
+    }
+  }
 
   const { deletedAccounts } = schema;
   const [existing, tombstone] = await Promise.all([

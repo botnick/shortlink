@@ -3,7 +3,7 @@ import type { AppBindings } from "../env";
 import { getPublicConfig } from "./settings";
 import type { AppConfigDTO } from "@shared/types";
 
-const KEY = "config:v4"; // v4: + appOrigin (honors the admin Short domain), mcpEnabled
+const KEY = "config:v5"; // v5: + powDifficulty (sign-up proof-of-work)
 
 // In-isolate memo so hot paths (e.g. building 20 short URLs in one list
 // response) don't pay a KV read each time. Tiny TTL keeps edits near-instant.

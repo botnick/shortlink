@@ -31,6 +31,7 @@ export const SETTING_KEYS = {
   slugLength: "slug_length",
   accountHoldDays: "account_hold_days",
   emailBlockDays: "email_block_days",
+  powDifficulty: "pow_difficulty",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
@@ -252,6 +253,15 @@ export function emailBlockDaysFrom(map: Record<string, unknown>): number {
   return asCount(map[SETTING_KEYS.emailBlockDays], 180);
 }
 
+/** Sign-up bot deterrence: leading zero bits the browser's proof-of-work hash
+ *  must have. 0 disables; ~16–20 is invisible to humans but costly at scale.
+ *  Self-hosted by design — no third-party challenge service. */
+export function powDifficultyFrom(map: Record<string, unknown>): number {
+  const v = map[SETTING_KEYS.powDifficulty];
+  const n = typeof v === "number" ? Math.floor(v) : 18;
+  return Math.min(26, Math.max(0, n));
+}
+
 /** Length of auto-generated back-halves (server defaults + editor suggestions),
  *  clamped to the slug rules (3–32). */
 export function slugLengthFrom(map: Record<string, unknown>): number {
@@ -379,5 +389,7 @@ export async function getPublicConfig(
     apiEnabled: apiEnabledFrom(map),
     mcpEnabled: mcpEnabledFrom(map),
     slugLength: slugLengthFrom(map),
+    // Browser proof-of-work difficulty for sign-up (0 = off).
+    powDifficulty: powDifficultyFrom(map),
   };
 }

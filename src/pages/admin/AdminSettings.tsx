@@ -152,6 +152,7 @@ export function AdminSettings() {
   const [slugLength, setSlugLength] = useState(6);
   const [accountHoldDays, setAccountHoldDays] = useState(180);
   const [emailBlockDays, setEmailBlockDays] = useState(180);
+  const [powDifficulty, setPowDifficulty] = useState(18);
   const [savingLimits, setSavingLimits] = useState(false);
 
   const [cfToken, setCfToken] = useState("");
@@ -194,6 +195,7 @@ export function AdminSettings() {
         setSlugLength(s.slugLength ?? 6);
         setAccountHoldDays(s.accountHoldDays ?? 180);
         setEmailBlockDays(s.emailBlockDays ?? 180);
+        setPowDifficulty(s.powDifficulty ?? 18);
         setCfZoneId(s.cfZoneId);
         setCfFallbackHost(s.cfFallbackHost);
         setUnverifiedDays(s.domainUnverifiedDays);
@@ -256,6 +258,7 @@ export function AdminSettings() {
         slugLength: Math.min(32, Math.max(3, Math.floor(slugLength) || 6)),
         accountHoldDays: Math.max(0, Math.floor(accountHoldDays) || 0),
         emailBlockDays: Math.max(0, Math.floor(emailBlockDays) || 0),
+        powDifficulty: Math.min(26, Math.max(0, Math.floor(powDifficulty) || 0)),
       });
       toast.success("Limits saved");
     } catch (err) {
@@ -684,6 +687,21 @@ export function AdminSettings() {
                     />
                     <p className="text-[11px] text-muted-foreground">
                       Extra days after the purge before that email can register again.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="powBits">Sign-up verification (bits)</Label>
+                    <Input
+                      id="powBits"
+                      type="number"
+                      min={0}
+                      max={26}
+                      value={powDifficulty}
+                      onChange={(e) => setPowDifficulty(Number(e.target.value))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Invisible browser proof-of-work on sign-up — humans never notice;
+                      bots pay CPU per attempt. 0 = off, 16–20 recommended.
                     </p>
                   </div>
                 </div>

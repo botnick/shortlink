@@ -13,7 +13,11 @@ interface AuthState {
   user: UserDTO | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (
+    email: string,
+    password: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -47,13 +51,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
   }, []);
 
-  const register = useCallback(async (email: string, password: string) => {
-    const { user } = await api.post<{ user: UserDTO }>("/auth/register", {
-      email,
-      password,
-    });
-    setUser(user);
-  }, []);
+  const register = useCallback(
+    async (email: string, password: string, extra?: Record<string, unknown>) => {
+      const { user } = await api.post<{ user: UserDTO }>("/auth/register", {
+        ...extra,
+        email,
+        password,
+      });
+      setUser(user);
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     await api.post("/auth/logout");

@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { Check, Eye, EyeOff, Loader2, LockKeyhole, X } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, LockKeyhole, ShieldCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useConfig } from "@/lib/config";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { solvePow } from "@/lib/pow";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,45 @@ export function Register() {
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [closed, setClosed] = useState(!config.registrationEnabled);
+  // Honeypot — invisible to humans; bots that fill it are rejected.
+  const [website, setWebsite] = useState("");
+
+  // Invisible bot check: fetch a proof-of-work puzzle and solve it silently in
+  // the background while the user types. No interaction, ever.
+  const powOn = config.powDifficulty > 0;
+  const [pow, setPow] = useState<{ challenge: string; solution: string } | null>(null);
+  const [powState, setPowState] = useState<"idle" | "solving" | "ready">("idle");
+  const powAbort = useRef<AbortController | null>(null);
+
+  const startPow = useCallback(() => {
+    if (!powOn) return;
+    powAbort.current?.abort();
+    const ctl = new AbortController();
+    powAbort.current = ctl;
+    setPow(null);
+    setPowState("solving");
+    api
+      .get<{ challenge: string | null; difficulty: number }>("/auth/challenge")
+      .then(async (r) => {
+        if (!r.challenge || ctl.signal.aborted) {
+          if (!r.challenge) setPowState("ready"); // turned off server-side
+          return;
+        }
+        const solution = await solvePow(r.challenge, r.difficulty, ctl.signal);
+        if (ctl.signal.aborted) return;
+        setPow({ challenge: r.challenge, solution });
+        setPowState("ready");
+      })
+      .catch(() => {
+        // Network/abort — try once more on submit rather than blocking typing.
+        if (!ctl.signal.aborted) setPowState("idle");
+      });
+  }, [powOn]);
+
+  useEffect(() => {
+    if (!closed) startPow();
+    return () => powAbort.current?.abort();
+  }, [closed, startPow]);
 
   if (!loading && user) return <Navigate to="/dashboard" replace />;
 
@@ -54,19 +94,33 @@ export function Register() {
   const longEnough = password.length >= 8;
   const matches = confirm.length > 0 && password === confirm;
   const mismatch = confirm.length > 0 && password !== confirm;
-  const canSubmit = !submitting && longEnough && matches && email.trim().length > 0;
+  const powReady = !powOn || powState === "ready";
+  const canSubmit =
+    !submitting && longEnough && matches && email.trim().length > 0 && powReady;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      await register(email, password);
+      await register(email, password, {
+        ...(pow ?? {}),
+        website,
+      });
       toast.success("Account created");
       navigate("/dashboard");
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) setClosed(true);
-      toast.error(err instanceof ApiError ? err.message : "Sign up failed");
+      if (err instanceof ApiError && err.status === 403) {
+        if (/verification/i.test(err.message)) {
+          // Challenge expired or was already used — mint a fresh one quietly.
+          toast.error("Please try again in a moment");
+          startPow();
+        } else {
+          setClosed(true);
+        }
+      } else {
+        toast.error(err instanceof ApiError ? err.message : "Sign up failed");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -94,6 +148,17 @@ export function Register() {
             </div>
           ) : (
             <form onSubmit={onSubmit} className="space-y-4">
+              {/* Honeypot: hidden from humans (and screen readers); bots fill it. */}
+              <input
+                type="text"
+                name="website"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                className="hidden"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+              />
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -177,6 +242,27 @@ export function Register() {
                   <p className="text-xs text-red-600">Passwords don’t match.</p>
                 )}
               </div>
+
+              {powOn && (
+                <p
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 text-xs",
+                    powState === "ready" ? "text-emerald-600" : "text-muted-foreground",
+                  )}
+                  aria-live="polite"
+                >
+                  {powState === "ready" ? (
+                    <>
+                      <ShieldCheck className="size-3.5" /> Browser verified
+                    </>
+                  ) : (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" /> Checking your
+                      browser…
+                    </>
+                  )}
+                </p>
+              )}
 
               <Button type="submit" className="w-full" disabled={!canSubmit}>
                 {submitting && <Loader2 className="animate-spin" />}

@@ -35,6 +35,7 @@ const DEFAULT: AppConfigDTO = {
   apiEnabled: true,
   mcpEnabled: true,
   slugLength: 6,
+  powDifficulty: 0,
 };
 
 function upsertMeta(key: "name" | "property", keyName: string, content: string) {

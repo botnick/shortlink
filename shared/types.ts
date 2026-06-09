@@ -236,6 +236,8 @@ export interface SettingsDTO {
   /** Closed accounts: days held before purge, then extra days the email stays blocked. */
   accountHoldDays: number;
   emailBlockDays: number;
+  /** Sign-up proof-of-work difficulty in bits (0 = off, ~16–20 recommended). */
+  powDifficulty: number;
   /** Cloudflare for SaaS — configured via /admin. The token is never returned;
    *  `cfConfigured` reflects whether a token + zone id are set. */
   cfZoneId: string;
@@ -277,6 +279,8 @@ export interface AppConfigDTO {
   mcpEnabled: boolean;
   /** Length of auto-generated back-halves. */
   slugLength: number;
+  /** Sign-up proof-of-work difficulty in bits (0 = off). */
+  powDifficulty: number;
 }
 
 /** A destination URL's own metadata, for the rich link-preview card. */
