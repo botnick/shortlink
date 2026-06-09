@@ -322,7 +322,7 @@ admin.get("/overview", async (c) => {
 // All links across every user — keyset paginated + searchable.
 admin.get("/links", async (c) => {
   const db = c.var.db;
-  const { links, users } = c.var.schema;
+  const { links, users, projects } = c.var.schema;
   const q = c.req.query("q") ?? "";
   const cursor = c.req.query("cursor");
   const userId = c.req.query("userId");
@@ -358,9 +358,11 @@ admin.get("/links", async (c) => {
         clickCount: links.clickCount,
         createdAt: links.createdAt,
         ownerEmail: users.email,
+        projectName: projects.name,
       })
       .from(links)
       .innerJoin(users, eq(links.userId, users.id))
+      .leftJoin(projects, eq(links.projectId, projects.id))
       .where(where)
       .orderBy(desc(links.createdAt))
       .limit(PAGE + 1),
@@ -384,6 +386,7 @@ admin.get("/links", async (c) => {
     clickCount: r.clickCount,
     createdAt: r.createdAt.toISOString(),
     ownerEmail: r.ownerEmail,
+    projectName: r.projectName ?? null,
   }));
   return c.json({
     links: items,

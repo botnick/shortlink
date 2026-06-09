@@ -107,6 +107,7 @@ export interface AdminLinkDTO {
   clickCount: number;
   createdAt: string;
   ownerEmail: string;
+  projectName: string | null;
 }
 
 export interface AdminLinkListDTO {

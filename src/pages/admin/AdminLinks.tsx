@@ -208,6 +208,7 @@ export function AdminLinks({
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">/{l.slug}</span>
                   {!l.isActive && <Badge variant="muted">Paused</Badge>}
+                  {l.projectName && <Badge variant="secondary">{l.projectName}</Badge>}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">{l.title || l.destination}</div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">
