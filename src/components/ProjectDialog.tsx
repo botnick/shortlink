@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import { compressUpload } from "@/lib/ogTemplates";
+import { compressImage } from "@/lib/image";
 import { useConfig } from "@/lib/config";
 import type { ProjectDTO } from "@shared/types";
 import {
@@ -69,7 +69,7 @@ export function ProjectDialog({
       return;
     }
     try {
-      setLogo(await compressUpload(file, 512, 0.9));
+      setLogo(await compressImage(file, 512, 0.9));
     } catch {
       toast.error("Couldn't read that image");
     }

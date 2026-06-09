@@ -6,6 +6,7 @@ import { useConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { OG_TEMPLATES, renderOg } from "@/lib/ogTemplates";
 import { OG_FONTS, loadOgFont } from "@/lib/ogFonts";
+import { compressImage } from "@/lib/image";
 import { ColorPicker } from "@/components/ColorPicker";
 import {
   DEFAULT_APP_NAME,
@@ -82,12 +83,14 @@ function ImagePicker({
   onChange: (v: string) => void;
   className?: string;
 }) {
-  function pick(file: File | undefined) {
+  async function pick(file: File | undefined) {
     if (!file) return;
-    if (file.size > 300_000) return toast.error("Keep the image under ~300KB");
-    const reader = new FileReader();
-    reader.onload = () => onChange(String(reader.result));
-    reader.readAsDataURL(file);
+    if (file.size > 12_000_000) return toast.error("Image is too large (max ~12MB)");
+    try {
+      onChange(await compressImage(file));
+    } catch {
+      toast.error("Couldn't read that image");
+    }
   }
   return (
     <div className="flex items-center gap-3">
@@ -100,7 +103,7 @@ function ImagePicker({
       )}
       <label className="cursor-pointer rounded-lg border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent">
         Upload
-        <input type="file" accept="image/*" className="sr-only" onChange={(e) => pick(e.target.files?.[0])} />
+        <input type="file" accept="image/*" className="sr-only" onChange={(e) => void pick(e.target.files?.[0])} />
       </label>
       {value && (
         <button type="button" onClick={() => onChange("")} className="text-sm text-muted-foreground hover:text-foreground">

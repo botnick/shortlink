@@ -31,7 +31,12 @@ const shortDomain = z.string().trim().max(120);
 const brandColor = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex color");
-const longText = z.string().max(400_000); // data URL or URL
+// A data URL (uploaded image) or a plain URL. Images are downscaled in the
+// browser before upload, so this is a safety ceiling, not the expected size —
+// base64 inflates bytes ~1.37×, so keep generous headroom over the raw file.
+const longText = z
+  .string()
+  .max(800_000, "Image is too large — please use a smaller file");
 const description = z.string().trim().max(300);
 
 export const registerSchema = z.object({
