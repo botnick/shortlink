@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { CopyButton } from "@/components/CopyButton";
 import { useConfirm } from "@/components/ConfirmProvider";
+import { useConfig } from "@/lib/config";
 
 const HOST_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
 
@@ -104,6 +105,8 @@ export function Domains() {
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const confirm = useConfirm();
+  const { config } = useConfig();
+  const cleanupDays = config.domainUnverifiedDays;
 
   const toggle = (id: string) =>
     setOpen((s) => {
@@ -313,6 +316,19 @@ export function Domains() {
                             DNS provider (Cloudflare, Namecheap, GoDaddy…), then check the
                             connection.
                           </p>
+                          {cleanupDays > 0 && (
+                            <p className="text-xs font-medium text-amber-600 dark:text-amber-500">
+                              Verify within{" "}
+                              {Math.max(
+                                0,
+                                Math.ceil(
+                                  cleanupDays -
+                                    (Date.now() - new Date(d.createdAt).getTime()) / 86_400_000,
+                                ),
+                              )}{" "}
+                              days or this domain is removed automatically.
+                            </p>
+                          )}
                           {d.records.map((r, i) => (
                             <DnsRecord key={i} type={r.type} name={r.name} value={r.value} />
                           ))}

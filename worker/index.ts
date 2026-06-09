@@ -1,8 +1,14 @@
 import { Hono } from "hono";
 import { csrf } from "hono/csrf";
-import { eq, sql } from "drizzle-orm";
-import type { AppContext, AppEnv } from "./env";
+import { and, eq, lt, sql } from "drizzle-orm";
+import type { AppContext, AppEnv, AppBindings } from "./env";
 import { getDbHandle } from "./db";
+import {
+  domainUnverifiedDaysFrom,
+  getAllSettings,
+  saasConfigFrom,
+} from "./lib/settings";
+import { deleteCustomHostname } from "./lib/cloudflare";
 import { dbMiddleware } from "./middleware/db";
 import { loadSession } from "./middleware/auth";
 import { requireSameOrigin, securityHeaders } from "./middleware/security";
@@ -260,4 +266,45 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
   }
 }
 
-export default app;
+/** Cron: remove custom domains left unverified past the configured window
+ *  (admin setting `domainUnverifiedDays`, default 90; 0 disables). Releases the
+ *  Cloudflare-for-SaaS hostname too. Users are warned in-app via a countdown. */
+async function cleanupUnverifiedDomains(env: AppBindings): Promise<void> {
+  const { db, schema, close } = getDbHandle(env);
+  try {
+    const settings = await getAllSettings(db, schema);
+    const days = domainUnverifiedDaysFrom(settings);
+    if (days <= 0) return;
+    const cutoff = new Date(Date.now() - days * 86_400_000);
+    const { domains } = schema;
+    const stale = await db
+      .select({ id: domains.id, cfHostnameId: domains.cfHostnameId })
+      .from(domains)
+      .where(and(eq(domains.status, "pending"), lt(domains.createdAt, cutoff)));
+    if (stale.length === 0) return;
+    const saas = saasConfigFrom(settings, env.APP_URL);
+    if (saas) {
+      for (const d of stale) {
+        if (d.cfHostnameId) {
+          await deleteCustomHostname(saas, d.cfHostnameId).catch(() => {});
+        }
+      }
+    }
+    await db
+      .delete(domains)
+      .where(and(eq(domains.status, "pending"), lt(domains.createdAt, cutoff)));
+  } finally {
+    await close();
+  }
+}
+
+export default {
+  fetch: app.fetch,
+  async scheduled(
+    _event: ScheduledController,
+    env: AppBindings,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    ctx.waitUntil(cleanupUnverifiedDomains(env));
+  },
+};

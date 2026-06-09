@@ -13,6 +13,11 @@
   "observability": {
     "enabled": true
   },
+  // Daily cleanup of custom domains left unverified past the admin-configured
+  // window (worker/index.ts `scheduled`).
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  },
   "placement": {
     "mode": "smart"
   },

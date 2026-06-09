@@ -30,6 +30,7 @@ const DEFAULT: AppConfigDTO = {
   ogTitle: DEFAULT_APP_NAME,
   ogTagline: "",
   ogAccent: DEFAULT_BRAND_COLOR,
+  domainUnverifiedDays: 90,
 };
 
 function upsertMeta(key: "name" | "property", keyName: string, content: string) {

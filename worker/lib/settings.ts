@@ -23,6 +23,7 @@ export const SETTING_KEYS = {
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
+  domainUnverifiedDays: "domain_unverified_days",
   ogTemplate: "og_template",
   ogFont: "og_font",
   ogLabel: "og_label",
@@ -215,6 +216,13 @@ export function cfFallbackHostFrom(map: Record<string, unknown>): string {
   return asString(map[SETTING_KEYS.cfFallbackHost], "");
 }
 
+/** Days an unverified custom domain is kept before the cron removes it.
+ *  Default 90; 0 disables auto-removal. */
+export function domainUnverifiedDaysFrom(map: Record<string, unknown>): number {
+  const v = map[SETTING_KEYS.domainUnverifiedDays];
+  return typeof v === "number" && v >= 0 ? Math.floor(v) : 90;
+}
+
 export function cfConfiguredFrom(map: Record<string, unknown>): boolean {
   return Boolean(
     asString(map[SETTING_KEYS.cfApiToken], "") &&
@@ -268,5 +276,6 @@ export async function getPublicConfig(
     ogTitle: ogTitleFrom(map),
     ogTagline: ogTaglineFrom(map),
     ogAccent: ogAccentFrom(map),
+    domainUnverifiedDays: domainUnverifiedDaysFrom(map),
   };
 }

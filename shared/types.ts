@@ -182,6 +182,7 @@ export interface SettingsDTO {
   ogTitle: string;
   ogTagline: string;
   ogAccent: string;
+  domainUnverifiedDays: number;
 }
 
 export interface AppConfigDTO {
@@ -200,6 +201,7 @@ export interface AppConfigDTO {
   ogTitle: string;
   ogTagline: string;
   ogAccent: string;
+  domainUnverifiedDays: number;
 }
 
 /** A destination URL's own metadata, for the rich link-preview card. */

@@ -143,6 +143,7 @@ export function AdminSettings() {
   const [cfToken, setCfToken] = useState("");
   const [cfZoneId, setCfZoneId] = useState("");
   const [cfFallbackHost, setCfFallbackHost] = useState("");
+  const [unverifiedDays, setUnverifiedDays] = useState(90);
   const [cfConfigured, setCfConfigured] = useState(false);
   const [savingCf, setSavingCf] = useState(false);
 
@@ -169,6 +170,7 @@ export function AdminSettings() {
         setMaxLinks(s.maxLinksPerUser);
         setCfZoneId(s.cfZoneId);
         setCfFallbackHost(s.cfFallbackHost);
+        setUnverifiedDays(s.domainUnverifiedDays);
         setCfConfigured(s.cfConfigured);
       })
       .catch(() => toast.error("Couldn't load settings"))
@@ -233,6 +235,7 @@ export function AdminSettings() {
       const body: Partial<SettingsDTO & { cfApiToken: string }> = {
         cfZoneId,
         cfFallbackHost,
+        domainUnverifiedDays: unverifiedDays,
       };
       if (cfToken.trim()) body.cfApiToken = cfToken.trim();
       const updated = await api.patch<SettingsDTO>("/admin/settings", body);
@@ -598,6 +601,28 @@ export function AdminSettings() {
                   <span className="font-normal text-muted-foreground">(optional — members CNAME to this)</span>
                 </Label>
                 <Input id="cfFallback" value={cfFallbackHost} onChange={(e) => setCfFallbackHost(e.target.value)} placeholder="defaults to this app's domain" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="unverifiedDays">Auto-remove unverified domains</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="unverifiedDays"
+                    type="number"
+                    min={0}
+                    max={3650}
+                    value={unverifiedDays}
+                    onChange={(e) =>
+                      setUnverifiedDays(Math.max(0, Math.floor(Number(e.target.value) || 0)))
+                    }
+                    className="w-24"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    days after they're added (0 = never)
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Members see a countdown on the domain before it's removed.
+                </p>
               </div>
               <Button type="submit" disabled={savingCf}>
                 {savingCf && <Loader2 className="animate-spin" />}
