@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { formatDate, formatNumber } from "@/lib/format";
 import { useSearchList } from "@/lib/useSearchList";
 import type { AdminLinkDTO, AdminLinkListDTO } from "@shared/types";
@@ -23,14 +24,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 export function AdminLinks({
   userId,
@@ -155,77 +148,72 @@ export function AdminLinks({
         </div>
       )}
 
-      <div className="rounded-xl border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all" className="size-4 accent-primary" />
-              </TableHead>
-              <TableHead>Link</TableHead>
-              <TableHead className="hidden md:table-cell">Owner</TableHead>
-              <TableHead className="text-right">Clicks</TableHead>
-              <TableHead className="hidden text-right lg:table-cell">Created</TableHead>
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {list.loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={6}><Skeleton className="h-6 w-full" /></TableCell>
-                </TableRow>
-              ))
-            ) : list.items.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">No links found.</TableCell>
-              </TableRow>
-            ) : (
-              list.items.map((l) => (
-                <TableRow key={l.id} data-state={selected.has(l.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} aria-label={`Select ${l.slug}`} className="size-4 accent-primary" />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">/{l.slug}</span>
-                      {!l.isActive && <Badge variant="muted">Paused</Badge>}
-                    </div>
-                    <div className="max-w-[22rem] truncate text-xs text-muted-foreground">{l.title || l.destination}</div>
-                  </TableCell>
-                  <TableCell className="hidden max-w-[12rem] truncate text-muted-foreground md:table-cell">{l.ownerEmail}</TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">{formatNumber(l.clickCount)}</TableCell>
-                  <TableCell className="hidden text-right text-muted-foreground lg:table-cell">{formatDate(l.createdAt)}</TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" aria-label="Link actions"><MoreHorizontal /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem asChild>
-                          <a href={l.shortUrl} target="_blank" rel="noreferrer"><ExternalLink /> Open</a>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => copyLink(l)}><Copy /> Copy link</DropdownMenuItem>
-                        <DropdownMenuItem onClick={async () => {
-                          try {
-                            await api.patch(`/admin/links/${l.id}`, { isActive: !l.isActive });
-                            list.patchItem((x) => x.id === l.id, (x) => ({ ...x, isActive: !x.isActive }));
-                            toast.success(l.isActive ? "Link paused" : "Link activated");
-                          } catch (err) { toast.error(err instanceof ApiError ? err.message : "Update failed"); }
-                        }}>
-                          {l.isActive ? "Pause link" : "Activate link"}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" onClick={() => remove(l)}><Trash2 /> Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {!list.loading && list.items.length > 0 && (
+        <label className="flex w-fit items-center gap-2 px-1 text-sm text-muted-foreground">
+          <input type="checkbox" checked={allChecked} onChange={toggleAll} className="size-4 accent-primary" aria-label="Select all on this page" />
+          Select all on this page
+        </label>
+      )}
+
+      {list.loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[68px] w-full" />)}
+        </div>
+      ) : list.items.length === 0 ? (
+        <p className="rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground">No links found.</p>
+      ) : (
+        <ul className="space-y-2">
+          {list.items.map((l) => (
+            <li
+              key={l.id}
+              className={cn(
+                "flex items-start gap-3 rounded-lg border bg-card p-3",
+                selected.has(l.id) && "ring-1 ring-primary",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(l.id)}
+                onChange={() => toggle(l.id)}
+                aria-label={`Select ${l.slug}`}
+                className="mt-1 size-4 shrink-0 accent-primary"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium">/{l.slug}</span>
+                  {!l.isActive && <Badge variant="muted">Paused</Badge>}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">{l.title || l.destination}</div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">
+                  {l.ownerEmail} · {formatNumber(l.clickCount)} clicks · {formatDate(l.createdAt)}
+                </div>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="Link actions"><MoreHorizontal /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem asChild>
+                    <a href={l.shortUrl} target="_blank" rel="noreferrer"><ExternalLink /> Open</a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => copyLink(l)}><Copy /> Copy link</DropdownMenuItem>
+                  <DropdownMenuItem onClick={async () => {
+                    try {
+                      await api.patch(`/admin/links/${l.id}`, { isActive: !l.isActive });
+                      list.patchItem((x) => x.id === l.id, (x) => ({ ...x, isActive: !x.isActive }));
+                      toast.success(l.isActive ? "Link paused" : "Link activated");
+                    } catch (err) { toast.error(err instanceof ApiError ? err.message : "Update failed"); }
+                  }}>
+                    {l.isActive ? "Pause link" : "Activate link"}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={() => remove(l)}><Trash2 /> Delete</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {list.hasMore && (
         <div className="flex justify-center">

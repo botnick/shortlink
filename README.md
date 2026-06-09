@@ -106,17 +106,23 @@ Then set `DB_DRIVER: "d1"` and uncomment the `d1_databases` block in `wrangler.j
 
 ### Custom domains
 
-Members (and admins) can serve their short links from their own domain — e.g.
-`go.theirbrand.com` — from the **Domains** page. **No paid add-ons, no API keys: $0.**
+Members (and admins) serve their short links from their own domain — e.g.
+`go.theirbrand.com` — from the **Domains** page. There are two modes; the app picks one
+automatically:
 
-1. A member adds their domain → the app shows a **TXT** record (`_shortlink-verify.<domain>`).
-2. They create that record at their DNS provider and press **Verify** — the Worker
-   confirms ownership over public **DNS-over-HTTPS** (Cloudflare/Google resolvers), no
-   Cloudflare API token needed.
-3. To make it live, connect the verified domain as a **[Workers Custom Domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)**
-   (free, automatic TLS) — add it in the Cloudflare dashboard or as a `routes` entry in
-   `wrangler.jsonc`. Slugs resolve on any connected host, so the existing redirect path
-   serves it with no extra code.
+**Automatic ([Cloudflare for SaaS](https://developers.cloudflare.com/cloudflare-for-saas/)).**
+Set `CF_API_TOKEN` (a token with *SSL and Certificates: Edit*) plus the `CF_ZONE_ID` and
+`CF_FALLBACK_HOST` vars. Then a member just adds their domain, points one **CNAME** at the
+fallback host, and it connects with automatic TLS — no per-domain work for the operator.
+The first **100 custom hostnames are free**, then ~$0.10/hostname/month.
+
+**Free ($0, no API).** Leave those unset. A member adds their domain and a `_shortlink-verify`
+**TXT** record; the Worker confirms ownership over public **DNS-over-HTTPS**. To make a
+verified domain live, connect it once as a free
+**[Workers Custom Domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)**
+(automatic TLS). Best for domains on your own Cloudflare account.
+
+Either way, slugs resolve on any connected host, so the redirect path serves them unchanged.
 
 ## 4. Run & first-run setup
 

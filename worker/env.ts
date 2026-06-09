@@ -15,6 +15,12 @@ export interface AppBindings extends Env {
    *  from the generated Env, so it's declared optional here). DB_DRIVER itself
    *  comes from the generated Env (a wrangler var). */
   DB?: D1Database;
+  /** Optional Cloudflare for SaaS credentials. When all three are set, custom
+   *  domains auto-connect (custom hostnames + TLS) via the CF API; otherwise the
+   *  app falls back to free DNS-TXT verification. */
+  CF_API_TOKEN?: string;
+  CF_ZONE_ID?: string;
+  CF_FALLBACK_HOST?: string;
 }
 
 export interface SessionUser {

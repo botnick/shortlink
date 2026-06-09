@@ -172,17 +172,24 @@ export interface AssetDTO {
   url: string;
 }
 
+export interface DomainDnsRecord {
+  type: string; // "CNAME" | "TXT"
+  name: string;
+  value: string;
+}
+
 export interface DomainDTO {
   id: string;
   hostname: string;
-  status: string; // "pending" | "verified"
-  verifyName: string; // the TXT record name to add
-  verifyValue: string; // the TXT record value to add
+  status: string; // "pending" | "verified" | "active"
+  mode: "dns" | "saas";
+  records: DomainDnsRecord[];
   verifiedAt: string | null;
   createdAt: string;
 }
 
 export interface DomainListDTO {
+  mode: "dns" | "saas";
   domains: DomainDTO[];
 }
 

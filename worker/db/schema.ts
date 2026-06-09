@@ -110,9 +110,11 @@ export const domains = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     hostname: text().notNull(),
-    status: text().notNull().default("pending"), // "pending" | "verified"
+    status: text().notNull().default("pending"), // "pending" | "verified" | "active"
     verifyToken: text().notNull(),
     verifiedAt: timestamp({ withTimezone: true }),
+    cfHostnameId: text(), // Cloudflare for SaaS custom-hostname id (SaaS mode)
+    cfRecords: jsonb(), // DNS records to show in SaaS mode
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

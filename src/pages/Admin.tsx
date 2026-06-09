@@ -33,7 +33,7 @@ export function Admin() {
         </p>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1">
+      <div className="grid grid-cols-3 gap-1 rounded-lg border bg-card p-1 sm:flex">
         {TABS.map((t) => {
           const Icon = t.icon;
           return (

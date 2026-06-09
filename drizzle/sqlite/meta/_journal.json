@@ -15,6 +15,13 @@
       "when": 1780978445144,
       "tag": "0001_freezing_tyger_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1780980142879,
+      "tag": "0002_public_dracula",
+      "breakpoints": true
     }
   ]
 }

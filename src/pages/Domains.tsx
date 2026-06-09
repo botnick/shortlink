@@ -10,7 +10,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { CopyButton } from "@/components/CopyButton";
 
+function statusBadge(status: string) {
+  if (status === "active") return <Badge variant="success"><CheckCircle2 className="size-3.5" /> Live</Badge>;
+  if (status === "verified") return <Badge variant="success"><CheckCircle2 className="size-3.5" /> Verified</Badge>;
+  return <Badge variant="muted">Pending</Badge>;
+}
+
 export function Domains() {
+  const [mode, setMode] = useState<"dns" | "saas">("dns");
   const [domains, setDomains] = useState<DomainDTO[] | null>(null);
   const [hostname, setHostname] = useState("");
   const [adding, setAdding] = useState(false);
@@ -19,7 +26,7 @@ export function Domains() {
   useEffect(() => {
     api
       .get<DomainListDTO>("/domains")
-      .then((r) => setDomains(r.domains))
+      .then((r) => { setMode(r.mode); setDomains(r.domains); })
       .catch(() => toast.error("Couldn't load domains"));
   }, []);
 
@@ -28,12 +35,10 @@ export function Domains() {
     if (!hostname.trim()) return;
     setAdding(true);
     try {
-      const { domain } = await api.post<{ domain: DomainDTO }>("/domains", {
-        hostname: hostname.trim(),
-      });
+      const { domain } = await api.post<{ domain: DomainDTO }>("/domains", { hostname: hostname.trim() });
       setDomains((d) => [domain, ...(d ?? [])]);
       setHostname("");
-      toast.success("Domain added — add the TXT record below, then verify");
+      toast.success("Domain added — add the DNS record(s) below");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't add domain");
     } finally {
@@ -41,14 +46,17 @@ export function Domains() {
     }
   }
 
-  async function verify(d: DomainDTO) {
+  async function check(d: DomainDTO) {
     setBusy(d.id);
     try {
-      const { domain } = await api.post<{ domain: DomainDTO }>(`/domains/${d.id}/verify`);
+      const { domain } = await api.post<{ domain: DomainDTO }>(`/domains/${d.id}/check`);
       setDomains((list) => (list ?? []).map((x) => (x.id === domain.id ? domain : x)));
-      toast.success("Domain verified!");
+      toast.success(
+        domain.status === "active" ? "Domain is live!" :
+        domain.status === "verified" ? "Domain verified!" : "Still waiting on DNS",
+      );
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Not verified yet");
+      toast.error(err instanceof ApiError ? err.message : "Not ready yet");
     } finally {
       setBusy(null);
     }
@@ -74,22 +82,19 @@ export function Domains() {
         <h1 className="display text-3xl">Custom domains</h1>
         <p className="text-sm text-muted-foreground">
           Serve your short links from your own domain, e.g.{" "}
-          <span className="font-medium">go.yourbrand.com</span>. Prove you own it with a DNS
-          record; once verified, an admin connects it.
+          <span className="font-medium">go.yourbrand.com</span>.{" "}
+          {mode === "saas"
+            ? "Add the DNS record and it connects automatically with TLS."
+            : "Verify ownership with a DNS record; an admin then connects it."}
         </p>
       </div>
 
-      <form onSubmit={add} className="flex gap-2">
+      <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row">
         <div className="relative flex-1">
           <Globe className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={hostname}
-            onChange={(e) => setHostname(e.target.value)}
-            placeholder="go.yourbrand.com"
-            className="pl-9"
-          />
+          <Input value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="go.yourbrand.com" className="pl-9" />
         </div>
-        <Button type="submit" disabled={adding}>
+        <Button type="submit" disabled={adding} className="sm:w-auto">
           {adding ? <Loader2 className="animate-spin" /> : <Plus />} Add domain
         </Button>
       </form>
@@ -103,25 +108,19 @@ export function Domains() {
       ) : (
         <div className="space-y-4">
           {domains.map((d) => {
-            const verified = d.status === "verified";
+            const done = d.status === "active" || d.status === "verified";
             return (
               <Card key={d.id}>
-                <CardContent className="space-y-4 p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold">{d.hostname}</span>
-                      {verified ? (
-                        <Badge variant="success">
-                          <CheckCircle2 className="size-3.5" /> Verified
-                        </Badge>
-                      ) : (
-                        <Badge variant="muted">Pending</Badge>
-                      )}
+                <CardContent className="space-y-3 p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-semibold">{d.hostname}</span>
+                      {statusBadge(d.status)}
                     </div>
                     <div className="flex items-center gap-2">
-                      {!verified && (
-                        <Button variant="outline" size="sm" onClick={() => verify(d)} disabled={busy === d.id}>
-                          <RefreshCw className={busy === d.id ? "animate-spin" : ""} /> Verify
+                      {d.status !== "active" && (
+                        <Button variant="outline" size="sm" onClick={() => check(d)} disabled={busy === d.id}>
+                          <RefreshCw className={busy === d.id ? "animate-spin" : ""} /> Check
                         </Button>
                       )}
                       <Button variant="ghost" size="icon" onClick={() => remove(d)} disabled={busy === d.id} aria-label="Remove domain">
@@ -130,26 +129,30 @@ export function Domains() {
                     </div>
                   </div>
 
-                  {!verified ? (
+                  {!done && d.records.length > 0 && (
                     <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
                       <p className="text-xs text-muted-foreground">
-                        Add this <strong>TXT</strong> record at your DNS provider, then press
-                        <strong> Verify</strong>:
+                        Add {d.records.length > 1 ? "these records" : "this record"} at your DNS
+                        provider, then press <strong>Check</strong>.
+                        {d.mode === "saas" && " TLS is issued automatically once they resolve."}
                       </p>
-                      <div className="grid gap-1.5 text-xs sm:grid-cols-[auto_1fr_auto] sm:items-center">
-                        <Badge variant="secondary" className="w-fit">TXT name</Badge>
-                        <span className="truncate font-mono" title={d.verifyName}>{d.verifyName}</span>
-                        <CopyButton value={d.verifyName} />
-                        <Badge variant="secondary" className="w-fit">TXT value</Badge>
-                        <span className="truncate font-mono" title={d.verifyValue}>{d.verifyValue}</span>
-                        <CopyButton value={d.verifyValue} />
-                      </div>
+                      {d.records.map((r, i) => (
+                        <div key={i} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-xs">
+                          <Badge variant="secondary" className="w-14 justify-center">{r.type}</Badge>
+                          <span className="truncate font-mono" title={r.name}>{r.name}</span>
+                          <CopyButton value={r.name} />
+                          <span />
+                          <span className="truncate font-mono" title={r.value}>{r.value}</span>
+                          <CopyButton value={r.value} />
+                        </div>
+                      ))}
                     </div>
-                  ) : (
+                  )}
+
+                  {d.status === "verified" && d.mode === "dns" && (
                     <p className="text-xs text-muted-foreground">
-                      Ownership confirmed. An admin connects <strong>{d.hostname}</strong> to the
-                      service (Cloudflare → Workers Custom Domain) and TLS is issued automatically —
-                      then your short links work on it.
+                      Ownership confirmed. An admin connects <strong>{d.hostname}</strong> (Workers
+                      Custom Domain) and TLS is issued — then your links work on it.
                     </p>
                   )}
                 </CardContent>

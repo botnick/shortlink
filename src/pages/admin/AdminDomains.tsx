@@ -7,14 +7,6 @@ import type { AdminDomainDTO, AdminDomainListDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 export function AdminDomains() {
   const list = useSearchList<AdminDomainDTO>(async ({ q, cursor }) => {
@@ -60,46 +52,36 @@ export function AdminDomains() {
         it as a free <strong>Workers Custom Domain</strong> in Cloudflare (one step per domain).
       </p>
 
-      <div className="rounded-xl border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Domain</TableHead>
-              <TableHead className="hidden md:table-cell">Owner</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden text-right lg:table-cell">Added</TableHead>
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {list.loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
-              ))
-            ) : list.items.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No domains yet.</TableCell></TableRow>
-            ) : (
-              list.items.map((d) => (
-                <TableRow key={d.id}>
-                  <TableCell className="font-medium">{d.hostname}</TableCell>
-                  <TableCell className="hidden max-w-[14rem] truncate text-muted-foreground md:table-cell">{d.ownerEmail}</TableCell>
-                  <TableCell>
-                    {d.status === "verified" ? (
-                      <Badge variant="success"><CheckCircle2 className="size-3.5" /> Verified</Badge>
-                    ) : (
-                      <Badge variant="muted">Pending</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden text-right text-muted-foreground lg:table-cell">{formatDate(d.createdAt)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => remove(d)} aria-label="Remove domain"><Trash2 /></Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {list.loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+        </div>
+      ) : list.items.length === 0 ? (
+        <p className="rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground">No domains yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {list.items.map((d) => (
+            <li key={d.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate font-medium">{d.hostname}</span>
+                  {d.status === "active" ? (
+                    <Badge variant="success"><CheckCircle2 className="size-3.5" /> Live</Badge>
+                  ) : d.status === "verified" ? (
+                    <Badge variant="success"><CheckCircle2 className="size-3.5" /> Verified</Badge>
+                  ) : (
+                    <Badge variant="muted">Pending</Badge>
+                  )}
+                </div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">
+                  {d.ownerEmail} · added {formatDate(d.createdAt)}
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => remove(d)} aria-label="Remove domain"><Trash2 /></Button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {list.hasMore && (
         <div className="flex justify-center">

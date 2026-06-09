@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, desc, eq } from "drizzle-orm";
-import type { AppContext, AppEnv } from "../env";
+import type { AppBindings, AppContext, AppEnv } from "../env";
 import type { DomainRow } from "../db/schema";
 import { domainSchema } from "../lib/validators";
 import { requireAuth } from "../middleware/auth";
@@ -11,7 +11,13 @@ import {
   verifyRecordName,
   verifyRecordValue,
 } from "../lib/dns";
-import type { DomainDTO, DomainListDTO } from "@shared/types";
+import {
+  createCustomHostname,
+  deleteCustomHostname,
+  getCustomHostname,
+  saasEnabled,
+} from "../lib/cloudflare";
+import type { DomainDnsRecord, DomainDTO, DomainListDTO } from "@shared/types";
 
 const route = new Hono<AppEnv>();
 route.use("*", requireAuth);
@@ -19,13 +25,24 @@ route.use("*", requireAuth);
 const MAX_PER_USER = 10;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
-function toDTO(row: DomainRow): DomainDTO {
+function toDTO(env: AppBindings, row: DomainRow): DomainDTO {
+  const mode = saasEnabled(env) ? "saas" : "dns";
+  const records: DomainDnsRecord[] =
+    mode === "saas" && row.cfRecords
+      ? (row.cfRecords as DomainDnsRecord[])
+      : [
+          {
+            type: "TXT",
+            name: verifyRecordName(row.hostname),
+            value: verifyRecordValue(row.verifyToken),
+          },
+        ];
   return {
     id: row.id,
     hostname: row.hostname,
     status: row.status,
-    verifyName: verifyRecordName(row.hostname),
-    verifyValue: verifyRecordValue(row.verifyToken),
+    mode,
+    records,
     verifiedAt: row.verifiedAt ? row.verifiedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
@@ -60,11 +77,16 @@ route.get("/", async (c) => {
     .from(domains)
     .where(eq(domains.userId, c.var.user!.id))
     .orderBy(desc(domains.createdAt));
-  const body: DomainListDTO = { domains: rows.map(toDTO) };
+  const body: DomainListDTO = {
+    mode: saasEnabled(c.env) ? "saas" : "dns",
+    domains: rows.map((r) => toDTO(c.env, r)),
+  };
   return c.json(body);
 });
 
-// ADD — register a domain (pending) with a DNS TXT challenge to prove ownership.
+// ADD — register the domain. In SaaS mode this calls Cloudflare so the domain
+// auto-connects once the user adds the CNAME; otherwise it issues a DNS-TXT
+// ownership challenge.
 route.post("/", zValidator("json", domainSchema), async (c) => {
   const { domains } = c.var.schema;
   const user = c.var.user!;
@@ -78,36 +100,69 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
     return c.json({ error: "You've reached the domain limit" }, 409);
   }
 
+  let cfHostnameId: string | null = null;
+  let cfRecords: DomainDnsRecord[] | null = null;
+  let status = "pending";
+  if (saasEnabled(c.env)) {
+    try {
+      const cf = await createCustomHostname(c.env, hostname);
+      cfHostnameId = cf.cfId;
+      cfRecords = cf.records;
+      status = cf.status;
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 502);
+    }
+  }
+
   try {
     const row = (
       await c.var.db
         .insert(domains)
-        .values({ userId: user.id, hostname, verifyToken: newVerifyToken() })
+        .values({
+          userId: user.id,
+          hostname,
+          verifyToken: newVerifyToken(),
+          status,
+          cfHostnameId,
+          cfRecords,
+        })
         .returning()
     )[0];
-    return c.json({ domain: toDTO(row) }, 201);
+    return c.json({ domain: toDTO(c.env, row) }, 201);
   } catch (e) {
-    if (isUniqueViolation(e)) {
-      return c.json({ error: "That domain is already added" }, 409);
-    }
+    if (cfHostnameId) await deleteCustomHostname(c.env, cfHostnameId).catch(() => {});
+    if (isUniqueViolation(e)) return c.json({ error: "That domain is already added" }, 409);
     throw e;
   }
 });
 
-// VERIFY — look up the DNS TXT record and mark the domain verified if it matches.
-route.post("/:id/verify", async (c) => {
+// CHECK — re-check status. SaaS: poll Cloudflare. DNS: verify the TXT record.
+route.post("/:id/check", async (c) => {
   const row = await ownedDomain(c);
   if (!row) return c.json({ error: "Not found" }, 404);
-  if (row.status === "verified") return c.json({ domain: toDTO(row) });
+  const { domains } = c.var.schema;
 
+  if (saasEnabled(c.env) && row.cfHostnameId) {
+    try {
+      const cf = await getCustomHostname(c.env, row.cfHostnameId);
+      const updated = (
+        await c.var.db
+          .update(domains)
+          .set({ status: cf.status, cfRecords: cf.records })
+          .where(eq(domains.id, row.id))
+          .returning()
+      )[0];
+      return c.json({ domain: toDTO(c.env, updated) });
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 502);
+    }
+  }
+
+  if (row.status === "verified") return c.json({ domain: toDTO(c.env, row) });
   const ok = await checkTxtVerification(row.hostname, row.verifyToken);
   if (!ok) {
-    return c.json(
-      { error: "TXT record not found yet — DNS can take a few minutes" },
-      400,
-    );
+    return c.json({ error: "TXT record not found yet — DNS can take a few minutes" }, 400);
   }
-  const { domains } = c.var.schema;
   const updated = (
     await c.var.db
       .update(domains)
@@ -115,13 +170,16 @@ route.post("/:id/verify", async (c) => {
       .where(eq(domains.id, row.id))
       .returning()
   )[0];
-  return c.json({ domain: toDTO(updated) });
+  return c.json({ domain: toDTO(c.env, updated) });
 });
 
 // DELETE
 route.delete("/:id", async (c) => {
   const row = await ownedDomain(c);
   if (!row) return c.json({ error: "Not found" }, 404);
+  if (saasEnabled(c.env) && row.cfHostnameId) {
+    await deleteCustomHostname(c.env, row.cfHostnameId).catch(() => {});
+  }
   const { domains } = c.var.schema;
   await c.var.db.delete(domains).where(eq(domains.id, row.id));
   return c.json({ ok: true });

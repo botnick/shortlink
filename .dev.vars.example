@@ -16,3 +16,9 @@ SETUP_TOKEN="change-me-to-a-random-token"
 # (If you ever use `wrangler dev` directly, that one reads WRANGLER_ instead.)
 # This Postgres has no TLS, so use sslmode=disable. Use the ROTATED password.
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://USER:PASSWORD@YOUR_DB_HOST:5432/YOUR_DB?sslmode=disable"
+
+# Optional: Cloudflare for SaaS so members' custom domains auto-connect (CNAME +
+# automatic TLS). Set all three to enable; leave unset for free DNS-TXT verify.
+# CF_API_TOKEN="token-with-ssl-and-certificates-edit"
+# CF_ZONE_ID="your-saas-zone-id"
+# CF_FALLBACK_HOST="links.example.com"

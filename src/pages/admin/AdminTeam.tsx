@@ -24,14 +24,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 export function AdminTeam({ onViewLinks }: { onViewLinks?: (u: AdminUserDTO) => void }) {
   const { user: me } = useAuth();
@@ -82,70 +74,57 @@ export function AdminTeam({ onViewLinks }: { onViewLinks?: (u: AdminUserDTO) => 
         <Button onClick={() => setAddOpen(true)}><Plus /> Add member</Button>
       </div>
 
-      <div className="rounded-xl border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead className="text-right">Links</TableHead>
-              <TableHead className="hidden text-right sm:table-cell">Joined</TableHead>
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {list.loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
-              ))
-            ) : list.items.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No members found.</TableCell></TableRow>
-            ) : (
-              list.items.map((u) => {
-                const isSelf = u.id === me?.id;
-                return (
-                  <TableRow key={u.id}>
-                    <TableCell className="max-w-[14rem] truncate font-medium">{u.email}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant={u.role === "admin" ? "default" : "muted"}>{u.role}</Badge>
-                        {u.isPrimary && <Badge variant="secondary">Primary</Badge>}
-                        {isSelf && <span className="text-xs text-muted-foreground">you</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{u.linkCount}</TableCell>
-                    <TableCell className="hidden text-right text-muted-foreground sm:table-cell">{formatDate(u.createdAt)}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="User actions"><MoreHorizontal /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {onViewLinks && u.linkCount > 0 && (
-                            <DropdownMenuItem onClick={() => onViewLinks(u)}><Link2 /> View links</DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => setResetUser(u)}><KeyRound /> Reset password</DropdownMenuItem>
-                          {!u.isPrimary && !isSelf && (
-                            <>
-                              {u.role === "user" ? (
-                                <DropdownMenuItem onClick={() => setRole(u, "admin")}><ShieldCheck /> Make admin</DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem onClick={() => setRole(u, "user")}><ShieldOff /> Remove admin</DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem variant="destructive" onClick={() => removeUser(u)}><Trash2 /> Delete user</DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {list.loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+        </div>
+      ) : list.items.length === 0 ? (
+        <p className="rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground">
+          No members found.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {list.items.map((u) => {
+            const isSelf = u.id === me?.id;
+            return (
+              <li key={u.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{u.email}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <Badge variant={u.role === "admin" ? "default" : "muted"}>{u.role}</Badge>
+                    {u.isPrimary && <Badge variant="secondary">Primary</Badge>}
+                    {isSelf && <span>you</span>}
+                    <span>{u.linkCount} link{u.linkCount === 1 ? "" : "s"}</span>
+                    <span>· joined {formatDate(u.createdAt)}</span>
+                  </div>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="User actions"><MoreHorizontal /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    {onViewLinks && u.linkCount > 0 && (
+                      <DropdownMenuItem onClick={() => onViewLinks(u)}><Link2 /> View links</DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setResetUser(u)}><KeyRound /> Reset password</DropdownMenuItem>
+                    {!u.isPrimary && !isSelf && (
+                      <>
+                        {u.role === "user" ? (
+                          <DropdownMenuItem onClick={() => setRole(u, "admin")}><ShieldCheck /> Make admin</DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => setRole(u, "user")}><ShieldOff /> Remove admin</DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => removeUser(u)}><Trash2 /> Delete user</DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {list.hasMore && (
         <div className="flex justify-center">

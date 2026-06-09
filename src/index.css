@@ -149,6 +149,9 @@
   }
   html {
     -webkit-text-size-adjust: 100%;
+    /* Kill the double-tap-to-zoom gesture (and the 300ms tap delay) while
+       keeping pinch-to-zoom for accessibility. */
+    touch-action: manipulation;
   }
   body {
     margin: 0;
@@ -159,6 +162,8 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overflow-wrap: break-word;
+    /* Never allow sideways scrolling on mobile (clip doesn't break sticky). */
+    overflow-x: clip;
   }
   ::selection {
     background: oklch(0.605 0.21 28 / 0.16);
