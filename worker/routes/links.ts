@@ -80,6 +80,7 @@ function toLinkDTO(env: AppBindings, row: LinkRow): LinkDTO {
         : row.ogImage || null,
     projectId: row.projectId,
     hasPassword: Boolean(row.passwordHash),
+    qrConfig: (row.qrConfig as Record<string, unknown> | null) ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -342,6 +343,7 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   if (input.password !== undefined) {
     patch.passwordHash = input.password ? await hashPassword(input.password) : null;
   }
+  if (input.qrConfig !== undefined) patch.qrConfig = input.qrConfig;
   if (input.title !== undefined) patch.title = input.title;
   if (input.isActive !== undefined) patch.isActive = input.isActive;
   if (input.expiresAt !== undefined) {

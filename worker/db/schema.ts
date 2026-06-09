@@ -70,6 +70,8 @@ export const links = pgTable(
     ogTitle: text(),
     ogDescription: text(),
     ogImage: text(),
+    // Saved QR design (a QrCfg JSON) so the studio's choice shows everywhere.
+    qrConfig: jsonb(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },

@@ -5,6 +5,7 @@ import {
   Copy,
   Download,
   ImageUp,
+  Loader2,
   Plus,
   RotateCcw,
   Trash2,
@@ -256,18 +257,25 @@ export function QrStudio({
   url,
   downloadName,
   project,
+  linkId,
+  initialConfig,
 }: {
   url: string;
   downloadName: string;
   project?: ProjectDTO;
+  linkId?: string;
+  initialConfig?: Record<string, unknown> | null;
 }) {
   const { config } = useConfig();
-  // Default to the project's brand presets (color + logo), falling back to global.
+  // Default to the project's brand presets (color + logo), falling back to global,
+  // then overlay any design saved on this link so it reopens as last chosen.
   const brand = project?.color || config.brandColor;
   const [cfg, setCfg] = useState<QrCfg>(() => {
     const base = makeDefault(brand);
-    return project?.logo ? { ...base, logoSrc: project.logo, logo: true } : base;
+    const withLogo = project?.logo ? { ...base, logoSrc: project.logo, logo: true } : base;
+    return initialConfig ? { ...withLogo, ...(initialConfig as Partial<QrCfg>) } : withLogo;
   });
+  const [savingLink, setSavingLink] = useState(false);
   const [markup, setMarkup] = useState("");
   const [extracted, setExtracted] = useState<string[]>([]);
   const [saved, setSaved] = useState<QrPresetDTO[]>([]);
@@ -290,6 +298,20 @@ export function QrStudio({
   };
   const applyScheme = (s: ColorScheme) =>
     setCfg((c) => ({ ...c, gradient: false, fg: s.fg, cornerSquareColor: s.cornerSquareColor, cornerDotColor: s.cornerDotColor }));
+
+  // Persist this design on the link so it reopens (and shows in the editor) as chosen.
+  async function saveToLink() {
+    if (!linkId) return;
+    setSavingLink(true);
+    try {
+      await api.patch(`/links/${linkId}`, { qrConfig: cfg });
+      toast.success("QR design saved to this link");
+    } catch {
+      toast.error("Couldn’t save the QR design");
+    } finally {
+      setSavingLink(false);
+    }
+  }
 
   const schemes = useMemo(() => schemesFor(mainColor), [mainColor]);
   const frameThumbs = useMemo(() => {
@@ -482,6 +504,17 @@ export function QrStudio({
               </Button>
             </Hint>
           </div>
+          {linkId && (
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={savingLink}
+              onClick={saveToLink}
+            >
+              {savingLink ? <Loader2 className="animate-spin" /> : <Check />} Save design to this
+              link
+            </Button>
+          )}
           <button
             type="button"
             onClick={() => {

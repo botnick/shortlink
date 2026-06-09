@@ -175,6 +175,11 @@ const ogImage = longText.nullable();
 const deepLink = httpUrl.nullable();
 // A link password: a non-empty string to set, or null to remove the gate.
 const linkPassword = z.string().min(1, "Password can’t be empty").max(200).nullable();
+// Saved QR design (a QrCfg object), or null to reset to the default.
+const qrConfigField = z
+  .record(z.string(), z.unknown())
+  .refine((c) => JSON.stringify(c).length < 600_000, "QR design is too large")
+  .nullable();
 
 export const createLinkSchema = z.object({
   destination: httpUrl,
@@ -198,6 +203,7 @@ export const updateLinkSchema = z.object({
   androidUrl: deepLink.optional(),
   desktopUrl: deepLink.optional(),
   password: linkPassword.optional(),
+  qrConfig: qrConfigField.optional(),
   title: z.string().trim().max(120).nullable().optional(),
   isActive: z.boolean().optional(),
   expiresAt: isoDate.nullable().optional(),

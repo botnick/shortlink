@@ -30,6 +30,8 @@ export interface LinkDTO {
   projectId: string | null;
   /** true when a password gate is set (the password itself is never returned) */
   hasPassword: boolean;
+  /** the saved QR design (a QrCfg), or null to use the default */
+  qrConfig: Record<string, unknown> | null;
   createdAt: string;
 }
 

@@ -71,6 +71,8 @@ export function QrPage() {
           url={link.shortUrl}
           downloadName={link.slug}
           project={project ?? undefined}
+          linkId={link.id}
+          initialConfig={link.qrConfig}
         />
       )}
     </div>

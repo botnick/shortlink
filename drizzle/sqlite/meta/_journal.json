@@ -57,6 +57,13 @@
       "when": 1781017911150,
       "tag": "0007_smart_black_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1781023199039,
+      "tag": "0008_giant_legion",
+      "breakpoints": true
     }
   ]
 }

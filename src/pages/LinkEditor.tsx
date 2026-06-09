@@ -21,7 +21,7 @@ import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { compressUpload, ogToJpeg, ogToPng, renderOg, renderPhotoOg } from "@/lib/ogTemplates";
 import { loadOgFont } from "@/lib/ogFonts";
-import { composeFrame, makeDefault, renderQrSvg, svgDataUrl } from "@/lib/qr";
+import { composeFrame, makeDefault, renderQrSvg, svgDataUrl, type QrCfg } from "@/lib/qr";
 import type { LinkDTO, PreviewMode, UrlMetaDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1210,7 +1210,7 @@ export function LinkEditor() {
           </section>
 
           {isEdit && link ? (
-            <QrCard slug={link.slug} linkId={link.id} />
+            <QrCard slug={link.slug} linkId={link.id} savedConfig={link.qrConfig} />
           ) : (
             <section className="space-y-3 rounded-2xl border bg-card p-4">
               <span className="text-xs font-medium text-muted-foreground">QR code</span>
@@ -1234,7 +1234,15 @@ export function LinkEditor() {
 }
 
 /** QR block in the preview rail: a live QR plus its public /qr/<slug> share page. */
-function QrCard({ slug, linkId }: { slug: string; linkId: string }) {
+function QrCard({
+  slug,
+  linkId,
+  savedConfig,
+}: {
+  slug: string;
+  linkId: string;
+  savedConfig?: Record<string, unknown> | null;
+}) {
   const { config } = useConfig();
   const [svg, setSvg] = useState("");
   const qrUrl = `${window.location.origin}/qr/${slug}`;
@@ -1248,7 +1256,8 @@ function QrCard({ slug, linkId }: { slug: string; linkId: string }) {
       .then((d: { shortUrl: string; color: string | null; logo: string | null } | null) => {
         if (!active || !d) return;
         const base = makeDefault(d.color || config.brandColor);
-        const cfg = d.logo ? { ...base, logoSrc: d.logo, logo: true } : base;
+        const withLogo = d.logo ? { ...base, logoSrc: d.logo, logo: true } : base;
+        const cfg = savedConfig ? { ...withLogo, ...(savedConfig as Partial<QrCfg>) } : withLogo;
         return renderQrSvg(cfg, d.shortUrl).then((raw) => {
           if (active) setSvg(composeFrame(raw, cfg).svg);
         });
@@ -1257,7 +1266,7 @@ function QrCard({ slug, linkId }: { slug: string; linkId: string }) {
     return () => {
       active = false;
     };
-  }, [slug, config.brandColor]);
+  }, [slug, config.brandColor, savedConfig]);
 
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4">

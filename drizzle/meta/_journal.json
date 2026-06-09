@@ -71,6 +71,13 @@
       "when": 1781017910456,
       "tag": "0009_dry_boomer",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781023198300,
+      "tag": "0010_blushing_blue_shield",
+      "breakpoints": true
     }
   ]
 }
