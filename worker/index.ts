@@ -31,6 +31,7 @@ import {
 import { isValidCustomSlug } from "./lib/slug";
 import { destinationPreview, isCrawler, previewHtml } from "./lib/social";
 import { verifyPassword } from "./lib/password";
+import { qrSvg } from "./lib/qrsvg";
 import {
   getClientIp,
   getCountry,
@@ -166,6 +167,40 @@ app.get("/icon", (c) => serveBrandImage(c.env, "icon"));
 app.get("/og", (c) => serveBrandImage(c.env, "og"));
 // Public per-link OG image (so social crawlers can fetch a real URL).
 app.get("/ogimg/:id", (c) => serveLinkOgImage(c, c.req.param("id")));
+
+// Direct QR image: /qr/<slug>.svg returns a scannable, brand-coloured SVG that
+// can be embedded or shared anywhere. The bare /qr/<slug> stays the HTML page.
+app.get("/qr/:file", async (c) => {
+  const file = c.req.param("file");
+  const m = /^([a-zA-Z0-9_-]{3,32})\.svg$/.exec(file);
+  if (!m) return serveAssets(c); // not a .svg request → serve the SPA page
+  const slug = m[1];
+  const { db, schema, close } = getDbHandle(c.env);
+  const { links, projects } = schema;
+  try {
+    const rows = await db
+      .select({
+        slug: links.slug,
+        isActive: links.isActive,
+        expiresAt: links.expiresAt,
+        color: projects.color,
+      })
+      .from(links)
+      .leftJoin(projects, eq(links.projectId, projects.id))
+      .where(eq(links.slug, slug))
+      .limit(1);
+    const l = rows[0];
+    const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
+    if (!l || !l.isActive || expired) return spa(c, 404);
+    const dark = /^#[0-9a-fA-F]{6}$/.test(l.color ?? "") ? (l.color as string) : "#0b0b0c";
+    return c.body(qrSvg(`${c.env.APP_URL}/${l.slug}`, { dark }), 200, {
+      "content-type": "image/svg+xml; charset=utf-8",
+      "cache-control": "public, max-age=86400",
+    });
+  } finally {
+    c.executionCtx.waitUntil(close());
+  }
+});
 
 // --- Redirect hot path ------------------------------------------------------
 app.get("/:slug", async (c) => {

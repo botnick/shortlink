@@ -254,7 +254,9 @@ export function LinkEditor() {
   const navigate = useNavigate();
   const shortHost = useShortHost();
   const { config } = useConfig();
-  const { projects, selectedId, setSelectedId } = useProjects();
+  // Links are created into the project already selected on the dashboard
+  // (persisted in localStorage) — no need to pick it again here.
+  const { selectedId, selected } = useProjects();
 
   const [loaded, setLoaded] = useState(!isEdit);
   const [link, setLink] = useState<LinkDTO | null>(null);
@@ -783,36 +785,24 @@ export function LinkEditor() {
               </div>
             )}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {!isEdit && projects.length > 0 && (
-                <div className="space-y-2">
-                  <Label htmlFor="project">Project</Label>
-                  <select
-                    id="project"
-                    value={selectedId ?? ""}
-                    onChange={(e) => setSelectedId(e.target.value)}
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="title">
+                Title{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="title"
+                placeholder="Spring campaign"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              {!isEdit && selected && (
+                <p className="text-[11px] text-muted-foreground">
+                  Saving to{" "}
+                  <span className="font-medium text-foreground/70">{selected.name}</span> —
+                  switch projects on the dashboard.
+                </p>
               )}
-              <div className="space-y-2">
-                <Label htmlFor="title">
-                  Title{" "}
-                  <span className="font-normal text-muted-foreground">(optional)</span>
-                </Label>
-                <Input
-                  id="title"
-                  placeholder="Spring campaign"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </div>
             </div>
 
             <div className="space-y-2">
@@ -1287,6 +1277,10 @@ function QrCard({ slug, linkId }: { slug: string; linkId: string }) {
         <Button type="button" variant="outline" size="sm" asChild>
           <RouterLink to={`/links/${linkId}/qr`}>Customize</RouterLink>
         </Button>
+      </div>
+      <div className="space-y-1.5 border-t pt-3">
+        <span className="text-[11px] text-muted-foreground">Direct image link (SVG)</span>
+        <CopyRow value={`${window.location.origin}/qr/${slug}.svg`} label="Copy direct QR image link" />
       </div>
     </section>
   );

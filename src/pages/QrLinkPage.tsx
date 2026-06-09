@@ -33,6 +33,7 @@ export function QrLinkPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [svg, setSvg] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedDirect, setCopiedDirect] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -159,6 +160,23 @@ export function QrLinkPage() {
                 <Download /> SVG
               </Button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(`${window.location.origin}/qr/${slug}.svg`);
+                setCopiedDirect(true);
+                setTimeout(() => setCopiedDirect(false), 1500);
+              }}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              {copiedDirect ? (
+                <Check className="size-3.5 text-emerald-600" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+              Copy direct image link
+            </button>
 
             <a
               href={data.shortUrl}
