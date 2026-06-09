@@ -393,6 +393,14 @@ async function resolveLinkRef(ctx: ToolCtx, ref: unknown): Promise<string> {
   );
 }
 
+/** Match the web editor's affordance: a bare domain gets https:// added. */
+function normalizeDestination(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const v = value.trim();
+  if (v && !/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) return `https://${v}`;
+  return v;
+}
+
 /** Turn "30m" / "12h" / "7d" / "4w" into an ISO timestamp from now. */
 function parseExpiresIn(value: unknown): string {
   const m = /^(\d{1,4})\s*([mhdw])$/i.exec(String(value ?? "").trim());
@@ -452,7 +460,9 @@ async function executeTool(
     }
     case "create_link": {
       const domainId = await resolveDomainArg(ctx, args.domain);
-      const body: Record<string, unknown> = { destination: args.destination };
+      const body: Record<string, unknown> = {
+        destination: normalizeDestination(args.destination),
+      };
       for (const k of [
         "slug",
         "tags",
@@ -504,6 +514,9 @@ async function executeTool(
         "projectId",
       ]) {
         if (args[k] !== undefined) body[k] = args[k];
+      }
+      if (body.destination !== undefined) {
+        body.destination = normalizeDestination(body.destination);
       }
       if (args.expiresIn !== undefined) body.expiresAt = parseExpiresIn(args.expiresIn);
       if (domainId !== undefined) body.domainId = domainId;
@@ -576,6 +589,7 @@ async function executeTool(
       for (const h of hostnames) ids.set(h, await resolveDomainArg(ctx, h));
       const mapped = rows.map((r) => {
         const { domain, ...rest } = r;
+        rest.destination = normalizeDestination(rest.destination);
         const domainId = typeof domain === "string" && domain ? ids.get(domain) : undefined;
         return domainId !== undefined && domainId !== null
           ? { ...rest, domainId }
