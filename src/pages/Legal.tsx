@@ -1,20 +1,39 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileText, ShieldCheck } from "lucide-react";
 import { useConfig } from "@/lib/config";
 import type { ReactNode } from "react";
 
-function Shell({ title, children }: { title: string; children: ReactNode }) {
+function Shell({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl py-2">
       <Link
         to="/"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="size-4" /> Back
+        <ArrowLeft className="size-4" /> Back home
       </Link>
-      <h1 className="display mt-4 text-3xl">{title}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Last updated: June 2026</p>
-      <div className="mt-6 space-y-5 text-sm leading-relaxed text-muted-foreground [&_h2]:mt-6 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-foreground [&_strong]:text-foreground">
+
+      <div className="mt-6 flex items-center gap-3.5">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          {icon}
+        </span>
+        <div>
+          <h1 className="display text-3xl leading-none">{title}</h1>
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Last updated · June 2026
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-8 space-y-5 border-t pt-8 text-[15px] leading-7 text-muted-foreground [&_a]:font-medium [&_a]:text-primary hover:[&_a]:underline [&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:text-foreground [&_p]:max-w-prose [&_strong]:font-semibold [&_strong]:text-foreground">
         {children}
       </div>
     </div>
@@ -24,7 +43,7 @@ function Shell({ title, children }: { title: string; children: ReactNode }) {
 export function Terms() {
   const { config } = useConfig();
   return (
-    <Shell title="Terms of Service">
+    <Shell title="Terms of Service" icon={<FileText className="size-5" />}>
       <p>
         These terms govern your use of {config.appName} (the “service”). By creating an
         account or using the service, you agree to them. If you don’t agree, don’t use the
@@ -68,7 +87,7 @@ export function Terms() {
 export function Privacy() {
   const { config } = useConfig();
   return (
-    <Shell title="Privacy Policy">
+    <Shell title="Privacy Policy" icon={<ShieldCheck className="size-5" />}>
       <p>
         This policy explains what {config.appName} collects and why. We aim to collect only
         what’s needed to run the service.
