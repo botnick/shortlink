@@ -1,48 +1,40 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Check, Copy, Download, ExternalLink, Loader2 } from "lucide-react";
 import { useConfig } from "@/lib/config";
-import {
-  composeFrame,
-  downloadBlob,
-  makeDefault,
-  renderQrSvg,
-  svgDataUrl,
-  svgToRaster,
-  type QrCfg,
-} from "@/lib/qr";
+import { downloadBlob, svgToRaster } from "@/lib/qr";
 import { Button } from "@/components/ui/button";
-
-interface QrData {
-  shortUrl: string;
-  color: string | null;
-  logo: string | null;
-}
 
 type Status = "loading" | "ready" | "notfound";
 
 /**
- * Public, login-free QR page for any active link (the equivalent of
- * lnk.ua/qr/<slug>): a branded, downloadable QR of the short URL. Styling is
- * pulled from the link's project (brand colour + logo) via /api/qr/<slug>.
+ * Public, login-free QR page for any active link. The QR shown here is the exact
+ * same server-rendered image as the direct link /qr/<slug>.svg and the editor
+ * card — one source, so every QR view of a link is identical (no stored copies).
  */
 export function QrLinkPage() {
   const { slug = "" } = useParams();
   const { config } = useConfig();
-  const [data, setData] = useState<QrData | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [svg, setSvg] = useState("");
+  const [shortUrl, setShortUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [copiedDirect, setCopiedDirect] = useState(false);
+  const directUrl = `${window.location.origin}/qr/${slug}.svg`;
 
   useEffect(() => {
     let active = true;
     setStatus("loading");
-    fetch(`/api/qr/${encodeURIComponent(slug)}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((d: QrData) => {
+    Promise.all([
+      fetch(`/qr/${encodeURIComponent(slug)}.svg`).then((r) =>
+        r.ok ? r.text() : Promise.reject(new Error("not found")),
+      ),
+      fetch(`/api/qr/${encodeURIComponent(slug)}`).then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([svgText, meta]) => {
         if (!active) return;
-        setData(d);
+        setSvg(svgText);
+        setShortUrl(meta?.shortUrl ?? `${window.location.origin}/${slug}`);
         setStatus("ready");
       })
       .catch(() => active && setStatus("notfound"));
@@ -51,43 +43,22 @@ export function QrLinkPage() {
     };
   }, [slug]);
 
-  // Same config as the QR studio (the source of truth): makeDefault(brand) plus
-  // the project logo. Keeps every QR view of a link identical.
-  const cfg = useMemo<QrCfg | null>(() => {
-    if (!data) return null;
-    const base = makeDefault(data.color || config.brandColor);
-    return data.logo ? { ...base, logoSrc: data.logo, logo: true } : base;
-  }, [data, config.brandColor]);
-
-  useEffect(() => {
-    if (!cfg || !data) return;
-    let active = true;
-    renderQrSvg(cfg, data.shortUrl)
-      .then((raw) => active && setSvg(composeFrame(raw, cfg).svg))
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [cfg, data]);
-
   async function download(kind: "png" | "svg") {
-    if (!cfg || !data) return;
-    const composed = composeFrame(await renderQrSvg(cfg, data.shortUrl), cfg);
+    if (!svg) return;
     if (kind === "svg") {
-      downloadBlob(
-        new Blob([composed.svg], { type: "image/svg+xml" }),
-        `qr-${slug}.svg`,
-      );
+      downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `qr-${slug}.svg`);
     } else {
-      downloadBlob(await svgToRaster(composed, cfg.exportSize, "image/png"), `qr-${slug}.png`);
+      downloadBlob(
+        await svgToRaster({ svg, width: 1024, height: 1024 }, 1024, "image/png"),
+        `qr-${slug}.png`,
+      );
     }
   }
 
-  function copy() {
-    if (!data) return;
-    void navigator.clipboard.writeText(data.shortUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  function copyTo(text: string, set: (v: boolean) => void) {
+    void navigator.clipboard.writeText(text);
+    set(true);
+    setTimeout(() => set(false), 1500);
   }
 
   return (
@@ -118,16 +89,10 @@ export function QrLinkPage() {
           </div>
         )}
 
-        {status === "ready" && data && (
+        {status === "ready" && (
           <div className="space-y-5">
             <div className="mx-auto aspect-square w-full max-w-[260px] overflow-hidden rounded-xl">
-              {svg ? (
-                <img src={svgDataUrl(svg)} alt={`QR code for ${data.shortUrl}`} className="size-full" />
-              ) : (
-                <div className="flex size-full items-center justify-center text-muted-foreground">
-                  <Loader2 className="size-6 animate-spin" />
-                </div>
-              )}
+              <img src={directUrl} alt={`QR code for ${shortUrl}`} className="size-full" />
             </div>
 
             <p className="text-center text-xs text-muted-foreground">
@@ -135,10 +100,10 @@ export function QrLinkPage() {
             </p>
 
             <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-sm">{data.shortUrl}</span>
+              <span className="min-w-0 flex-1 truncate text-sm">{shortUrl}</span>
               <button
                 type="button"
-                onClick={copy}
+                onClick={() => copyTo(shortUrl, setCopied)}
                 className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
                 aria-label="Copy link"
               >
@@ -157,11 +122,7 @@ export function QrLinkPage() {
 
             <button
               type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(`${window.location.origin}/qr/${slug}.svg`);
-                setCopiedDirect(true);
-                setTimeout(() => setCopiedDirect(false), 1500);
-              }}
+              onClick={() => copyTo(directUrl, setCopiedDirect)}
               className="flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               {copiedDirect ? (
@@ -173,7 +134,7 @@ export function QrLinkPage() {
             </button>
 
             <a
-              href={data.shortUrl}
+              href={shortUrl}
               target="_blank"
               rel="noreferrer"
               className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
