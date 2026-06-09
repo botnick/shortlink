@@ -11,9 +11,11 @@ import {
   Loader2,
   Megaphone,
   Monitor,
+  Plus,
   QrCode,
   Share2,
   Smartphone,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
@@ -27,6 +29,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useConfig, useShortHost } from "@/lib/config";
 import { useProjects } from "@/lib/useProjects";
 
@@ -71,6 +79,55 @@ function applyUtm(url: string, utm: Utm): string {
     return url;
   }
 }
+
+// --- Slug suggestions ("Optimize", Rebrandly-style) -------------------------
+const SLUG_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"; // drop look-alikes (0/o/1/l)
+function randomSlug(len: number): string {
+  const a = crypto.getRandomValues(new Uint32Array(len));
+  let s = "";
+  for (let i = 0; i < len; i++) s += SLUG_ALPHABET[a[i] % SLUG_ALPHABET.length];
+  return s;
+}
+function slugWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/[\s-]+/)
+    .filter(Boolean);
+}
+function toSlug(text: string, mode: "plain" | "dash" | "camel"): string {
+  const words = slugWords(text).slice(0, 8);
+  if (!words.length) return "";
+  const out =
+    mode === "dash"
+      ? words.join("-")
+      : mode === "camel"
+        ? words.map((w, i) => (i === 0 ? w : w[0].toUpperCase() + w.slice(1))).join("")
+        : words.join("");
+  return out.slice(0, 32);
+}
+/** Source text for "suggested" slugs: the fetched page title if we have it, else
+ *  the destination's host + first path segment. */
+function suggestSource(destination: string, metaTitle?: string): string {
+  if (metaTitle?.trim()) return metaTitle;
+  try {
+    const u = new URL(destination);
+    const host = u.hostname.replace(/^www\./, "").split(".")[0];
+    // Prefer meaningful path segments; skip tiny prefixes (/t/, /p/) and numeric ids.
+    const segs = u.pathname.split("/").filter((s) => s.length > 2 && !/^\d+$/.test(s));
+    return segs.length ? segs.join(" ") : host;
+  } catch {
+    return "";
+  }
+}
+const SLUG_OPTIONS = [
+  { kind: "shortest", label: "Shortest", desc: "Shortest random — 4 characters", needsSource: false },
+  { kind: "random", label: "Random", desc: "Longer random — 8 characters", needsSource: false },
+  { kind: "plain", label: "Suggested", desc: "Words from the destination, joined", needsSource: true },
+  { kind: "dash", label: "Suggested with dash", desc: "Dash-separated (SEO-friendly)", needsSource: true },
+  { kind: "camel", label: "Suggested camel case", desc: "camelCase from the destination", needsSource: true },
+] as const;
 
 // --- Collapsible section (progressive disclosure, Rebrandly-style) ----------
 function Collapsible({
@@ -212,6 +269,7 @@ export function LinkEditor() {
   const [ogSource, setOgSource] = useState<"generate" | "upload">("generate");
   const [genDataUrl, setGenDataUrl] = useState(""); // live snapshot of the generated card
   const [submitting, setSubmitting] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(isEdit); // create starts simple
   const [destMeta, setDestMeta] = useState<UrlMetaDTO | null>(null);
   const [destLoading, setDestLoading] = useState(false);
   const [brandLogo, setBrandLogo] = useState<HTMLImageElement | null>(null);
@@ -268,6 +326,10 @@ export function LinkEditor() {
 
   const utmCount = Object.values(utm).filter((v) => v.trim()).length;
   const deepCount = [iosUrl, androidUrl, desktopUrl].filter((v) => v.trim()).length;
+  // "Suggested" slugs need real words from the destination (its page title if we
+  // pulled it, else its host + path); without them only the random options apply.
+  const slugSource = suggestSource(destination, destMeta?.title || undefined);
+  const hasSlugSource = slugWords(slugSource).length > 0;
 
   // Compact "Link preview" shown in the rail — mirrors how the link unfurls.
   const pvTitle =
@@ -300,6 +362,12 @@ export function LinkEditor() {
   function onDestinationChange(value: string) {
     setDestination(value);
     setUtm(parseUtm(value));
+  }
+  function optimizeSlug(kind: (typeof SLUG_OPTIONS)[number]["kind"]) {
+    if (kind === "shortest") return setAlias(randomSlug(4));
+    if (kind === "random") return setAlias(randomSlug(8));
+    const s = toSlug(slugSource, kind);
+    setAlias(s.length >= 3 ? s : (s + randomSlug(4)).slice(0, 32));
   }
 
   // --- Social card rendering (same pipeline as before) ----------------------
@@ -570,16 +638,49 @@ export function LinkEditor() {
                   Custom back-half{" "}
                   <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
-                <div className="flex items-center overflow-hidden rounded-md border border-input bg-transparent text-sm focus-within:ring-2 focus-within:ring-ring">
-                  <span className="whitespace-nowrap pl-3 text-muted-foreground">{shortHost}/</span>
-                  <input
-                    id="alias"
-                    className="h-9 w-full bg-transparent px-1 text-base outline-none md:text-sm"
-                    placeholder="my-link"
-                    value={alias}
-                    onChange={(e) => setAlias(e.target.value)}
-                  />
+                <div className="flex items-stretch gap-2">
+                  <div className="flex flex-1 items-center overflow-hidden rounded-md border border-input bg-transparent text-sm focus-within:ring-2 focus-within:ring-ring">
+                    <span className="whitespace-nowrap pl-3 text-muted-foreground">{shortHost}/</span>
+                    <input
+                      id="alias"
+                      className="h-9 w-full bg-transparent px-1 text-base outline-none md:text-sm"
+                      placeholder="my-link"
+                      value={alias}
+                      onChange={(e) => setAlias(e.target.value)}
+                    />
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="outline" className="shrink-0 gap-1.5">
+                        <Sparkles className="size-4" /> Optimize
+                        <ChevronDown className="size-3.5 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      {SLUG_OPTIONS.map((o) => {
+                        const disabled = o.needsSource && !hasSlugSource;
+                        return (
+                          <DropdownMenuItem
+                            key={o.kind}
+                            disabled={disabled}
+                            onClick={() => optimizeSlug(o.kind)}
+                            className="flex-col items-start gap-0.5"
+                          >
+                            <span className="text-sm font-medium">{o.label}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {disabled ? "Enter a destination first" : o.desc}
+                            </span>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
+                {alias.trim() && !/^[a-zA-Z0-9_-]{3,32}$/.test(alias.trim()) && (
+                  <p className="text-[11px] text-amber-600">
+                    3–32 characters: letters, numbers, - or _
+                  </p>
+                )}
               </div>
             )}
 
@@ -628,6 +729,8 @@ export function LinkEditor() {
             )}
           </section>
 
+          {showAdvanced ? (
+            <>
           {/* Campaign tracking (UTM) */}
           <Collapsible
             icon={Megaphone}
@@ -880,6 +983,16 @@ export function LinkEditor() {
               </div>
             )}
           </Collapsible>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed p-3.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+            >
+              <Plus className="size-4" /> Add UTM tracking, device routing & social card
+            </button>
+          )}
         </div>
 
         {/* ---- Preview rail ---- */}
