@@ -92,6 +92,21 @@ export interface AdminLinkListDTO {
   total: number;
 }
 
+export interface AdminDomainDTO {
+  id: string;
+  hostname: string;
+  status: string;
+  ownerEmail: string;
+  verifiedAt: string | null;
+  createdAt: string;
+}
+
+export interface AdminDomainListDTO {
+  domains: AdminDomainDTO[];
+  nextCursor: string | null;
+  total: number;
+}
+
 export interface AdminAnalyticsDTO {
   range: string;
   totalClicks: number;

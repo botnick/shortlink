@@ -43,6 +43,7 @@ import {
 } from "../lib/validators";
 import { requireAdmin } from "../middleware/auth";
 import type {
+  AdminDomainDTO,
   AdminLinkDTO,
   AdminOverviewDTO,
   AdminUserDTO,
@@ -524,6 +525,76 @@ admin.get("/export/links.csv", async (c) => {
       "content-disposition": 'attachment; filename="links.csv"',
     },
   });
+});
+
+// All custom domains across every user — searchable + paginated.
+admin.get("/domains", async (c) => {
+  const db = c.var.db;
+  const { domains, users } = c.var.schema;
+  const q = c.req.query("q") ?? "";
+  const cursor = c.req.query("cursor");
+
+  const search = searchCondition(
+    [sql`${domains.hostname}`, sql`${users.email}`],
+    q,
+  );
+  const cursorCond =
+    cursor && !Number.isNaN(Date.parse(cursor))
+      ? lt(domains.createdAt, new Date(cursor))
+      : undefined;
+  const where = and(...([search, cursorCond].filter(Boolean) as SQL[]));
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select({
+        id: domains.id,
+        hostname: domains.hostname,
+        status: domains.status,
+        verifiedAt: domains.verifiedAt,
+        createdAt: domains.createdAt,
+        ownerEmail: users.email,
+      })
+      .from(domains)
+      .innerJoin(users, eq(domains.userId, users.id))
+      .where(where)
+      .orderBy(desc(domains.createdAt))
+      .limit(PAGE + 1),
+    db
+      .select({ v: count() })
+      .from(domains)
+      .innerJoin(users, eq(domains.userId, users.id))
+      .where(search)
+      .then((r) => Number(r[0]?.v ?? 0)),
+  ]);
+
+  const hasMore = rows.length > PAGE;
+  const page = hasMore ? rows.slice(0, PAGE) : rows;
+  const items: AdminDomainDTO[] = page.map((r) => ({
+    id: r.id,
+    hostname: r.hostname,
+    status: r.status,
+    ownerEmail: r.ownerEmail,
+    verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+  return c.json({
+    domains: items,
+    nextCursor: hasMore ? page[page.length - 1].createdAt.toISOString() : null,
+    total: totalRow,
+  });
+});
+
+// Admin can remove any custom domain.
+admin.delete("/domains/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
+  const { domains } = c.var.schema;
+  const rows = await c.var.db
+    .delete(domains)
+    .where(eq(domains.id, id))
+    .returning({ id: domains.id });
+  if (!rows[0]) return c.json({ error: "Not found" }, 404);
+  return c.json({ ok: true });
 });
 
 // Delete a user. The primary admin and your own account are protected.

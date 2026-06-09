@@ -1,20 +1,22 @@
 import { useState } from "react";
-import { BarChart3, Link2, LineChart, Settings, Users } from "lucide-react";
+import { BarChart3, Globe, Link2, LineChart, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AdminUserDTO } from "@shared/types";
 import { AdminOverview } from "@/pages/admin/AdminOverview";
 import { AdminAnalytics } from "@/pages/admin/AdminAnalytics";
 import { AdminLinks } from "@/pages/admin/AdminLinks";
 import { AdminTeam } from "@/pages/admin/AdminTeam";
+import { AdminDomains } from "@/pages/admin/AdminDomains";
 import { AdminSettings } from "@/pages/admin/AdminSettings";
 
-type Tab = "overview" | "analytics" | "links" | "team" | "settings";
+type Tab = "overview" | "analytics" | "links" | "team" | "domains" | "settings";
 
 const TABS: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "overview", label: "Overview", icon: BarChart3 },
   { id: "analytics", label: "Analytics", icon: LineChart },
   { id: "links", label: "Links", icon: Link2 },
   { id: "team", label: "Team", icon: Users },
+  { id: "domains", label: "Domains", icon: Globe },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -71,6 +73,7 @@ export function Admin() {
           }}
         />
       )}
+      {tab === "domains" && <AdminDomains />}
       {tab === "settings" && <AdminSettings />}
     </div>
   );
