@@ -16,7 +16,10 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { cn, shortUrlFor } from "@/lib/utils";
 import { formatNumber, timeAgo } from "@/lib/format";
-import type { LinkDTO, LinkListDTO } from "@shared/types";
+import type { LinkDTO, LinkListDTO, ProjectDTO } from "@shared/types";
+import { useProjects } from "@/lib/useProjects";
+import { ProjectSwitcher } from "@/components/ProjectSwitcher";
+import { ProjectDialog } from "@/components/ProjectDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,12 +44,23 @@ export function Dashboard() {
   const [search, setSearch] = useState("");
   const reqId = useRef(0);
 
-  const fetchPage = useCallback(async (q: string, cur: string | null) => {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (cur) params.set("cursor", cur);
-    return api.get<LinkListDTO>(`/links?${params}`);
-  }, []);
+  const { projects, selected, selectedId, setSelectedId, refresh: refreshProjects } =
+    useProjects();
+  const [projectDialog, setProjectDialog] = useState<{
+    open: boolean;
+    project: ProjectDTO | null;
+  }>({ open: false, project: null });
+
+  const fetchPage = useCallback(
+    async (q: string, cur: string | null, pid: string | null) => {
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (cur) params.set("cursor", cur);
+      if (pid) params.set("projectId", pid);
+      return api.get<LinkListDTO>(`/links?${params}`);
+    },
+    [],
+  );
 
   // Debounce the search box.
   useEffect(() => {
@@ -58,7 +72,7 @@ export function Dashboard() {
   useEffect(() => {
     const id = ++reqId.current;
     setLoading(true);
-    fetchPage(search, null)
+    fetchPage(search, null, selectedId)
       .then((data) => {
         if (id !== reqId.current) return;
         setLinks(data.links);
@@ -70,13 +84,13 @@ export function Dashboard() {
       .finally(() => {
         if (id === reqId.current) setLoading(false);
       });
-  }, [search, fetchPage]);
+  }, [search, selectedId, fetchPage]);
 
   async function loadMore() {
     if (!cursor) return;
     setLoadingMore(true);
     try {
-      const data = await fetchPage(search, cursor);
+      const data = await fetchPage(search, cursor, selectedId);
       setLinks((prev) => [...prev, ...data.links]);
       setCursor(data.nextCursor);
     } catch {
@@ -113,6 +127,7 @@ export function Dashboard() {
     try {
       await api.delete(`/links/${link.id}`);
       setLinks((prev) => prev.filter((l) => l.id !== link.id));
+      void refreshProjects();
       toast.success("Link deleted");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Delete failed");
@@ -122,12 +137,13 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="display text-3xl">Your links</h1>
-          <p className="text-sm text-muted-foreground">
-            Create, manage and track your short links.
-          </p>
-        </div>
+        <ProjectSwitcher
+          projects={projects}
+          selected={selected}
+          onSelect={setSelectedId}
+          onNew={() => setProjectDialog({ open: true, project: null })}
+          onManage={() => selected && setProjectDialog({ open: true, project: selected })}
+        />
         <Button onClick={() => setCreateOpen(true)}>
           <Plus /> New link
         </Button>
@@ -251,13 +267,28 @@ export function Dashboard() {
       <LinkFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onSaved={upsert}
+        projectId={selectedId ?? undefined}
+        onSaved={(l) => {
+          upsert(l);
+          void refreshProjects();
+        }}
       />
       <LinkFormDialog
         open={editing !== null}
         onOpenChange={(o) => !o && setEditing(null)}
         link={editing}
         onSaved={upsert}
+      />
+
+      <ProjectDialog
+        open={projectDialog.open}
+        onOpenChange={(o) => setProjectDialog((s) => ({ ...s, open: o }))}
+        project={projectDialog.project}
+        onSaved={(p) => {
+          void refreshProjects();
+          if (!projectDialog.project) setSelectedId(p.id);
+        }}
+        onDeleted={() => void refreshProjects()}
       />
     </div>
   );

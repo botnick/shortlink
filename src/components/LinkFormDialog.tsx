@@ -26,6 +26,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   link?: LinkDTO | null;
   onSaved: (link: LinkDTO) => void;
+  /** Project to create the link in (create mode). */
+  projectId?: string;
 }
 
 /** Standard rich link-preview card (favicon · domain · title · description ·
@@ -75,7 +77,7 @@ function DestinationPreview({
   );
 }
 
-export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
+export function LinkFormDialog({ open, onOpenChange, link, onSaved, projectId }: Props) {
   const isEdit = Boolean(link);
   const shortHost = useShortHost();
   const { config } = useConfig();
@@ -217,6 +219,7 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
           destination,
           slug: alias.trim() || undefined,
           title: title.trim() || undefined,
+          projectId,
           ...previewPayload(),
         });
         toast.success("Short link created");
