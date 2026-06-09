@@ -128,7 +128,17 @@ app.get("/:slug", async (c) => {
 
   // Log the click off the response path so the redirect stays instant.
   c.executionCtx.waitUntil(logClick(c, cached.id));
-  return c.redirect(cached.destination, 302);
+  // 302 (not 301) + no-store: never let a browser/proxy cache the hop. This is
+  // the deliberate opposite of the big shorteners' cacheable 301 — it guarantees
+  // every click reaches us (so analytics are complete) and a destination edit
+  // takes effect on the very next click instead of being frozen by a cache.
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: cached.destination,
+      "Cache-Control": "private, no-store",
+    },
+  });
 });
 
 // --- SPA fallback for everything else ---------------------------------------
