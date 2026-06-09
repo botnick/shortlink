@@ -17,12 +17,28 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const body = isJson ? await res.json() : null;
 
   if (!res.ok) {
-    const message =
-      (body && typeof body === "object" && "error" in body && (body.error as string)) ||
-      `Request failed (${res.status})`;
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, extractError(body, res.status));
   }
   return body as T;
+}
+
+/** Pull a human message out of an error body, including Zod-validator errors
+ *  (`{error: {issues: [{message}]}}`) — never surface a raw "[object Object]". */
+function extractError(body: unknown, status: number): string {
+  if (body && typeof body === "object") {
+    const e = (body as Record<string, unknown>).error;
+    if (typeof e === "string") return e;
+    const issues =
+      e && typeof e === "object" && "issues" in e
+        ? (e as { issues?: Array<{ message?: string }> }).issues
+        : Array.isArray(e)
+          ? (e as Array<{ message?: string }>)
+          : undefined;
+    if (Array.isArray(issues) && typeof issues[0]?.message === "string") {
+      return issues[0].message;
+    }
+  }
+  return `Request failed (${status})`;
 }
 
 export const api = {
