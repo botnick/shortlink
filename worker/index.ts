@@ -38,6 +38,8 @@ import {
   getClientIp,
   getCountry,
   getReferrer,
+  hashIp,
+  isBotUA,
   parseUserAgent,
 } from "./lib/geo";
 
@@ -422,9 +424,11 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
   const { db, schema, close } = getDbHandle(c.env);
   const { clicks, links } = schema;
   try {
-    const { browser, os, deviceType } = parseUserAgent(
-      c.req.header("user-agent") ?? null,
-    );
+    const ua = c.req.header("user-agent") ?? null;
+    const { browser, os, deviceType } = parseUserAgent(ua);
+    // Bot/automation traffic is recorded (for auditing) but kept out of the
+    // denormalized counter so dashboards and analytics agree on human clicks.
+    const isBot = isBotUA(ua);
     await Promise.all([
       db.insert(clicks).values({
         linkId,
@@ -433,13 +437,16 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
         browser,
         os,
         deviceType,
-        // Stored to count unique visitors; disclosed in the privacy policy.
-        ipHash: getClientIp(c),
+        // Salted hash to count unique visitors — the raw IP is never stored.
+        ipHash: await hashIp(getClientIp(c), c.env.SESSION_SECRET),
+        isBot,
       }),
-      db
-        .update(links)
-        .set({ clickCount: sql`${links.clickCount} + 1` })
-        .where(eq(links.id, linkId)),
+      isBot
+        ? Promise.resolve()
+        : db
+            .update(links)
+            .set({ clickCount: sql`${links.clickCount} + 1` })
+            .where(eq(links.id, linkId)),
     ]);
   } catch (err) {
     console.error("logClick failed:", err);

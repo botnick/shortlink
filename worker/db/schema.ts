@@ -154,6 +154,9 @@ export const clicks = pgTable(
     os: text(),
     deviceType: text(),
     ipHash: text(),
+    // Bot/automation traffic (curl, monitors, crawlers). Kept for auditing but
+    // excluded from analytics; null on legacy rows = treated as human.
+    isBot: boolean(),
   },
   (t) => [index("clicks_link_created_idx").on(t.linkId, t.createdAt)],
 );

@@ -63,6 +63,20 @@ export interface BulkImportResultDTO {
   errors: { index: number; destination: string; reason: string }[];
 }
 
+/** One recent (human) click, for the live activity feed. */
+export interface ActivityItemDTO {
+  at: string;
+  country: string | null;
+  browser: string | null;
+  os: string | null;
+  deviceType: string | null;
+  referrer: string | null;
+}
+
+export interface ActivityDTO {
+  items: ActivityItemDTO[];
+}
+
 export interface ProjectDTO {
   id: string;
   name: string;
@@ -107,6 +121,8 @@ export interface StatsDTO {
   bestDay: { day: string; count: number } | null;
   directClicks: number;
   referrerClicks: number;
+  /** Automated traffic (crawlers/monitors/CLIs) filtered out of the numbers above. */
+  botClicks: number;
   timeseries: TimePoint[];
   countries: NameCount[];
   referrers: NameCount[];

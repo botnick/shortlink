@@ -1,0 +1,1 @@
+ALTER TABLE "clicks" ADD COLUMN "is_bot" boolean;

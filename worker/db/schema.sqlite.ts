@@ -145,6 +145,8 @@ export const clicks = sqliteTable(
     os: text(),
     deviceType: text(),
     ipHash: text(),
+    // Bot/automation traffic — kept for auditing, excluded from analytics.
+    isBot: integer({ mode: "boolean" }),
   },
   (t) => [index("clicks_link_created_idx").on(t.linkId, t.createdAt)],
 );

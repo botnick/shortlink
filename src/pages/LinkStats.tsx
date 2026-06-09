@@ -21,8 +21,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { formatDate, formatNumber } from "@/lib/format";
-import type { LinkDTO, NameCount, StatsDTO } from "@shared/types";
+import { formatDate, formatNumber, timeAgo } from "@/lib/format";
+import type { ActivityDTO, ActivityItemDTO, LinkDTO, NameCount, StatsDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { BackLink } from "@/components/BackLink";
 import {
@@ -77,6 +77,7 @@ export function LinkStats() {
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [activity, setActivity] = useState<ActivityItemDTO[] | null>(null);
 
   useEffect(() => {
     api
@@ -93,6 +94,25 @@ export function LinkStats() {
       .catch(() => toast.error("Couldn't load analytics"))
       .finally(() => setLoading(false));
   }, [id, range]);
+
+  // Live activity feed: poll every 10s while the Overview tab is visible.
+  useEffect(() => {
+    if (tab !== "overview") return;
+    let active = true;
+    const load = () => {
+      if (document.hidden) return;
+      api
+        .get<ActivityDTO>(`/links/${id}/activity`)
+        .then((r) => active && setActivity(r.items))
+        .catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 10_000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
+  }, [id, tab]);
 
   if (notFound) {
     return (
@@ -226,6 +246,8 @@ export function LinkStats() {
               )}
             </CardContent>
           </Card>
+
+          <RecentActivity items={activity} />
         </div>
       )}
 
@@ -313,6 +335,9 @@ function ClickCount({ stats }: { stats: StatsDTO }) {
           Created {formatDate(stats.createdAt)}
           {stats.bestDay
             ? ` · Best day ${formatDate(stats.bestDay.day)} (${formatNumber(stats.bestDay.count)})`
+            : ""}
+          {stats.botClicks > 0
+            ? ` · ${formatNumber(stats.botClicks)} bot click${stats.botClicks === 1 ? "" : "s"} filtered out`
             : ""}
         </p>
         <div className="divide-y rounded-lg border">
@@ -445,6 +470,68 @@ function BarList({
           ))
         ) : (
           <p className="py-2 text-sm text-muted-foreground">No data yet.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Live feed of the latest human clicks (auto-refreshes every 10s). */
+function RecentActivity({ items }: { items: ActivityItemDTO[] | null }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          Recent activity
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60" />
+            <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {items === null ? (
+          <div className="space-y-1.5">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No clicks yet — share the link and watch them appear here.
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {items.map((a, i) => {
+              let refHost = "";
+              try {
+                refHost = a.referrer ? new URL(a.referrer).hostname.replace(/^www\./, "") : "";
+              } catch {
+                refHost = a.referrer ?? "";
+              }
+              return (
+                <li key={`${a.at}-${i}`} className="flex items-center gap-3 py-2 text-sm">
+                  {a.country ? (
+                    <Flag code={a.country} />
+                  ) : (
+                    <span className="inline-block h-[15px] w-5 rounded-[2px] bg-muted" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">
+                    {[a.browser, a.os].filter(Boolean).join(" · ") || "Unknown device"}
+                    {refHost && (
+                      <span className="text-muted-foreground"> · from {refHost}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs capitalize text-muted-foreground">
+                    {a.deviceType ?? ""}
+                  </span>
+                  <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">
+                    {timeAgo(a.at)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </CardContent>
     </Card>

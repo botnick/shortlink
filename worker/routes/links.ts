@@ -551,6 +551,29 @@ route.get("/:id/stats", async (c) => {
   return c.json(stats);
 });
 
+// ACTIVITY — the most recent human clicks, for the live feed on the stats page.
+route.get("/:id/activity", async (c) => {
+  const link = await getOwnedLink(c);
+  if (!link) return c.json({ error: "Not found" }, 404);
+  const { clicks } = c.var.schema;
+  const rows = await c.var.db
+    .select({
+      at: clicks.createdAt,
+      country: clicks.country,
+      browser: clicks.browser,
+      os: clicks.os,
+      deviceType: clicks.deviceType,
+      referrer: clicks.referrer,
+    })
+    .from(clicks)
+    .where(and(eq(clicks.linkId, link.id), sql`${clicks.isBot} is not true`))
+    .orderBy(desc(clicks.createdAt))
+    .limit(20);
+  return c.json({
+    items: rows.map((r) => ({ ...r, at: r.at.toISOString() })),
+  });
+});
+
 // UPDATE
 route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   const db = c.var.db;
