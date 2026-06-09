@@ -8,7 +8,6 @@ import type { Role } from "@shared/types";
  */
 export interface AppBindings extends Env {
   SESSION_SECRET: string;
-  IP_HASH_SALT: string;
   /** One-time bootstrap token gating the first-run installer (`POST /api/setup`). */
   SETUP_TOKEN: string;
   /** Cloudflare D1 binding, present only when DB_DRIVER="d1" (otherwise absent

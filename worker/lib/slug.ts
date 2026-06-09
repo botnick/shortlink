@@ -14,6 +14,8 @@ export const RESERVED_SLUGS = new Set([
   "domains",
   "settings",
   "setup",
+  "terms",
+  "privacy",
   "links",
   "assets",
   "static",

@@ -39,7 +39,6 @@ const env = {
   ASSETS,
   APP_URL: "https://localhost",
   SESSION_SECRET: "test-session-secret-0123456789abcdef",
-  IP_HASH_SALT: "test-ip-salt-0123456789abcdef",
   SETUP_TOKEN: "correct-setup-token",
 };
 

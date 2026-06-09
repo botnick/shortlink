@@ -13,7 +13,7 @@ domain, e.g. **`links.example.com/<slug>`**.
 - **Stack:** Cloudflare Workers · [Hono](https://hono.dev) · React 19 + Vite + Tailwind v4 (shadcn-style UI)
 - **Database:** **Postgres** (via **Cloudflare Hyperdrive**) or **Cloudflare D1** — pick the driver at deploy time; both use **Drizzle ORM**
 - **Auth:** email + password, server-side sessions, signed `__Host-` cookie
-- **Analytics:** per-click time, country, referrer, device/browser/OS — IPs hashed, never stored raw
+- **Analytics:** per-click time, country, referrer, device/browser/OS (data use is described in the in-app privacy policy)
 - **Speed:** redirects resolve from a global **KV** edge cache; clicks are logged off the response path (`waitUntil`)
 
 ## Features
@@ -42,7 +42,7 @@ domain, e.g. **`links.example.com/<slug>`**.
 
 The application itself enforces ownership checks on every link and stats route, server-side
 admin checks, parameterized queries, scheme-validated redirect targets, CSRF protection,
-hardened session cookies, strict security headers, and hashed visitor IPs.
+hardened session cookies, and strict security headers.
 
 ---
 
@@ -61,7 +61,7 @@ cp .dev.vars.example .dev.vars  # ONE local file: secrets + DB connection (used 
 ```
 
 Generate strong random values (`openssl rand -hex 32`) for `SESSION_SECRET`,
-`IP_HASH_SALT`, and `SETUP_TOKEN`.
+and `SETUP_TOKEN`.
 
 ## 2. Provision Cloudflare resources
 
@@ -144,7 +144,6 @@ the admin account. You’re then signed in as admin; open registration anytime f
 2. Set the Worker runtime secrets once:
    ```bash
    npx wrangler secret put SESSION_SECRET
-   npx wrangler secret put IP_HASH_SALT
    npx wrangler secret put SETUP_TOKEN
    ```
    Then open your deployed domain and complete the one-time installer.
@@ -217,7 +216,7 @@ drizzle/           Generated SQL migrations
   asynchronously so the redirect itself never waits on the database.
 - **Security:** ownership checks on every link/stats route (404 on not-owned), admin role
   checks server-side, parameterized queries, scheme-validated destinations, CSRF + strict
-  security headers, hardened session cookies, and hashed visitor IPs. The admin is
+  security headers, and hardened session cookies. The admin is
   created through a one-time, **token-gated** installer that atomically locks itself
   after first use (no "first user becomes admin" race); registration is closed by default.
 

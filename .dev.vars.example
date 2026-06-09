@@ -5,9 +5,6 @@
 # Signs session cookies. Must be long & random.
 SESSION_SECRET="change-me-to-a-long-random-hex-string"
 
-# Salt for hashing visitor IPs (privacy). Long & random.
-IP_HASH_SALT="change-me-to-another-long-random-hex-string"
-
 # One-time token that authorizes the first-run installer at /setup.
 SETUP_TOKEN="change-me-to-a-random-token"
 

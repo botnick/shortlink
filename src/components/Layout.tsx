@@ -106,8 +106,12 @@ export function Layout() {
       </main>
 
       <footer className="border-t py-6">
-        <div className="mx-auto max-w-5xl px-4 text-center text-xs text-muted-foreground">
-          {config.appName} — a fast, clean URL shortener.
+        <div className="mx-auto flex max-w-5xl flex-col items-center gap-2 px-4 text-center text-xs text-muted-foreground sm:flex-row sm:justify-between">
+          <span>{config.appName} — a fast, clean URL shortener.</span>
+          <span className="flex items-center gap-3">
+            <Link to="/terms" className="hover:text-foreground">Terms</Link>
+            <Link to="/privacy" className="hover:text-foreground">Privacy</Link>
+          </span>
         </div>
       </footer>
     </div>

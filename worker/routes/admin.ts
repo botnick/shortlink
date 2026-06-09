@@ -37,6 +37,7 @@ import {
   shortDomainFrom,
 } from "../lib/settings";
 import { invalidateSeo } from "../lib/seo";
+import { invalidatePublicConfig } from "../lib/appconfig";
 import {
   bulkLinksSchema,
   createUserSchema,
@@ -145,6 +146,7 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
     await setSetting(db, schema, SETTING_KEYS.cfFallbackHost, input.cfFallbackHost);
   }
   await invalidateSeo(c.env.LINKS_KV);
+  await invalidatePublicConfig(c.env.LINKS_KV);
   const map = await getAllSettings(db, schema);
   return c.json(toSettingsDTO(map));
 });

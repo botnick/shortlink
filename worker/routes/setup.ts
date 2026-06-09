@@ -7,6 +7,7 @@ import { setSessionCookie } from "../lib/cookies";
 import { setupSchema } from "../lib/validators";
 import { SETTING_KEYS } from "../lib/settings";
 import { invalidateSeo } from "../lib/seo";
+import { invalidatePublicConfig } from "../lib/appconfig";
 import { timingSafeEqual } from "../lib/encoding";
 import type { UserDTO } from "@shared/types";
 
@@ -74,6 +75,7 @@ setup.post("/", zValidator("json", setupSchema), async (c) => {
 
     const user = inserted[0];
     await invalidateSeo(c.env.LINKS_KV);
+    await invalidatePublicConfig(c.env.LINKS_KV);
     const session = await createSession(db, c.var.schema, user.id);
     await setSessionCookie(c, session.id, session.expiresAt);
     const dto: UserDTO = user;

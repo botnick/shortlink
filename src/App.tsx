@@ -29,6 +29,10 @@ const QrPage = lazy(() =>
 const Domains = lazy(() =>
   import("@/pages/Domains").then((m) => ({ default: m.Domains })),
 );
+const Terms = lazy(() => import("@/pages/Legal").then((m) => ({ default: m.Terms })));
+const Privacy = lazy(() =>
+  import("@/pages/Legal").then((m) => ({ default: m.Privacy })),
+);
 
 function AppRoutes() {
   const { config, loading } = useConfig();
@@ -51,6 +55,8 @@ function AppRoutes() {
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/terms" element={<Terms />} />
+              <Route path="/privacy" element={<Privacy />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/domains" element={<Domains />} />

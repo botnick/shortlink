@@ -13,7 +13,7 @@ import setupRoutes from "./routes/setup";
 import qrPresetRoutes from "./routes/qr-presets";
 import assetRoutes from "./routes/assets";
 import domainRoutes from "./routes/domains";
-import { getPublicConfig } from "./lib/settings";
+import { getCachedPublicConfig } from "./lib/appconfig";
 import { getCachedLink, putCachedLink } from "./lib/cache";
 import {
   getSeoBundle,
@@ -26,7 +26,6 @@ import {
   getClientIp,
   getCountry,
   getReferrer,
-  hashIp,
   parseUserAgent,
 } from "./lib/geo";
 
@@ -48,10 +47,12 @@ api.route("/setup", setupRoutes);
 api.route("/qr-presets", qrPresetRoutes);
 api.route("/assets", assetRoutes);
 api.route("/domains", domainRoutes);
-api.get("/config", async (c) =>
-  c.json(await getPublicConfig(c.var.db, c.var.schema)),
-);
-api.get("/health", (c) => c.json({ ok: true }));
+
+// Public, cacheable endpoints — registered before the API group so they skip the
+// per-request DB client + auth/CSRF middleware entirely. /config is served from
+// KV (no DB round-trip on a hit), which is the hottest endpoint under traffic.
+app.get("/api/config", async (c) => c.json(await getCachedPublicConfig(c.env)));
+app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api", api);
 
 // --- Dynamic branding / SEO endpoints ---------------------------------------
@@ -150,7 +151,6 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
     const { browser, os, deviceType } = parseUserAgent(
       c.req.header("user-agent") ?? null,
     );
-    const ipHash = await hashIp(getClientIp(c), c.env.IP_HASH_SALT);
     await Promise.all([
       db.insert(clicks).values({
         linkId,
@@ -159,7 +159,8 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
         browser,
         os,
         deviceType,
-        ipHash,
+        // Stored to count unique visitors; disclosed in the privacy policy.
+        ipHash: getClientIp(c),
       }),
       db
         .update(links)
