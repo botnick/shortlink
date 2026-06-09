@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   ExternalLink,
@@ -25,7 +25,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/CopyButton";
-import { LinkFormDialog } from "@/components/LinkFormDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,11 +38,10 @@ export function Dashboard() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState<LinkDTO | null>(null);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const reqId = useRef(0);
+  const navigate = useNavigate();
 
   const confirm = useConfirm();
   const { projects, selected, selectedId, setSelectedId, refresh: refreshProjects } =
@@ -159,7 +157,7 @@ export function Dashboard() {
             </span>
           )}
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="shrink-0" aria-label="New link">
+        <Button onClick={() => navigate("/dashboard/links/new")} className="shrink-0" aria-label="New link">
           <Plus /> <span className="hidden sm:inline">New link</span>
         </Button>
       </div>
@@ -186,7 +184,7 @@ export function Dashboard() {
             No links match “{search}”.
           </p>
         ) : (
-          <EmptyState onCreate={() => setCreateOpen(true)} />
+          <EmptyState onCreate={() => navigate("/dashboard/links/new")} />
         )
       ) : (
         <ul className="space-y-3">
@@ -251,7 +249,7 @@ export function Dashboard() {
                       <ExternalLink /> Open link
                     </a>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setEditing(link)}>
+                  <DropdownMenuItem onClick={() => navigate(`/dashboard/links/${link.id}/edit`)}>
                     <Pencil /> Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => toggleActive(link)}>
@@ -278,22 +276,6 @@ export function Dashboard() {
           </Button>
         </div>
       )}
-
-      <LinkFormDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        projectId={selectedId ?? undefined}
-        onSaved={(l) => {
-          upsert(l);
-          void refreshProjects();
-        }}
-      />
-      <LinkFormDialog
-        open={editing !== null}
-        onOpenChange={(o) => !o && setEditing(null)}
-        link={editing}
-        onSaved={upsert}
-      />
 
       <ProjectDialog
         open={projectDialog.open}

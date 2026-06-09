@@ -37,6 +37,9 @@ const Privacy = lazy(() =>
 const QrLinkPage = lazy(() =>
   import("@/pages/QrLinkPage").then((m) => ({ default: m.QrLinkPage })),
 );
+const LinkEditor = lazy(() =>
+  import("@/pages/LinkEditor").then((m) => ({ default: m.LinkEditor })),
+);
 
 function AppRoutes() {
   const { config, loading } = useConfig();
@@ -65,6 +68,8 @@ function AppRoutes() {
               <Route path="/qr/:slug" element={<QrLinkPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/dashboard/links/new" element={<LinkEditor />} />
+                <Route path="/dashboard/links/:id/edit" element={<LinkEditor />} />
                 <Route path="/domains" element={<Domains />} />
                 <Route path="/links/:id" element={<LinkStats />} />
                 <Route path="/links/:id/qr" element={<QrPage />} />
