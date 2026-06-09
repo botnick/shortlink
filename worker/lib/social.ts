@@ -52,7 +52,6 @@ export function previewHtml(p: Preview, destination: string, siteName: string): 
     `<meta property="og:site_name" content="${esc(siteName)}">`,
     `<meta property="og:title" content="${esc(title)}">`,
     `<meta property="og:url" content="${esc(destination)}">`,
-    `<meta property="og:locale" content="en_US">`,
     `<meta name="twitter:title" content="${esc(title)}">`,
   ];
   if (p.description) {

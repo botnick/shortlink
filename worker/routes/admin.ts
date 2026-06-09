@@ -32,12 +32,19 @@ import {
   indexableFrom,
   logoFrom,
   maxLinksPerUserFrom,
+  ogAccentRawFrom,
   ogFontFrom,
   ogImageFrom,
+  ogLabelRawFrom,
+  ogTaglineRawFrom,
   ogTemplateFrom,
+  ogTitleRawFrom,
+  saasConfigFrom,
   setSetting,
   shortDomainFrom,
 } from "../lib/settings";
+import { getCustomHostname } from "../lib/cloudflare";
+import { checkTxtVerification } from "../lib/dns";
 import { invalidateSeo } from "../lib/seo";
 import { invalidatePublicConfig } from "../lib/appconfig";
 import {
@@ -87,6 +94,10 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     cfConfigured: cfConfiguredFrom(map),
     ogTemplate: ogTemplateFrom(map),
     ogFont: ogFontFrom(map),
+    ogLabel: ogLabelRawFrom(map),
+    ogTitle: ogTitleRawFrom(map),
+    ogTagline: ogTaglineRawFrom(map),
+    ogAccent: ogAccentRawFrom(map),
   };
 }
 
@@ -154,6 +165,18 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.ogFont !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.ogFont, input.ogFont);
+  }
+  if (input.ogLabel !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.ogLabel, input.ogLabel);
+  }
+  if (input.ogTitle !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.ogTitle, input.ogTitle);
+  }
+  if (input.ogTagline !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.ogTagline, input.ogTagline);
+  }
+  if (input.ogAccent !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.ogAccent, input.ogAccent);
   }
   await invalidateSeo(c.env.LINKS_KV);
   await invalidatePublicConfig(c.env.LINKS_KV);
@@ -619,6 +642,45 @@ admin.get("/domains", async (c) => {
     nextCursor: hasMore ? page[page.length - 1].createdAt.toISOString() : null,
     total: totalRow,
   });
+});
+
+// Admin can re-check any domain's verification (Cloudflare hostname or DNS-TXT).
+admin.post("/domains/:id/check", async (c) => {
+  const id = c.req.param("id");
+  if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
+  const { domains } = c.var.schema;
+  const rows = await c.var.db.select().from(domains).where(eq(domains.id, id)).limit(1);
+  const row = rows[0];
+  if (!row) return c.json({ error: "Not found" }, 404);
+
+  const map = await getAllSettings(c.var.db, c.var.schema);
+  const saas = saasConfigFrom(map, c.env.APP_URL);
+
+  if (saas && row.cfHostnameId) {
+    try {
+      const cf = await getCustomHostname(saas, row.cfHostnameId);
+      await c.var.db
+        .update(domains)
+        .set({ status: cf.status, cfRecords: cf.records })
+        .where(eq(domains.id, id));
+      return c.json({ status: cf.status });
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 502);
+    }
+  }
+
+  if (row.status === "verified" || row.status === "active") {
+    return c.json({ status: row.status });
+  }
+  const ok = await checkTxtVerification(row.hostname, row.verifyToken);
+  if (!ok) {
+    return c.json({ error: "TXT record not found yet — DNS can take a few minutes" }, 400);
+  }
+  await c.var.db
+    .update(domains)
+    .set({ status: "verified", verifiedAt: new Date() })
+    .where(eq(domains.id, id));
+  return c.json({ status: "verified" });
 });
 
 // Admin can remove any custom domain.

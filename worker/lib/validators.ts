@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_BRAND_COLOR } from "@shared/defaults";
 
 const httpUrl = z
   .string()
@@ -47,7 +48,7 @@ export const setupSchema = z.object({
   token: z.string().min(1).max(500),
   appName,
   shortDomain: shortDomain.optional().default(""),
-  brandColor: brandColor.optional().default("#e5392e"),
+  brandColor: brandColor.optional().default(DEFAULT_BRAND_COLOR),
   email: emailField,
   password: passwordField,
   registrationEnabled: z.boolean(),
@@ -112,6 +113,14 @@ export const settingsSchema = z
         "noto-sans-thai",
         "sarabun",
       ])
+      .optional(),
+    ogLabel: z.string().trim().max(40).optional(),
+    ogTitle: z.string().trim().max(120).optional(),
+    ogTagline: z.string().trim().max(300).optional(),
+    ogAccent: z
+      .string()
+      .trim()
+      .regex(/^(#[0-9a-fA-F]{6})?$/, "Use a 6-digit hex color")
       .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "No settings provided");

@@ -1,6 +1,12 @@
 import { count, eq } from "drizzle-orm";
 import type { DB, DbSchema } from "../db";
 import type { AppConfigDTO } from "@shared/types";
+import {
+  DEFAULT_APP_NAME,
+  DEFAULT_BRAND_COLOR,
+  DEFAULT_OG_FONT,
+  DEFAULT_OG_TEMPLATE,
+} from "@shared/defaults";
 
 export const SETTING_KEYS = {
   registration: "registration_enabled",
@@ -19,11 +25,12 @@ export const SETTING_KEYS = {
   cfFallbackHost: "cf_fallback_host",
   ogTemplate: "og_template",
   ogFont: "og_font",
+  ogLabel: "og_label",
+  ogTitle: "og_title",
+  ogTagline: "og_tagline",
+  ogAccent: "og_accent",
   setupCompleted: "setup_completed",
 } as const;
-
-const DEFAULT_APP_NAME = "Shortlink";
-const DEFAULT_BRAND_COLOR = "#e5392e";
 
 export async function getAllSettings(
   db: DB,
@@ -110,7 +117,7 @@ const OG_TEMPLATE_IDS = [
 ];
 export function ogTemplateFrom(map: Record<string, unknown>): string {
   const v = map[SETTING_KEYS.ogTemplate];
-  return typeof v === "string" && OG_TEMPLATE_IDS.includes(v) ? v : "minimal";
+  return typeof v === "string" && OG_TEMPLATE_IDS.includes(v) ? v : DEFAULT_OG_TEMPLATE;
 }
 
 const OG_FONT_IDS = [
@@ -122,7 +129,36 @@ const OG_FONT_IDS = [
 ];
 export function ogFontFrom(map: Record<string, unknown>): string {
   const v = map[SETTING_KEYS.ogFont];
-  return typeof v === "string" && OG_FONT_IDS.includes(v) ? v : "ibm-plex-thai";
+  return typeof v === "string" && OG_FONT_IDS.includes(v) ? v : DEFAULT_OG_FONT;
+}
+
+// Social-card identity — configured independently of branding, but each falls
+// back to the matching branding value when left blank (raw getters expose the
+// stored override for the admin form; the *From getters resolve the fallback).
+export function ogLabelRawFrom(map: Record<string, unknown>): string {
+  return asString(map[SETTING_KEYS.ogLabel], "");
+}
+export function ogTitleRawFrom(map: Record<string, unknown>): string {
+  return asString(map[SETTING_KEYS.ogTitle], "");
+}
+export function ogTaglineRawFrom(map: Record<string, unknown>): string {
+  return asString(map[SETTING_KEYS.ogTagline], "");
+}
+export function ogAccentRawFrom(map: Record<string, unknown>): string {
+  return asString(map[SETTING_KEYS.ogAccent], "");
+}
+export function ogLabelFrom(map: Record<string, unknown>): string {
+  return ogLabelRawFrom(map) || appNameFrom(map);
+}
+export function ogTitleFrom(map: Record<string, unknown>): string {
+  return ogTitleRawFrom(map) || appNameFrom(map);
+}
+export function ogTaglineFrom(map: Record<string, unknown>): string {
+  return ogTaglineRawFrom(map) || descriptionFrom(map);
+}
+export function ogAccentFrom(map: Record<string, unknown>): string {
+  const v = ogAccentRawFrom(map);
+  return /^#[0-9a-fA-F]{6}$/.test(v) ? v : brandColorFrom(map);
 }
 
 function asStringArray(value: unknown): string[] {
@@ -228,5 +264,9 @@ export async function getPublicConfig(
     registrationEnabled: map[SETTING_KEYS.registration] === true,
     ogTemplate: ogTemplateFrom(map),
     ogFont: ogFontFrom(map),
+    ogLabel: ogLabelFrom(map),
+    ogTitle: ogTitleFrom(map),
+    ogTagline: ogTaglineFrom(map),
+    ogAccent: ogAccentFrom(map),
   };
 }

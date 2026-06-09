@@ -1,6 +1,7 @@
 // Client-side OG-image generation — draws a 1200×630 social card on a <canvas>,
 // so there's zero Worker CPU/cost. A library of distinct, restrained layouts
 // (no two share a silhouette); each uses the chosen font + brand colour.
+import { DEFAULT_APP_NAME, DEFAULT_BRAND_COLOR } from "@shared/defaults";
 
 export const OG_W = 1200;
 export const OG_H = 630;
@@ -35,7 +36,7 @@ type Rgb = [number, number, number];
 
 function hexToRgb(hex: string): Rgb {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  const n = m ? parseInt(m[1], 16) : 0xe5392e;
+  const n = m ? parseInt(m[1], 16) : parseInt(DEFAULT_BRAND_COLOR.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 function rgbStr([r, g, b]: Rgb): string {
@@ -220,9 +221,9 @@ export function renderOg(canvas: HTMLCanvasElement, o: OgOptions) {
   const brand = rgbStr(rgb);
   const fam = `"${o.font || "IBM Plex Sans Thai"}", "IBM Plex Sans Thai", system-ui, sans-serif`;
   const face = (w: number, s: number) => `${w} ${s}px ${fam}`;
-  const title = o.title.trim() || o.appName.trim() || "Shortlink";
+  const title = o.title.trim() || o.appName.trim() || DEFAULT_APP_NAME;
   const desc = (o.description ?? "").trim();
-  const app = (o.appName || "Shortlink").trim();
+  const app = (o.appName || DEFAULT_APP_NAME).trim();
   const url = (o.url ?? "").trim();
   const domain = url.split("/")[0] || "";
 

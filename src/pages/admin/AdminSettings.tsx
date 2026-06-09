@@ -6,6 +6,13 @@ import { useConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { OG_TEMPLATES, renderOg } from "@/lib/ogTemplates";
 import { OG_FONTS, loadOgFont } from "@/lib/ogFonts";
+import { ColorPicker } from "@/components/ColorPicker";
+import {
+  DEFAULT_APP_NAME,
+  DEFAULT_BRAND_COLOR,
+  DEFAULT_OG_FONT,
+  DEFAULT_OG_TEMPLATE,
+} from "@shared/defaults";
 import type { SettingsDTO } from "@shared/types";
 
 function TemplateThumb({
@@ -113,13 +120,20 @@ export function AdminSettings() {
 
   const [appName, setAppName] = useState("");
   const [shortDomain, setShortDomain] = useState("");
-  const [brandColor, setBrandColor] = useState("#e5392e");
+  const [brandColor, setBrandColor] = useState(DEFAULT_BRAND_COLOR);
   const [logoUrl, setLogoUrl] = useState("");
   const [description, setDescription] = useState("");
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [indexable, setIndexable] = useState(true);
-  const [ogTemplate, setOgTemplate] = useState("minimal");
-  const [ogFont, setOgFont] = useState("ibm-plex-thai");
+
+  // Social card — configured independently of branding (blank field = inherit).
+  const [savingCard, setSavingCard] = useState(false);
+  const [ogTemplate, setOgTemplate] = useState(DEFAULT_OG_TEMPLATE);
+  const [ogFont, setOgFont] = useState(DEFAULT_OG_FONT);
+  const [ogLabel, setOgLabel] = useState("");
+  const [ogTitle, setOgTitle] = useState("");
+  const [ogTagline, setOgTagline] = useState("");
+  const [ogAccent, setOgAccent] = useState("");
 
   const [blockedDomains, setBlockedDomains] = useState("");
   const [extraReserved, setExtraReserved] = useState("");
@@ -146,6 +160,10 @@ export function AdminSettings() {
         setIndexable(s.indexable);
         setOgTemplate(s.ogTemplate);
         setOgFont(s.ogFont);
+        setOgLabel(s.ogLabel);
+        setOgTitle(s.ogTitle);
+        setOgTagline(s.ogTagline);
+        setOgAccent(s.ogAccent);
         setBlockedDomains(s.blockedDomains.join("\n"));
         setExtraReserved(s.extraReserved.join("\n"));
         setMaxLinks(s.maxLinksPerUser);
@@ -179,7 +197,7 @@ export function AdminSettings() {
     e.preventDefault();
     setSavingApp(true);
     try {
-      await patch({ appName, shortDomain, brandColor, logoUrl, description, ogImageUrl, indexable, ogTemplate, ogFont });
+      await patch({ appName, shortDomain, brandColor, logoUrl, description, ogImageUrl, indexable });
       toast.success("Branding saved");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
@@ -229,6 +247,26 @@ export function AdminSettings() {
     }
   }
 
+  async function saveCard(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSavingCard(true);
+    try {
+      await patch({ ogTemplate, ogFont, ogLabel, ogTitle, ogTagline, ogAccent });
+      toast.success("Social card saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Update failed");
+    } finally {
+      setSavingCard(false);
+    }
+  }
+
+  // Resolved social-card preview values (override → branding fallback → default).
+  const cardLabel = ogLabel.trim() || appName || DEFAULT_APP_NAME;
+  const cardTitle = ogTitle.trim() || appName || DEFAULT_APP_NAME;
+  const cardTagline = ogTagline.trim() || description;
+  const cardAccent = /^#[0-9a-fA-F]{6}$/.test(ogAccent) ? ogAccent : brandColor;
+  const cardUrl = shortDomain.trim() || window.location.host;
+
   return (
     <div className="space-y-6">
       <Card>
@@ -273,11 +311,7 @@ export function AdminSettings() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="brandColor">Brand color</Label>
-                <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg border bg-background px-2.5 py-1.5">
-                  <span className="size-5 rounded border" style={{ backgroundColor: brandColor }} />
-                  <span className="text-sm text-muted-foreground">{brandColor}</span>
-                  <input id="brandColor" type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} className="sr-only" />
-                </label>
+                <ColorPicker value={brandColor} onChange={setBrandColor} />
               </div>
               <div className="space-y-2">
                 <Label>Logo</Label>
@@ -306,56 +340,151 @@ export function AdminSettings() {
                 <Switch checked={indexable} onCheckedChange={setIndexable} />
               </label>
 
+              <Button type="submit" disabled={savingApp}>
+                {savingApp && <Loader2 className="animate-spin" />}
+                Save
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Social card</CardTitle>
+          <CardDescription>
+            The branded preview image generated for links — shown when shared on X,
+            Facebook, LINE and chat apps. Configured independently of branding;
+            leave a field blank to inherit it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">
+              <Skeleton className="aspect-[1.91/1] w-full rounded-lg" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ) : (
+            <form onSubmit={saveCard} className="space-y-5">
+              <TemplateThumb
+                template={ogTemplate}
+                fontId={ogFont}
+                brandColor={cardAccent}
+                appName={cardLabel}
+                title={cardTitle}
+                description={cardTagline}
+                url={cardUrl}
+                selected
+                onSelect={() => {}}
+              />
+
               <div className="space-y-2">
-                <Label>
-                  Social card template{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (auto-generated preview image for links)
-                  </span>
-                </Label>
+                <Label>Template</Label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {OG_TEMPLATES.map((t) => (
                     <div key={t.id} className="space-y-1">
                       <TemplateThumb
                         template={t.id}
                         fontId={ogFont}
-                        brandColor={brandColor}
-                        appName={appName || "Shortlink"}
-                        title={appName || "Shortlink"}
-                        description={description}
-                        url={shortDomain.trim() || window.location.host}
+                        brandColor={cardAccent}
+                        appName={cardLabel}
+                        title={cardTitle}
+                        description={cardTagline}
+                        url={cardUrl}
                         selected={ogTemplate === t.id}
                         onSelect={() => setOgTemplate(t.id)}
                       />
-                      <div className="text-center text-[11px] text-muted-foreground">{t.label}</div>
+                      <div className="text-center text-[11px] text-muted-foreground">
+                        {t.label}
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ogFont">
-                  Card font{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (Thai + Latin)
-                  </span>
-                </Label>
-                <select
-                  id="ogFont"
-                  value={ogFont}
-                  onChange={(e) => setOgFont(e.target.value)}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {OG_FONTS.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ogFont">Font</Label>
+                  <select
+                    id="ogFont"
+                    value={ogFont}
+                    onChange={(e) => setOgFont(e.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {OG_FONTS.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ogAccent">Accent color</Label>
+                  <div className="flex items-center gap-2">
+                    <ColorPicker value={cardAccent} onChange={setOgAccent} />
+                    {ogAccent && (
+                      <button
+                        type="button"
+                        onClick={() => setOgAccent("")}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Inherit brand
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <Button type="submit" disabled={savingApp}>
-                {savingApp && <Loader2 className="animate-spin" />}
+              <div className="space-y-2">
+                <Label htmlFor="ogLabel">
+                  Brand label{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (wordmark on the card)
+                  </span>
+                </Label>
+                <Input
+                  id="ogLabel"
+                  value={ogLabel}
+                  placeholder={appName || DEFAULT_APP_NAME}
+                  maxLength={40}
+                  onChange={(e) => setOgLabel(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ogTitle">
+                  Default headline{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (when a link has no title)
+                  </span>
+                </Label>
+                <Input
+                  id="ogTitle"
+                  value={ogTitle}
+                  placeholder={appName || DEFAULT_APP_NAME}
+                  maxLength={120}
+                  onChange={(e) => setOgTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ogTagline">
+                  Tagline{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (sub-line under the headline)
+                  </span>
+                </Label>
+                <Input
+                  id="ogTagline"
+                  value={ogTagline}
+                  placeholder={description}
+                  maxLength={300}
+                  onChange={(e) => setOgTagline(e.target.value)}
+                />
+              </div>
+
+              <Button type="submit" disabled={savingCard}>
+                {savingCard && <Loader2 className="animate-spin" />}
                 Save
               </Button>
             </form>

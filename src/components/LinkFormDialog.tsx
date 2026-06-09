@@ -123,10 +123,10 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
       renderOg(canvasRef.current, {
         template: ogTemplate,
         font: family,
-        title: ogTitle || title,
-        description: ogDescription,
-        appName: config.appName,
-        brandColor: config.brandColor,
+        title: ogTitle.trim() || title.trim() || config.ogTitle,
+        description: ogDescription.trim() || config.ogTagline,
+        appName: config.ogLabel,
+        brandColor: config.ogAccent,
         url: ogCardUrl,
       });
     });
@@ -134,7 +134,7 @@ export function LinkFormDialog({ open, onOpenChange, link, onSaved }: Props) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewMode, ogSource, ogTemplate, config.ogFont, ogTitle, ogDescription, title, config.appName, config.brandColor, ogCardUrl, open]);
+  }, [previewMode, ogSource, ogTemplate, config.ogFont, config.ogLabel, config.ogTitle, config.ogTagline, config.ogAccent, ogTitle, ogDescription, title, ogCardUrl, open]);
 
   // In "destination" mode, fetch the destination's own metadata (debounced) so
   // the form shows the exact rich card a platform will render when shared.

@@ -159,6 +159,11 @@ export interface SettingsDTO {
   cfConfigured: boolean;
   ogTemplate: string;
   ogFont: string;
+  // Social-card identity (raw overrides; blank = inherit the branding value).
+  ogLabel: string;
+  ogTitle: string;
+  ogTagline: string;
+  ogAccent: string;
 }
 
 export interface AppConfigDTO {
@@ -172,6 +177,11 @@ export interface AppConfigDTO {
   registrationEnabled: boolean;
   ogTemplate: string;
   ogFont: string;
+  // Social-card identity, resolved (override or branding fallback) for rendering.
+  ogLabel: string;
+  ogTitle: string;
+  ogTagline: string;
+  ogAccent: string;
 }
 
 /** A destination URL's own metadata, for the rich link-preview card. */

@@ -17,6 +17,23 @@ export function AdminDomains() {
     return { items: r.domains, nextCursor: r.nextCursor, total: r.total };
   });
 
+  async function check(d: AdminDomainDTO) {
+    try {
+      const { status } = await api.post<{ status: string }>(
+        `/admin/domains/${d.id}/check`,
+        {},
+      );
+      list.patchItem((x) => x.id === d.id, (x) => ({ ...x, status }));
+      toast.success(
+        status === "verified" || status === "active"
+          ? "Domain verified"
+          : `Still ${status}`,
+      );
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Check failed");
+    }
+  }
+
   async function remove(d: AdminDomainDTO) {
     if (!window.confirm(`Remove ${d.hostname} (owned by ${d.ownerEmail})?`)) return;
     try {
@@ -77,6 +94,11 @@ export function AdminDomains() {
                   {d.ownerEmail} · added {formatDate(d.createdAt)}
                 </div>
               </div>
+              {d.status !== "active" && (
+                <Button variant="outline" size="sm" onClick={() => check(d)}>
+                  Check
+                </Button>
+              )}
               <Button variant="ghost" size="icon" onClick={() => remove(d)} aria-label="Remove domain"><Trash2 /></Button>
             </li>
           ))}

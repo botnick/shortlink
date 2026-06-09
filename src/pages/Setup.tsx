@@ -6,6 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { useConfig } from "@/lib/config";
 import { useAuth } from "@/lib/auth";
 import type { UserDTO } from "@shared/types";
+import { DEFAULT_APP_NAME, DEFAULT_BRAND_COLOR } from "@shared/defaults";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { BrandMark } from "@/components/Logo";
+import { ColorPicker } from "@/components/ColorPicker";
 
 export function Setup() {
   const navigate = useNavigate();
@@ -24,9 +26,9 @@ export function Setup() {
   const { refresh: refreshAuth } = useAuth();
 
   const [token, setToken] = useState("");
-  const [appName, setAppName] = useState("Shortlink");
+  const [appName, setAppName] = useState(DEFAULT_APP_NAME);
   const [shortDomain, setShortDomain] = useState("");
-  const [brandColor, setBrandColor] = useState("#e5392e");
+  const [brandColor, setBrandColor] = useState(DEFAULT_BRAND_COLOR);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -121,20 +123,7 @@ export function Setup() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="brandColor">Brand color</Label>
-                <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg border bg-background px-2.5 py-1.5">
-                  <span
-                    className="size-5 rounded border"
-                    style={{ backgroundColor: brandColor }}
-                  />
-                  <span className="text-sm text-muted-foreground">{brandColor}</span>
-                  <input
-                    id="brandColor"
-                    type="color"
-                    value={brandColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    className="sr-only"
-                  />
-                </label>
+                <ColorPicker value={brandColor} onChange={setBrandColor} />
               </div>
             </div>
 

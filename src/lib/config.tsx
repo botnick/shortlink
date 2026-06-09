@@ -7,19 +7,29 @@ import {
   type ReactNode,
 } from "react";
 import type { AppConfigDTO } from "@shared/types";
+import {
+  DEFAULT_APP_NAME,
+  DEFAULT_BRAND_COLOR,
+  DEFAULT_OG_FONT,
+  DEFAULT_OG_TEMPLATE,
+} from "@shared/defaults";
 import { api } from "./api";
 
 const DEFAULT: AppConfigDTO = {
   needsSetup: false,
-  appName: "Shortlink",
+  appName: DEFAULT_APP_NAME,
   shortDomain: "",
-  brandColor: "#e5392e",
+  brandColor: DEFAULT_BRAND_COLOR,
   logoUrl: "",
   description: "",
   indexable: true,
   registrationEnabled: false,
-  ogTemplate: "minimal",
-  ogFont: "ibm-plex-thai",
+  ogTemplate: DEFAULT_OG_TEMPLATE,
+  ogFont: DEFAULT_OG_FONT,
+  ogLabel: DEFAULT_APP_NAME,
+  ogTitle: DEFAULT_APP_NAME,
+  ogTagline: "",
+  ogAccent: DEFAULT_BRAND_COLOR,
 };
 
 function upsertMeta(key: "name" | "property", keyName: string, content: string) {
