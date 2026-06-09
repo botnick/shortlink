@@ -262,6 +262,31 @@ route.get("/meta", async (c) => {
 });
 
 // READ one
+// Live availability check for the custom back-half (so the editor can tell the
+// user before they submit). Registered before "/:id" so it isn't read as an id.
+route.get("/slug-check", async (c) => {
+  const slug = (c.req.query("slug") ?? "").trim();
+  if (!/^[a-zA-Z0-9_-]{3,32}$/.test(slug)) {
+    return c.json({ available: false, reason: "format" });
+  }
+  if (!isValidCustomSlug(slug)) {
+    return c.json({ available: false, reason: "reserved" });
+  }
+  const settings = await getAllSettings(c.var.db, c.var.schema);
+  if (extraReservedFrom(settings).includes(slug.toLowerCase())) {
+    return c.json({ available: false, reason: "reserved" });
+  }
+  const { links } = c.var.schema;
+  const rows = await c.var.db
+    .select({ id: links.id })
+    .from(links)
+    .where(eq(links.slug, slug))
+    .limit(1);
+  return c.json(
+    rows.length ? { available: false, reason: "taken" } : { available: true },
+  );
+});
+
 route.get("/:id", async (c) => {
   const row = await getOwnedLink(c);
   if (!row) return c.json({ error: "Not found" }, 404);

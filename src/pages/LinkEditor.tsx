@@ -275,6 +275,9 @@ export function LinkEditor() {
   const [submitting, setSubmitting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(isEdit); // create starts simple
   const [slugStrategy, setSlugStrategy] = useState(""); // last "Optimize" label used
+  const [slugStatus, setSlugStatus] = useState<
+    "idle" | "checking" | "available" | "taken" | "reserved"
+  >("idle");
   const [passwordOn, setPasswordOn] = useState(false);
   const [password, setPassword] = useState("");
   const [destMeta, setDestMeta] = useState<UrlMetaDTO | null>(null);
@@ -477,6 +480,33 @@ export function LinkEditor() {
     };
   }, [config.logoUrl]);
 
+  // Live back-half availability (create only; the back-half can't change on edit).
+  useEffect(() => {
+    if (isEdit) return;
+    const s = alias.trim();
+    if (!s || !/^[a-zA-Z0-9_-]{3,32}$/.test(s)) {
+      setSlugStatus("idle");
+      return;
+    }
+    let active = true;
+    setSlugStatus("checking");
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.get<{ available: boolean; reason?: string }>(
+          `/links/slug-check?slug=${encodeURIComponent(s)}`,
+        );
+        if (!active) return;
+        setSlugStatus(r.available ? "available" : r.reason === "reserved" ? "reserved" : "taken");
+      } catch {
+        if (active) setSlugStatus("idle");
+      }
+    }, 400);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [alias, isEdit]);
+
   function previewPayload() {
     let image: string | null = null;
     let pTitle = previewMode === "custom" ? ogTitle.trim() || null : null;
@@ -617,7 +647,10 @@ export function LinkEditor() {
       <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>
         Cancel
       </Button>
-      <Button type="submit" disabled={submitting || !destValid}>
+      <Button
+        type="submit"
+        disabled={submitting || !destValid || slugStatus === "taken" || slugStatus === "reserved"}
+      >
         {submitting && <Loader2 className="animate-spin" />}
         {isEdit ? "Save changes" : "Create link"}
       </Button>
@@ -645,9 +678,9 @@ export function LinkEditor() {
         <div className="hidden items-center gap-2 lg:flex">{actions}</div>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-        {/* ---- Main form ---- */}
-        <div className="space-y-4">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+        {/* ---- Core form (destination + short link) ---- */}
+        <div className="space-y-4 lg:col-start-1 lg:row-start-1">
           {/* Destination (hero) */}
           <section className="space-y-3 rounded-2xl border bg-card p-5">
             <Label htmlFor="destination" className="text-sm font-medium">
@@ -734,6 +767,16 @@ export function LinkEditor() {
                   <p className="text-[11px] text-amber-600">
                     3–32 characters: letters, numbers, - or _
                   </p>
+                ) : slugStatus === "checking" ? (
+                  <p className="text-[11px] text-muted-foreground">Checking availability…</p>
+                ) : slugStatus === "taken" ? (
+                  <p className="text-[11px] text-red-600">That back-half is taken — try another.</p>
+                ) : slugStatus === "reserved" ? (
+                  <p className="text-[11px] text-red-600">That back-half is reserved.</p>
+                ) : slugStatus === "available" ? (
+                  <p className="flex items-center gap-1 text-[11px] text-emerald-600">
+                    <Check className="size-3" /> Available
+                  </p>
                 ) : slugStrategy ? (
                   <p className="text-[11px] text-muted-foreground">{slugStrategy} back-half</p>
                 ) : null}
@@ -812,7 +855,10 @@ export function LinkEditor() {
               </label>
             )}
           </section>
+        </div>
 
+        {/* ---- Advanced (UTM / device / social) — below the rail on mobile ---- */}
+        <div className="order-last space-y-4 lg:order-none lg:col-start-1 lg:row-start-2">
           {showAdvanced ? (
             <>
           {/* Campaign tracking (UTM) */}
@@ -929,7 +975,13 @@ export function LinkEditor() {
                     value={p.value}
                     onChange={(e) => p.set(e.target.value)}
                     className="h-9"
+                    aria-invalid={Boolean(p.value.trim() && !isHttpUrl(p.value))}
                   />
+                  {p.value.trim() && !isHttpUrl(p.value) && (
+                    <p className="mt-1.5 text-[11px] text-red-600">
+                      Must be a valid http(s) URL.
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -1096,7 +1148,7 @@ export function LinkEditor() {
         </div>
 
         {/* ---- Preview rail ---- */}
-        <aside className="space-y-4 lg:sticky lg:top-6 lg:h-fit">
+        <aside className="space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-6 lg:h-fit">
           <section className="space-y-3 rounded-2xl border bg-card p-4">
             <span className="text-xs font-medium text-muted-foreground">Your short link</span>
             <CopyRow value={shortUrlText} label="Copy short link" />

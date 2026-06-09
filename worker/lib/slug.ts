@@ -23,6 +23,7 @@ export const RESERVED_SLUGS = new Set([
   "icon",
   "og",
   "ogimg",
+  "qr",
   "favicon.ico",
   "robots.txt",
   "s",
