@@ -141,6 +141,10 @@ export function AdminSettings() {
   const [blockedDomains, setBlockedDomains] = useState("");
   const [extraReserved, setExtraReserved] = useState("");
   const [maxLinks, setMaxLinks] = useState(0);
+  const [authRateLimit, setAuthRateLimit] = useState(10);
+  const [createRateLimit, setCreateRateLimit] = useState(60);
+  const [maxDomains, setMaxDomains] = useState(10);
+  const [maxAliases, setMaxAliases] = useState(5);
   const [savingLimits, setSavingLimits] = useState(false);
 
   const [cfToken, setCfToken] = useState("");
@@ -171,6 +175,10 @@ export function AdminSettings() {
         setBlockedDomains(s.blockedDomains.join("\n"));
         setExtraReserved(s.extraReserved.join("\n"));
         setMaxLinks(s.maxLinksPerUser);
+        setAuthRateLimit(s.authRateLimit);
+        setCreateRateLimit(s.createRateLimit);
+        setMaxDomains(s.maxDomainsPerUser);
+        setMaxAliases(s.maxAliasesPerLink);
         setCfZoneId(s.cfZoneId);
         setCfFallbackHost(s.cfFallbackHost);
         setUnverifiedDays(s.domainUnverifiedDays);
@@ -222,6 +230,10 @@ export function AdminSettings() {
         blockedDomains: toLines(blockedDomains),
         extraReserved: toLines(extraReserved),
         maxLinksPerUser: Math.max(0, Math.floor(maxLinks) || 0),
+        authRateLimit: Math.max(0, Math.floor(authRateLimit) || 0),
+        createRateLimit: Math.max(0, Math.floor(createRateLimit) || 0),
+        maxDomainsPerUser: Math.max(0, Math.floor(maxDomains) || 0),
+        maxAliasesPerLink: Math.max(0, Math.floor(maxAliases) || 0),
       });
       toast.success("Limits saved");
     } catch (err) {
@@ -556,6 +568,60 @@ export function AdminSettings() {
                   className="max-w-[12rem]"
                 />
               </div>
+
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <p className="text-sm font-medium">Abuse limits</p>
+                <p className="-mt-2 text-xs text-muted-foreground">
+                  Guardrails against spam and brute force. 0 turns a limit off.
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="maxAliases">Back-half changes per link</Label>
+                    <Input
+                      id="maxAliases"
+                      type="number"
+                      min={0}
+                      value={maxAliases}
+                      onChange={(e) => setMaxAliases(Number(e.target.value))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Old back-halves keep working; this caps how many times one link
+                      can change.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="maxDomains">Custom domains per member</Label>
+                    <Input
+                      id="maxDomains"
+                      type="number"
+                      min={0}
+                      value={maxDomains}
+                      onChange={(e) => setMaxDomains(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="authRate">Login attempts / 15 min / IP</Label>
+                    <Input
+                      id="authRate"
+                      type="number"
+                      min={0}
+                      value={authRateLimit}
+                      onChange={(e) => setAuthRateLimit(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="createRate">New links / hour / member</Label>
+                    <Input
+                      id="createRate"
+                      type="number"
+                      min={0}
+                      value={createRateLimit}
+                      onChange={(e) => setCreateRateLimit(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <Button type="submit" disabled={savingLimits}>
                 {savingLimits && <Loader2 className="animate-spin" />}
                 Save

@@ -5,7 +5,12 @@ import type { AppContext, AppEnv } from "../env";
 import type { DomainRow } from "../db/schema";
 import { domainSchema } from "../lib/validators";
 import { requireAuth } from "../middleware/auth";
-import { getAllSettings, saasConfigFrom, type SaasConfig } from "../lib/settings";
+import {
+  getAllSettings,
+  maxDomainsPerUserFrom,
+  saasConfigFrom,
+  type SaasConfig,
+} from "../lib/settings";
 import {
   checkTxtVerification,
   newVerifyToken,
@@ -23,7 +28,6 @@ import type { DomainDnsRecord, DomainDTO, DomainListDTO } from "@shared/types";
 const route = new Hono<AppEnv>();
 route.use("*", requireAuth);
 
-const MAX_PER_USER = 10;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 async function loadSaas(c: AppContext): Promise<SaasConfig | null> {
@@ -105,14 +109,16 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
   const { domains } = c.var.schema;
   const user = c.var.user!;
   const { hostname } = c.req.valid("json");
-  const saas = await loadSaas(c);
+  const map = await getAllSettings(c.var.db, c.var.schema);
+  const saas = saasConfigFrom(map, c.env.APP_URL);
+  const cap = maxDomainsPerUserFrom(map);
 
   const existing = await c.var.db
     .select({ id: domains.id })
     .from(domains)
     .where(eq(domains.userId, user.id));
-  if (existing.length >= MAX_PER_USER) {
-    return c.json({ error: "You've reached the domain limit" }, 409);
+  if (cap > 0 && existing.length >= cap) {
+    return c.json({ error: "You’ve reached the domain limit" }, 409);
   }
 
   let cfHostnameId: string | null = null;

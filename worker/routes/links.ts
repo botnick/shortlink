@@ -46,11 +46,14 @@ async function resolveOgImage(
 }
 import {
   blockedDomainsFrom,
+  createRateLimitFrom,
   extraReservedFrom,
   getAllSettings,
   isBlockedDestination,
+  maxAliasesPerLinkFrom,
   maxLinksPerUserFrom,
 } from "../lib/settings";
+import { isRateLimited } from "../lib/ratelimit";
 import { requireAuth } from "../middleware/auth";
 import { computeStats, parseRange } from "./stats";
 import type { LinkDTO, LinkListDTO } from "@shared/types";
@@ -60,8 +63,6 @@ route.use("*", requireAuth);
 
 const PAGE_SIZE = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Cap retired back-halves per link so repeated edits can't bloat the table.
-const ALIAS_CAP_FALLBACK = 20;
 
 function toLinkDTO(
   env: AppBindings,
@@ -271,6 +272,10 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
       return c.json({ error: `You’ve reached your link limit (${maxLinks})` }, 409);
     }
   }
+  // Throttle bursts of link creation per user (spam protection).
+  if (await isRateLimited(c.env, `create:${user.id}`, createRateLimitFrom(settings), 3600)) {
+    return c.json({ error: "You’re creating links too quickly — please slow down" }, 429);
+  }
 
   // Resolve which domain the back-half lives on (the default host, or one of the
   // user's verified custom domains).
@@ -449,19 +454,54 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
     if (!isValidCustomSlug(input.slug)) {
       return c.json({ error: "That custom alias isn't allowed" }, 400);
     }
-    const settings = await getAllSettings(db, schema);
-    if (extraReservedFrom(settings).includes(input.slug.toLowerCase())) {
-      return c.json({ error: "That custom alias is reserved" }, 400);
-    }
     targetSlug = input.slug;
   }
   const backHalfChanged =
     targetDomainId !== existing.domainId || targetSlug !== existing.slug;
-  if (
-    backHalfChanged &&
-    (await slugTaken(db, schema, targetDomainId, targetSlug, existing.id))
-  ) {
-    return c.json({ error: "That custom alias is already taken" }, 409);
+  // Load settings once when the back-half changes (reserved check + alias cap).
+  let settings: Record<string, unknown> | null = null;
+  if (backHalfChanged) {
+    settings = await getAllSettings(db, schema);
+    if (
+      targetSlug !== existing.slug &&
+      extraReservedFrom(settings).includes(targetSlug.toLowerCase())
+    ) {
+      return c.json({ error: "That custom alias is reserved" }, 400);
+    }
+    if (await slugTaken(db, schema, targetDomainId, targetSlug, existing.id)) {
+      return c.json({ error: "That custom alias is already taken" }, 409);
+    }
+    // Cap how many times a link's back-half may change. Reverting to one of this
+    // link's own retired back-halves doesn't use up a new change.
+    const cap = maxAliasesPerLinkFrom(settings);
+    if (cap > 0) {
+      const reverting =
+        (
+          await db
+            .select({ id: linkAliases.id })
+            .from(linkAliases)
+            .where(
+              and(
+                eq(linkAliases.linkId, existing.id),
+                eq(linkAliases.slug, targetSlug),
+                domainBucket(linkAliases.domainId, targetDomainId),
+              ),
+            )
+            .limit(1)
+        ).length > 0;
+      if (!reverting) {
+        const [{ n }] = await db
+          .select({ n: count() })
+          .from(linkAliases)
+          .where(eq(linkAliases.linkId, existing.id));
+        if (Number(n) >= cap) {
+          return c.json(
+            { error: `This link’s back-half can be changed at most ${cap} times` },
+            409,
+          );
+        }
+      }
+    }
   }
 
   const patch: Partial<typeof links.$inferInsert> = { updatedAt: new Date() };
@@ -522,22 +562,16 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
           domainBucket(linkAliases.domainId, targetDomainId),
         ),
       );
-    // Retire the previous (domain, slug) so old shared links keep redirecting,
-    // up to the per-link cap.
-    const [{ n }] = await db
-      .select({ n: count() })
-      .from(linkAliases)
-      .where(eq(linkAliases.linkId, existing.id));
-    if (Number(n) < ALIAS_CAP_FALLBACK) {
-      await db
-        .insert(linkAliases)
-        .values({
-          linkId: existing.id,
-          domainId: existing.domainId,
-          slug: existing.slug,
-        })
-        .onConflictDoNothing();
-    }
+    // Retire the previous (domain, slug) so old shared links keep redirecting.
+    // The per-link change cap was already enforced above.
+    await db
+      .insert(linkAliases)
+      .values({
+        linkId: existing.id,
+        domainId: existing.domainId,
+        slug: existing.slug,
+      })
+      .onConflictDoNothing();
     // The old key no longer maps to a live back-half; clear it so a stale cache
     // can't serve it ahead of the alias lookup.
     await deleteCachedLink(c.env.LINKS_KV, existing.domainId, existing.slug);

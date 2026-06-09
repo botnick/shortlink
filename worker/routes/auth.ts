@@ -1,13 +1,22 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
-import type { AppEnv, SessionUser } from "../env";
+import type { AppContext, AppEnv, SessionUser } from "../env";
 import { createSession, invalidateSession } from "../lib/auth";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { clearSessionCookie, setSessionCookie } from "../lib/cookies";
-import { getRegistrationEnabled } from "../lib/settings";
+import { SETTING_KEYS, authRateLimitFrom, getAllSettings } from "../lib/settings";
+import { isRateLimited } from "../lib/ratelimit";
+import { getClientIp } from "../lib/geo";
 import { loginSchema, registerSchema } from "../lib/validators";
 import type { UserDTO } from "@shared/types";
+
+const AUTH_WINDOW_SEC = 15 * 60; // attempts counted per 15-minute window per IP
+
+/** Shared per-IP throttle for the auth endpoints. */
+async function authThrottled(c: AppContext, map: Record<string, unknown>) {
+  return isRateLimited(c.env, `auth:${getClientIp(c)}`, authRateLimitFrom(map), AUTH_WINDOW_SEC);
+}
 
 const auth = new Hono<AppEnv>();
 
@@ -19,7 +28,11 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
   const db = c.var.db;
   const schema = c.var.schema;
   const { users } = schema;
-  if (!(await getRegistrationEnabled(db, schema))) {
+  const map = await getAllSettings(db, schema);
+  if (await authThrottled(c, map)) {
+    return c.json({ error: "Too many attempts — please try again later" }, 429);
+  }
+  if (map[SETTING_KEYS.registration] !== true) {
     return c.json({ error: "Registration is currently closed" }, 403);
   }
 
@@ -52,6 +65,10 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
 auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const db = c.var.db;
   const { users } = c.var.schema;
+  const map = await getAllSettings(db, c.var.schema);
+  if (await authThrottled(c, map)) {
+    return c.json({ error: "Too many attempts — please try again later" }, 429);
+  }
   const { email, password } = c.req.valid("json");
 
   const rows = await db

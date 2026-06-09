@@ -20,6 +20,10 @@ export const SETTING_KEYS = {
   blockedDomains: "blocked_domains",
   extraReserved: "extra_reserved_slugs",
   maxLinksPerUser: "max_links_per_user",
+  authRateLimit: "auth_rate_limit",
+  createRateLimit: "create_rate_limit",
+  maxDomainsPerUser: "max_domains_per_user",
+  maxAliasesPerLink: "max_aliases_per_link",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
@@ -179,6 +183,34 @@ export function extraReservedFrom(map: Record<string, unknown>): string[] {
 export function maxLinksPerUserFrom(map: Record<string, unknown>): number {
   const v = map[SETTING_KEYS.maxLinksPerUser];
   return typeof v === "number" && v > 0 ? Math.floor(v) : 0; // 0 = unlimited
+}
+
+/** A non-negative integer setting with a default (and a 0-allowed floor). */
+function asCount(value: unknown, fallback: number): number {
+  return typeof value === "number" && value >= 0 ? Math.floor(value) : fallback;
+}
+
+// --- Abuse limits (all admin-configurable; 0 disables the limit) -------------
+
+/** Login/registration attempts allowed per IP per 15-minute window. */
+export function authRateLimitFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.authRateLimit], 10);
+}
+
+/** New links a single user may create per hour. */
+export function createRateLimitFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.createRateLimit], 60);
+}
+
+/** Custom domains a single user may add. */
+export function maxDomainsPerUserFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.maxDomainsPerUser], 10);
+}
+
+/** How many times a link's back-half may be changed (each change retires the old
+ *  one to a still-working alias). 0 = unlimited. */
+export function maxAliasesPerLinkFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.maxAliasesPerLink], 5);
 }
 
 export interface SaasConfig {
