@@ -15,14 +15,24 @@ import {
   Share2,
   Smartphone,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { timeAgo } from "@/lib/format";
 import { compressUpload, ogToJpeg, ogToPng, renderOg, renderPhotoOg } from "@/lib/ogTemplates";
 import { loadOgFont } from "@/lib/ogFonts";
 import { composeFrame, makeDefault, renderQrSvg, svgDataUrl, type QrCfg } from "@/lib/qr";
-import type { DomainDTO, DomainListDTO, LinkDTO, PreviewMode, UrlMetaDTO } from "@shared/types";
+import type {
+  DomainDTO,
+  DomainListDTO,
+  LinkAliasDTO,
+  LinkAliasListDTO,
+  LinkDTO,
+  PreviewMode,
+  UrlMetaDTO,
+} from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -245,6 +255,50 @@ function CopyRow({ value, label }: { value: string; label: string }) {
   );
 }
 
+/** One retired back-half in the edit history: its URL, age, copy + remove. */
+function AliasRow({
+  alias,
+  onRemove,
+}: {
+  alias: LinkAliasDTO;
+  onRemove: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const display = alias.shortUrl.replace(/^https?:\/\//, "");
+  return (
+    <li className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-1.5">
+      <span className="min-w-0 flex-1 truncate font-mono text-xs" title={alias.shortUrl}>
+        {display}
+      </span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">
+        {timeAgo(alias.createdAt)}
+      </span>
+      <button
+        type="button"
+        aria-label="Copy old short link"
+        title="Copy"
+        onClick={() => {
+          void navigator.clipboard.writeText(alias.shortUrl);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {copied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+      </button>
+      <button
+        type="button"
+        aria-label="Remove old back-half"
+        title="Remove — stops this old link from redirecting"
+        onClick={onRemove}
+        className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
+      >
+        <Trash2 className="size-3.5" />
+      </button>
+    </li>
+  );
+}
+
 /** Full-page link create/edit in Rebrandly's clean, progressive-disclosure style:
  *  a focused form (destination → short link → collapsible advanced sections) with
  *  a sticky preview rail (short link + QR). Our restraint, their friendliness. */
@@ -266,6 +320,8 @@ export function LinkEditor() {
   // The custom domain the back-half lives on (null = the default short host).
   const [domainId, setDomainId] = useState<string | null>(null);
   const [domains, setDomains] = useState<DomainDTO[]>([]);
+  // Retired back-halves that still redirect here (edit history).
+  const [aliases, setAliases] = useState<LinkAliasDTO[]>([]);
   const [title, setTitle] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [iosUrl, setIosUrl] = useState("");
@@ -342,6 +398,36 @@ export function LinkEditor() {
       active = false;
     };
   }, []);
+
+  // Retired back-halves (history). Refetched after a back-half change saves.
+  function loadAliases() {
+    if (!isEdit || !id) return;
+    api
+      .get<LinkAliasListDTO>(`/links/${id}/aliases`)
+      .then((r) => setAliases(r.aliases))
+      .catch(() => {});
+  }
+  useEffect(() => {
+    if (!isEdit || !id) return;
+    let active = true;
+    api
+      .get<LinkAliasListDTO>(`/links/${id}/aliases`)
+      .then((r) => active && setAliases(r.aliases))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isEdit, id]);
+
+  async function removeAlias(aliasId: string) {
+    try {
+      await api.delete(`/links/${id}/aliases/${aliasId}`);
+      setAliases((a) => a.filter((x) => x.id !== aliasId));
+      toast.success("Old back-half removed");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn’t remove it");
+    }
+  }
 
   const destValid = isHttpUrl(destination);
   const previewDomain = (() => {
@@ -667,6 +753,7 @@ export function LinkEditor() {
         // Stay on the page; refresh the baseline so the next save diffs cleanly.
         setLink(updated);
         setIsActive(updated.isActive);
+        loadAliases(); // a back-half change may have added to the history
         toast.success("Changes saved");
       } else {
         const { link: created } = await api.post<{ link: LinkDTO }>("/links", {
@@ -883,6 +970,19 @@ export function LinkEditor() {
                   Changing the back-half or domain keeps the old short link working — it
                   still redirects here.
                 </p>
+              )}
+              {isEdit && aliases.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    Previous back-halves{" "}
+                    <span className="font-normal">· still redirect here</span>
+                  </p>
+                  <ul className="space-y-1">
+                    {aliases.map((a) => (
+                      <AliasRow key={a.id} alias={a} onRemove={() => removeAlias(a.id)} />
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
 

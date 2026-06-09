@@ -44,6 +44,19 @@ export interface LinkListDTO {
   nextCursor: string | null;
 }
 
+/** A retired back-half that still redirects to the link (edit history). */
+export interface LinkAliasDTO {
+  id: string;
+  slug: string;
+  domain: string | null;
+  shortUrl: string;
+  createdAt: string;
+}
+
+export interface LinkAliasListDTO {
+  aliases: LinkAliasDTO[];
+}
+
 export interface ProjectDTO {
   id: string;
   name: string;

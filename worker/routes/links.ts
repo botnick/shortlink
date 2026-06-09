@@ -397,6 +397,51 @@ route.get("/:id", async (c) => {
   return c.json({ link: toLinkDTO(c.env, row, host) });
 });
 
+// History: a link's retired back-halves (still redirecting), newest first.
+route.get("/:id/aliases", async (c) => {
+  const link = await getOwnedLink(c);
+  if (!link) return c.json({ error: "Not found" }, 404);
+  const { linkAliases, domains } = c.var.schema;
+  const rows = await c.var.db
+    .select({
+      id: linkAliases.id,
+      slug: linkAliases.slug,
+      domainHost: domains.hostname,
+      createdAt: linkAliases.createdAt,
+    })
+    .from(linkAliases)
+    .leftJoin(domains, eq(linkAliases.domainId, domains.id))
+    .where(eq(linkAliases.linkId, link.id))
+    .orderBy(desc(linkAliases.createdAt));
+  return c.json({
+    aliases: rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      domain: r.domainHost ?? null,
+      shortUrl: buildShortUrl(c.env, r.domainHost ?? null, r.slug),
+      createdAt: r.createdAt.toISOString(),
+    })),
+  });
+});
+
+// Retire a back-half for good — stops the old link redirecting and frees a
+// back-half change.
+route.delete("/:id/aliases/:aliasId", async (c) => {
+  const link = await getOwnedLink(c);
+  if (!link) return c.json({ error: "Not found" }, 404);
+  const aliasId = c.req.param("aliasId");
+  if (!UUID_RE.test(aliasId)) return c.json({ error: "Not found" }, 404);
+  const { linkAliases } = c.var.schema;
+  const removed = await c.var.db
+    .delete(linkAliases)
+    .where(and(eq(linkAliases.id, aliasId), eq(linkAliases.linkId, link.id)))
+    .returning({ domainId: linkAliases.domainId, slug: linkAliases.slug });
+  if (removed[0]) {
+    await deleteCachedLink(c.env.LINKS_KV, removed[0].domainId, removed[0].slug);
+  }
+  return c.json({ ok: true });
+});
+
 // STATS (owner or admin)
 route.get("/:id/stats", async (c) => {
   const id = c.req.param("id");
