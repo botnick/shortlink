@@ -14,6 +14,9 @@ export const SETTING_KEYS = {
   blockedDomains: "blocked_domains",
   extraReserved: "extra_reserved_slugs",
   maxLinksPerUser: "max_links_per_user",
+  cfApiToken: "cf_api_token",
+  cfZoneId: "cf_zone_id",
+  cfFallbackHost: "cf_fallback_host",
   setupCompleted: "setup_completed",
 } as const;
 
@@ -106,6 +109,48 @@ export function extraReservedFrom(map: Record<string, unknown>): string[] {
 export function maxLinksPerUserFrom(map: Record<string, unknown>): number {
   const v = map[SETTING_KEYS.maxLinksPerUser];
   return typeof v === "number" && v > 0 ? Math.floor(v) : 0; // 0 = unlimited
+}
+
+export interface SaasConfig {
+  token: string;
+  zoneId: string;
+  fallbackHost: string;
+}
+
+/** Cloudflare-for-SaaS config, read from settings (configured via /admin — no
+ *  env vars). Returns null unless a token + zone id are present. Fallback host
+ *  defaults to the app's own host. */
+export function saasConfigFrom(
+  map: Record<string, unknown>,
+  appUrl: string,
+): SaasConfig | null {
+  const token = asString(map[SETTING_KEYS.cfApiToken], "");
+  const zoneId = asString(map[SETTING_KEYS.cfZoneId], "");
+  if (!token || !zoneId) return null;
+  let fallbackHost = asString(map[SETTING_KEYS.cfFallbackHost], "");
+  if (!fallbackHost) {
+    try {
+      fallbackHost = new URL(appUrl).host;
+    } catch {
+      fallbackHost = "";
+    }
+  }
+  return { token, zoneId, fallbackHost };
+}
+
+export function cfZoneIdFrom(map: Record<string, unknown>): string {
+  return asString(map[SETTING_KEYS.cfZoneId], "");
+}
+
+export function cfFallbackHostFrom(map: Record<string, unknown>): string {
+  return asString(map[SETTING_KEYS.cfFallbackHost], "");
+}
+
+export function cfConfiguredFrom(map: Record<string, unknown>): boolean {
+  return Boolean(
+    asString(map[SETTING_KEYS.cfApiToken], "") &&
+      asString(map[SETTING_KEYS.cfZoneId], ""),
+  );
 }
 
 /** True if `destination`'s host is on the blocked list (exact or subdomain). */

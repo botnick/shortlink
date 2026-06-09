@@ -146,6 +146,11 @@ export interface SettingsDTO {
   blockedDomains: string[];
   extraReserved: string[];
   maxLinksPerUser: number;
+  /** Cloudflare for SaaS — configured via /admin. The token is never returned;
+   *  `cfConfigured` reflects whether a token + zone id are set. */
+  cfZoneId: string;
+  cfFallbackHost: string;
+  cfConfigured: boolean;
 }
 
 export interface AppConfigDTO {

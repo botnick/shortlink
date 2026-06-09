@@ -1,4 +1,4 @@
-import type { AppBindings } from "../env";
+import type { SaasConfig } from "./settings";
 import type { DomainDnsRecord } from "@shared/types";
 
 const API = "https://api.cloudflare.com/client/v4";
@@ -9,16 +9,11 @@ export interface HostnameResult {
   records: DomainDnsRecord[];
 }
 
-/** SaaS mode is on only when all three Cloudflare-for-SaaS values are present. */
-export function saasEnabled(env: AppBindings): boolean {
-  return Boolean(env.CF_API_TOKEN && env.CF_ZONE_ID && env.CF_FALLBACK_HOST);
-}
-
-async function cf(env: AppBindings, path: string, init?: RequestInit) {
-  const res = await fetch(`${API}/zones/${env.CF_ZONE_ID}${path}`, {
+async function cf(cfg: SaasConfig, path: string, init?: RequestInit) {
+  const res = await fetch(`${API}/zones/${cfg.zoneId}${path}`, {
     ...init,
     headers: {
-      authorization: `Bearer ${env.CF_API_TOKEN}`,
+      authorization: `Bearer ${cfg.token}`,
       "content-type": "application/json",
       ...init?.headers,
     },
@@ -44,11 +39,11 @@ interface CfHostname {
   ownership_verification?: { name?: string; value?: string };
 }
 
-function normalize(env: AppBindings, r: CfHostname): HostnameResult {
+function normalize(cfg: SaasConfig, r: CfHostname): HostnameResult {
   // The user CNAMEs their hostname at the fallback host; CF issues TLS once the
   // CNAME (and any validation TXT records) resolve.
   const records: DomainDnsRecord[] = [
-    { type: "CNAME", name: "@", value: env.CF_FALLBACK_HOST! },
+    { type: "CNAME", name: "@", value: cfg.fallbackHost },
   ];
   const ov = r.ownership_verification;
   if (ov?.name && ov.value) records.push({ type: "TXT", name: ov.name, value: ov.value });
@@ -59,21 +54,21 @@ function normalize(env: AppBindings, r: CfHostname): HostnameResult {
   return { cfId: r.id, status: active ? "active" : r.status ?? "pending", records };
 }
 
-export async function createCustomHostname(env: AppBindings, hostname: string): Promise<HostnameResult> {
-  const result = (await cf(env, "/custom_hostnames", {
+export async function createCustomHostname(cfg: SaasConfig, hostname: string): Promise<HostnameResult> {
+  const result = (await cf(cfg, "/custom_hostnames", {
     method: "POST",
     body: JSON.stringify({
       hostname,
-      ssl: { method: "http", type: "dv", settings: { min_tls_version: "1.2" } },
+      ssl: { method: "txt", type: "dv", settings: { min_tls_version: "1.2" } },
     }),
   })) as CfHostname;
-  return normalize(env, result);
+  return normalize(cfg, result);
 }
 
-export async function getCustomHostname(env: AppBindings, cfId: string): Promise<HostnameResult> {
-  return normalize(env, (await cf(env, `/custom_hostnames/${cfId}`)) as CfHostname);
+export async function getCustomHostname(cfg: SaasConfig, cfId: string): Promise<HostnameResult> {
+  return normalize(cfg, (await cf(cfg, `/custom_hostnames/${cfId}`)) as CfHostname);
 }
 
-export async function deleteCustomHostname(env: AppBindings, cfId: string): Promise<void> {
-  await cf(env, `/custom_hostnames/${cfId}`, { method: "DELETE" });
+export async function deleteCustomHostname(cfg: SaasConfig, cfId: string): Promise<void> {
+  await cf(cfg, `/custom_hostnames/${cfId}`, { method: "DELETE" });
 }

@@ -111,10 +111,11 @@ Members (and admins) serve their short links from their own domain — e.g.
 automatically:
 
 **Automatic ([Cloudflare for SaaS](https://developers.cloudflare.com/cloudflare-for-saas/)).**
-Set `CF_API_TOKEN` (a token with *SSL and Certificates: Edit*) plus the `CF_ZONE_ID` and
-`CF_FALLBACK_HOST` vars. Then a member just adds their domain, points one **CNAME** at the
-fallback host, and it connects with automatic TLS — no per-domain work for the operator.
-The first **100 custom hostnames are free**, then ~$0.10/hostname/month.
+In **/admin → Settings → Custom domains**, paste a Cloudflare API token (*SSL and
+Certificates: Edit*) and your zone id — no env vars. Then a member just adds their domain,
+points one **CNAME** at the fallback host, and it connects with automatic TLS — no
+per-domain work for the operator. The first **100 custom hostnames are free**, then
+~$0.10/hostname/month.
 
 **Free ($0, no API).** Leave those unset. A member adds their domain and a `_shortlink-verify`
 **TXT** record; the Worker confirms ownership over public **DNS-over-HTTPS**. To make a

@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, desc, eq } from "drizzle-orm";
-import type { AppBindings, AppContext, AppEnv } from "../env";
+import type { AppContext, AppEnv } from "../env";
 import type { DomainRow } from "../db/schema";
 import { domainSchema } from "../lib/validators";
 import { requireAuth } from "../middleware/auth";
+import { getAllSettings, saasConfigFrom, type SaasConfig } from "../lib/settings";
 import {
   checkTxtVerification,
   newVerifyToken,
@@ -15,7 +16,6 @@ import {
   createCustomHostname,
   deleteCustomHostname,
   getCustomHostname,
-  saasEnabled,
 } from "../lib/cloudflare";
 import type { DomainDnsRecord, DomainDTO, DomainListDTO } from "@shared/types";
 
@@ -25,10 +25,14 @@ route.use("*", requireAuth);
 const MAX_PER_USER = 10;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
-function toDTO(env: AppBindings, row: DomainRow): DomainDTO {
-  const mode = saasEnabled(env) ? "saas" : "dns";
+async function loadSaas(c: AppContext): Promise<SaasConfig | null> {
+  const map = await getAllSettings(c.var.db, c.var.schema);
+  return saasConfigFrom(map, c.env.APP_URL);
+}
+
+function toDTO(saas: boolean, row: DomainRow): DomainDTO {
   const records: DomainDnsRecord[] =
-    mode === "saas" && row.cfRecords
+    saas && row.cfRecords
       ? (row.cfRecords as DomainDnsRecord[])
       : [
           {
@@ -41,7 +45,7 @@ function toDTO(env: AppBindings, row: DomainRow): DomainDTO {
     id: row.id,
     hostname: row.hostname,
     status: row.status,
-    mode,
+    mode: saas ? "saas" : "dns",
     records,
     verifiedAt: row.verifiedAt ? row.verifiedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
@@ -69,8 +73,9 @@ async function ownedDomain(c: AppContext): Promise<DomainRow | null> {
   return rows[0] ?? null;
 }
 
-// LIST — the signed-in user's domains.
+// LIST
 route.get("/", async (c) => {
+  const saas = await loadSaas(c);
   const { domains } = c.var.schema;
   const rows = await c.var.db
     .select()
@@ -78,19 +83,19 @@ route.get("/", async (c) => {
     .where(eq(domains.userId, c.var.user!.id))
     .orderBy(desc(domains.createdAt));
   const body: DomainListDTO = {
-    mode: saasEnabled(c.env) ? "saas" : "dns",
-    domains: rows.map((r) => toDTO(c.env, r)),
+    mode: saas ? "saas" : "dns",
+    domains: rows.map((r) => toDTO(Boolean(saas), r)),
   };
   return c.json(body);
 });
 
-// ADD — register the domain. In SaaS mode this calls Cloudflare so the domain
-// auto-connects once the user adds the CNAME; otherwise it issues a DNS-TXT
-// ownership challenge.
+// ADD — SaaS: register with Cloudflare (CNAME + TXT, auto TLS). Otherwise issue
+// a DNS-TXT ownership challenge.
 route.post("/", zValidator("json", domainSchema), async (c) => {
   const { domains } = c.var.schema;
   const user = c.var.user!;
   const { hostname } = c.req.valid("json");
+  const saas = await loadSaas(c);
 
   const existing = await c.var.db
     .select({ id: domains.id })
@@ -103,9 +108,9 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
   let cfHostnameId: string | null = null;
   let cfRecords: DomainDnsRecord[] | null = null;
   let status = "pending";
-  if (saasEnabled(c.env)) {
+  if (saas) {
     try {
-      const cf = await createCustomHostname(c.env, hostname);
+      const cf = await createCustomHostname(saas, hostname);
       cfHostnameId = cf.cfId;
       cfRecords = cf.records;
       status = cf.status;
@@ -128,23 +133,24 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
         })
         .returning()
     )[0];
-    return c.json({ domain: toDTO(c.env, row) }, 201);
+    return c.json({ domain: toDTO(Boolean(saas), row) }, 201);
   } catch (e) {
-    if (cfHostnameId) await deleteCustomHostname(c.env, cfHostnameId).catch(() => {});
+    if (saas && cfHostnameId) await deleteCustomHostname(saas, cfHostnameId).catch(() => {});
     if (isUniqueViolation(e)) return c.json({ error: "That domain is already added" }, 409);
     throw e;
   }
 });
 
-// CHECK — re-check status. SaaS: poll Cloudflare. DNS: verify the TXT record.
+// CHECK — SaaS: poll Cloudflare. DNS: verify the TXT record.
 route.post("/:id/check", async (c) => {
   const row = await ownedDomain(c);
   if (!row) return c.json({ error: "Not found" }, 404);
   const { domains } = c.var.schema;
+  const saas = await loadSaas(c);
 
-  if (saasEnabled(c.env) && row.cfHostnameId) {
+  if (saas && row.cfHostnameId) {
     try {
-      const cf = await getCustomHostname(c.env, row.cfHostnameId);
+      const cf = await getCustomHostname(saas, row.cfHostnameId);
       const updated = (
         await c.var.db
           .update(domains)
@@ -152,13 +158,13 @@ route.post("/:id/check", async (c) => {
           .where(eq(domains.id, row.id))
           .returning()
       )[0];
-      return c.json({ domain: toDTO(c.env, updated) });
+      return c.json({ domain: toDTO(true, updated) });
     } catch (e) {
       return c.json({ error: (e as Error).message }, 502);
     }
   }
 
-  if (row.status === "verified") return c.json({ domain: toDTO(c.env, row) });
+  if (row.status === "verified") return c.json({ domain: toDTO(false, row) });
   const ok = await checkTxtVerification(row.hostname, row.verifyToken);
   if (!ok) {
     return c.json({ error: "TXT record not found yet — DNS can take a few minutes" }, 400);
@@ -170,15 +176,16 @@ route.post("/:id/check", async (c) => {
       .where(eq(domains.id, row.id))
       .returning()
   )[0];
-  return c.json({ domain: toDTO(c.env, updated) });
+  return c.json({ domain: toDTO(false, updated) });
 });
 
 // DELETE
 route.delete("/:id", async (c) => {
   const row = await ownedDomain(c);
   if (!row) return c.json({ error: "Not found" }, 404);
-  if (saasEnabled(c.env) && row.cfHostnameId) {
-    await deleteCustomHostname(c.env, row.cfHostnameId).catch(() => {});
+  if (row.cfHostnameId) {
+    const saas = await loadSaas(c);
+    if (saas) await deleteCustomHostname(saas, row.cfHostnameId).catch(() => {});
   }
   const { domains } = c.var.schema;
   await c.var.db.delete(domains).where(eq(domains.id, row.id));

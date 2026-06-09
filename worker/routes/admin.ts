@@ -23,6 +23,9 @@ import {
   appNameFrom,
   blockedDomainsFrom,
   brandColorFrom,
+  cfConfiguredFrom,
+  cfFallbackHostFrom,
+  cfZoneIdFrom,
   descriptionFrom,
   extraReservedFrom,
   getAllSettings,
@@ -76,6 +79,9 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     blockedDomains: blockedDomainsFrom(map),
     extraReserved: extraReservedFrom(map),
     maxLinksPerUser: maxLinksPerUserFrom(map),
+    cfZoneId: cfZoneIdFrom(map),
+    cfFallbackHost: cfFallbackHostFrom(map),
+    cfConfigured: cfConfiguredFrom(map),
   };
 }
 
@@ -126,6 +132,17 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.maxLinksPerUser !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.maxLinksPerUser, input.maxLinksPerUser);
+  }
+  // Custom-domain (Cloudflare for SaaS) config — set via the web, no env vars.
+  // An empty token clears it; a blank token is ignored so it isn't wiped on save.
+  if (input.cfApiToken !== undefined && input.cfApiToken !== "") {
+    await setSetting(db, schema, SETTING_KEYS.cfApiToken, input.cfApiToken);
+  }
+  if (input.cfZoneId !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.cfZoneId, input.cfZoneId);
+  }
+  if (input.cfFallbackHost !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.cfFallbackHost, input.cfFallbackHost);
   }
   await invalidateSeo(c.env.LINKS_KV);
   const map = await getAllSettings(db, schema);

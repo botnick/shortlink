@@ -75,6 +75,12 @@ export function AdminSettings() {
   const [maxLinks, setMaxLinks] = useState(0);
   const [savingLimits, setSavingLimits] = useState(false);
 
+  const [cfToken, setCfToken] = useState("");
+  const [cfZoneId, setCfZoneId] = useState("");
+  const [cfFallbackHost, setCfFallbackHost] = useState("");
+  const [cfConfigured, setCfConfigured] = useState(false);
+  const [savingCf, setSavingCf] = useState(false);
+
   useEffect(() => {
     api
       .get<SettingsDTO>("/admin/settings")
@@ -90,6 +96,9 @@ export function AdminSettings() {
         setBlockedDomains(s.blockedDomains.join("\n"));
         setExtraReserved(s.extraReserved.join("\n"));
         setMaxLinks(s.maxLinksPerUser);
+        setCfZoneId(s.cfZoneId);
+        setCfFallbackHost(s.cfFallbackHost);
+        setCfConfigured(s.cfConfigured);
       })
       .catch(() => toast.error("Couldn't load settings"))
       .finally(() => setLoading(false));
@@ -143,6 +152,27 @@ export function AdminSettings() {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
     } finally {
       setSavingLimits(false);
+    }
+  }
+
+  async function saveCf(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSavingCf(true);
+    try {
+      const body: Partial<SettingsDTO & { cfApiToken: string }> = {
+        cfZoneId,
+        cfFallbackHost,
+      };
+      if (cfToken.trim()) body.cfApiToken = cfToken.trim();
+      const updated = await api.patch<SettingsDTO>("/admin/settings", body);
+      setSettings(updated);
+      setCfConfigured(updated.cfConfigured);
+      setCfToken("");
+      toast.success("Custom domain settings saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Update failed");
+    } finally {
+      setSavingCf(false);
     }
   }
 
@@ -291,6 +321,55 @@ export function AdminSettings() {
               </div>
               <Button type="submit" disabled={savingLimits}>
                 {savingLimits && <Loader2 className="animate-spin" />}
+                Save
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Custom domains</CardTitle>
+          <CardDescription>
+            Optional. Add Cloudflare for SaaS credentials and members’ domains connect
+            automatically (CNAME + TLS). Leave blank for free DNS-verify only.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-9 w-full" />
+          ) : (
+            <form onSubmit={saveCf} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="cfToken">
+                  Cloudflare API token{" "}
+                  {cfConfigured && (
+                    <span className="font-normal text-emerald-600">· configured</span>
+                  )}
+                </Label>
+                <Input
+                  id="cfToken"
+                  type="password"
+                  value={cfToken}
+                  onChange={(e) => setCfToken(e.target.value)}
+                  placeholder={cfConfigured ? "•••••••• (leave blank to keep)" : "Token with SSL & Certificates: Edit"}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cfZone">Zone ID</Label>
+                <Input id="cfZone" value={cfZoneId} onChange={(e) => setCfZoneId(e.target.value)} placeholder="your Cloudflare zone id" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cfFallback">
+                  Fallback host{" "}
+                  <span className="font-normal text-muted-foreground">(optional — members CNAME to this)</span>
+                </Label>
+                <Input id="cfFallback" value={cfFallbackHost} onChange={(e) => setCfFallbackHost(e.target.value)} placeholder="defaults to this app's domain" />
+              </div>
+              <Button type="submit" disabled={savingCf}>
+                {savingCf && <Loader2 className="animate-spin" />}
                 Save
               </Button>
             </form>
