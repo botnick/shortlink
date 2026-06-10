@@ -45,7 +45,13 @@ export async function getCachedLink(
   domainId: string | null,
   slug: string,
 ): Promise<CachedLink | null> {
-  return kv.get<CachedLink>(key(domainId, slug), "json");
+  try {
+    return await kv.get<CachedLink>(key(domainId, slug), "json");
+  } catch {
+    // KV unavailable / over its read quota → treat as a miss so the caller
+    // falls through to the database (the source of truth) instead of 500ing.
+    return null;
+  }
 }
 
 export async function putCachedLink(
@@ -54,9 +60,14 @@ export async function putCachedLink(
   slug: string,
   value: CachedLink,
 ): Promise<void> {
-  await kv.put(key(domainId, slug), JSON.stringify(value), {
-    expirationTtl: TTL_SECONDS,
-  });
+  try {
+    await kv.put(key(domainId, slug), JSON.stringify(value), {
+      expirationTtl: TTL_SECONDS,
+    });
+  } catch {
+    // KV write blip / over quota — the cache just stays cold; the DB still
+    // serves. Never let a cache-warm failure surface to the visitor.
+  }
 }
 
 export async function deleteCachedLink(

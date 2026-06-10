@@ -1,5 +1,6 @@
 import { getDbHandle } from "../db";
 import type { AppBindings } from "../env";
+import { DEFAULT_APP_NAME, DEFAULT_BRAND_COLOR } from "@shared/defaults";
 import {
   appNameFrom,
   brandColorFrom,
@@ -12,6 +13,23 @@ import {
 
 const KEY = "seo:v1";
 
+// In-isolate memo so repeated HTML loads on a warm isolate don't pay a KV read
+// each; tiny TTL keeps branding edits near-live. Doubles as the stale fallback.
+let memo: { bundle: SeoBundle; until: number } | null = null;
+const MEMO_MS = 30_000;
+
+function defaultBundle(env: AppBindings): SeoBundle {
+  return {
+    appName: DEFAULT_APP_NAME,
+    description: "",
+    brandColor: DEFAULT_BRAND_COLOR,
+    logo: "",
+    ogImage: "",
+    indexable: true,
+    appUrl: env.APP_URL,
+  };
+}
+
 export interface SeoBundle {
   appName: string;
   description: string;
@@ -22,27 +40,46 @@ export interface SeoBundle {
   appUrl: string;
 }
 
-/** Cached in KV so the per-request HTML injection rarely touches the DB. */
+/** Cached in KV so the per-request HTML injection rarely touches the DB. Every
+ *  layer degrades to the next (memo → KV → DB → stale memo → defaults) so the
+ *  SPA shell still paints when KV is over quota or the DB is unavailable. */
 export async function getSeoBundle(env: AppBindings): Promise<SeoBundle> {
-  const cached = await env.LINKS_KV.get<SeoBundle>(KEY, "json");
-  if (cached) return cached;
+  const now = Date.now();
+  if (memo && memo.until > now) return memo.bundle;
 
-  const { db, schema, close } = getDbHandle(env);
   try {
-    const map = await getAllSettings(db, schema);
-    const bundle: SeoBundle = {
-      appName: appNameFrom(map),
-      description: descriptionFrom(map),
-      brandColor: brandColorFrom(map),
-      logo: logoFrom(map),
-      ogImage: ogImageFrom(map) || logoFrom(map),
-      indexable: indexableFrom(map),
-      appUrl: env.APP_URL,
-    };
-    await env.LINKS_KV.put(KEY, JSON.stringify(bundle), { expirationTtl: 3600 });
-    return bundle;
-  } finally {
-    await close().catch(() => {});
+    const cached = await env.LINKS_KV.get<SeoBundle>(KEY, "json");
+    if (cached) {
+      memo = { bundle: cached, until: now + MEMO_MS };
+      return cached;
+    }
+  } catch {
+    // KV unavailable / over read quota → fall back to the DB (and stale memo).
+  }
+
+  try {
+    const { db, schema, close } = getDbHandle(env);
+    try {
+      const map = await getAllSettings(db, schema);
+      const bundle: SeoBundle = {
+        appName: appNameFrom(map),
+        description: descriptionFrom(map),
+        brandColor: brandColorFrom(map),
+        logo: logoFrom(map),
+        ogImage: ogImageFrom(map) || logoFrom(map),
+        indexable: indexableFrom(map),
+        appUrl: env.APP_URL,
+      };
+      await env.LINKS_KV.put(KEY, JSON.stringify(bundle), { expirationTtl: 3600 }).catch(() => {});
+      memo = { bundle, until: now + MEMO_MS };
+      return bundle;
+    } finally {
+      await close().catch(() => {});
+    }
+  } catch {
+    // DB also down — serve the last good bundle, else safe defaults, so the
+    // page still renders (just with default branding) instead of 500ing.
+    return memo?.bundle ?? defaultBundle(env);
   }
 }
 

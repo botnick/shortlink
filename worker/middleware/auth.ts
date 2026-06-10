@@ -17,15 +17,21 @@ export const loadSession = createMiddleware<AppEnv>(async (c, next) => {
 
   const token = await readSessionCookie(c);
   if (token) {
-    const result = await validateSession(c.var.db, c.var.schema, token);
-    if (result) {
-      c.set("user", result.user);
-      c.set("sessionId", token);
-      if (result.renewed) {
-        await setSessionCookie(c, token, result.expiresAt);
+    try {
+      const result = await validateSession(c.var.db, c.var.schema, token);
+      if (result) {
+        c.set("user", result.user);
+        c.set("sessionId", token);
+        if (result.renewed) {
+          await setSessionCookie(c, token, result.expiresAt);
+        }
+      } else {
+        clearSessionCookie(c);
       }
-    } else {
-      clearSessionCookie(c);
+    } catch {
+      // DB unavailable — treat this request as unauthenticated rather than
+      // 500ing every /api/* call (login/logout included). Keep the cookie; the
+      // session is likely still valid once the DB recovers.
     }
   }
 
