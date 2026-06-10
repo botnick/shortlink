@@ -169,7 +169,11 @@ export const clicks = sqliteTable(
     // Bot/automation traffic — kept for auditing, excluded from analytics.
     isBot: integer({ mode: "boolean" }),
   },
-  (t) => [index("clicks_link_created_idx").on(t.linkId, t.createdAt)],
+  (t) => [
+    index("clicks_link_created_idx").on(t.linkId, t.createdAt),
+    // Mirrors schema.ts — global analytics filter created_at alone.
+    index("clicks_created_idx").on(t.createdAt),
+  ],
 );
 
 export const settings = sqliteTable("settings", {

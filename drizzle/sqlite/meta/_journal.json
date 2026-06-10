@@ -127,6 +127,13 @@
       "when": 1781038913683,
       "tag": "0017_absent_stepford_cuckoos",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1781109268614,
+      "tag": "0018_smooth_agent_zero",
+      "breakpoints": true
     }
   ]
 }

@@ -183,7 +183,13 @@ export const clicks = pgTable(
     // excluded from analytics; null on legacy rows = treated as human.
     isBot: boolean(),
   },
-  (t) => [index("clicks_link_created_idx").on(t.linkId, t.createdAt)],
+  (t) => [
+    index("clicks_link_created_idx").on(t.linkId, t.createdAt),
+    // Global, link-agnostic analytics (admin overview/analytics) filter on
+    // created_at alone — the composite above can't serve that, so without this
+    // those aggregates are full-table scans that grow with the clicks history.
+    index("clicks_created_idx").on(t.createdAt),
+  ],
 );
 
 export const settings = pgTable("settings", {
