@@ -33,7 +33,11 @@ export function routeDestination(
   return link.destination;
 }
 
-const TTL_SECONDS = 60 * 60; // 1h backstop; we also invalidate on edit/delete
+// 24h backstop only — correctness comes from explicit invalidation on every
+// edit/delete (refreshLinkCache/purgeLinkCache), and expiry/active/password are
+// re-evaluated from the payload at request time. A long TTL keeps the lazy
+// re-fill from rewriting hot entries hourly (which would eat the KV write cap).
+const TTL_SECONDS = 60 * 60 * 24;
 
 // The cache key is scoped by domain so the same slug can live on more than one
 // host (per-domain custom back-halves). `null` = the default short host bucket.

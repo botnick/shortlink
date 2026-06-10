@@ -95,7 +95,9 @@ export function LinkStats() {
       .finally(() => setLoading(false));
   }, [id, range]);
 
-  // Live activity feed: poll every 10s while the Overview tab is visible.
+  // Live activity feed: poll every 30s while the Overview tab is visible.
+  // (Kept off background tabs and at a 30s cadence so an open dashboard doesn't
+  // quietly burn the Worker request budget — see the redirect-scale notes.)
   useEffect(() => {
     if (tab !== "overview") return;
     let active = true;
@@ -107,7 +109,7 @@ export function LinkStats() {
         .catch(() => {});
     };
     load();
-    const t = setInterval(load, 10_000);
+    const t = setInterval(load, 30_000);
     return () => {
       active = false;
       clearInterval(t);
