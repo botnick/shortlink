@@ -1,24 +1,57 @@
 import { bytesToHex, hexToBytes, timingSafeEqual } from "./encoding";
 
 /**
- * PBKDF2-HMAC-SHA256 via the native Web Crypto API (available in both the
- * Workers runtime and Node 20+). Native execution keeps us inside the Workers
- * CPU budget while staying an OWASP-recommended KDF. Kept dependency-free and
- * separate from session logic so the seed script can reuse it without pulling
- * in Worker-only bindings.
+ * Password hashing tuned for the Workers free-tier 10 ms CPU budget.
+ *
+ * A high PBKDF2 iteration count (OWASP's 600k) costs ~120 ms of CPU — it blows
+ * the 10 ms per-request limit and the request is killed (Error 1102). So we
+ * combine a MODEST iteration count with a server-side PEPPER: the password is
+ * first HMAC-SHA256'd with a secret (`SESSION_SECRET`) that lives only in the
+ * Worker env, never in the database. A database-only leak (the realistic breach:
+ * SQL injection, leaked backup, stolen DB creds) is then unbruteforceable — the
+ * attacker also needs the env secret — so the lower iteration count is safe AND
+ * fits the CPU budget. The iterations only add cost in a FULL server compromise
+ * (DB *and* SESSION_SECRET leak), which is already game-over for sessions.
+ *
+ * This is OWASP-endorsed (Password Storage Cheat Sheet: pepper + PBKDF2). Native
+ * Web Crypto (Workers + Node 20+), dependency-free. Old unpeppered hashes
+ * (`pbkdf2-sha256$…`) still verify for backward compatibility; `needsRehash`
+ * lets callers transparently upgrade them on the next successful login.
  */
-const PBKDF2_ITERATIONS = 600_000;
+// Measured on the workerd runtime (wrangler dev): 20k≈5.5 ms, 30k≈8.3 ms,
+// 50k≈13.8 ms. The login request also spends CPU on the human-check + session,
+// so we leave margin under the 10 ms cap → 20k (~5.5 ms). The PEPPER, not the
+// iteration count, is the real defense (see header), so a modest count is safe.
+const PBKDF2_ITERATIONS = 20_000;
 const SALT_BYTES = 16;
 const KEY_BYTES = 32;
+const SCHEME = "pbkdf2p1"; // peppered v1
+const LEGACY_SCHEME = "pbkdf2-sha256"; // pre-pepper hashes (verify-only, back-compat)
+
+const encoder = new TextEncoder();
+
+/** HMAC-SHA256(secret, password) — binds the hash to the env secret (the pepper).
+ *  One HMAC, so it adds no meaningful CPU. */
+async function pepper(password: string, secret: string): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(password));
+  return new Uint8Array(sig);
+}
 
 async function deriveKey(
-  password: string,
+  material: Uint8Array,
   salt: Uint8Array,
   iterations: number,
 ): Promise<Uint8Array> {
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    new Uint8Array(new TextEncoder().encode(password)),
+    new Uint8Array(material),
     { name: "PBKDF2" },
     false,
     ["deriveBits"],
@@ -31,22 +64,38 @@ async function deriveKey(
   return new Uint8Array(bits);
 }
 
-export async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string, secret: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
-  const key = await deriveKey(password, salt, PBKDF2_ITERATIONS);
-  return `pbkdf2-sha256$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${bytesToHex(key)}`;
+  const key = await deriveKey(await pepper(password, secret), salt, PBKDF2_ITERATIONS);
+  return `${SCHEME}$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${bytesToHex(key)}`;
 }
 
 export async function verifyPassword(
   password: string,
   stored: string,
+  secret: string,
 ): Promise<boolean> {
   const parts = stored.split("$");
-  if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256") return false;
-  const iterations = Number(parts[1]);
+  if (parts.length !== 4) return false;
+  const [scheme, iterStr, saltHex, expectedHex] = parts;
+  const iterations = Number(iterStr);
   if (!Number.isInteger(iterations) || iterations < 1) return false;
-  const salt = hexToBytes(parts[2]);
-  const expected = hexToBytes(parts[3]);
-  const actual = await deriveKey(password, salt, iterations);
-  return timingSafeEqual(actual, expected);
+
+  let material: Uint8Array;
+  if (scheme === SCHEME) {
+    material = await pepper(password, secret);
+  } else if (scheme === LEGACY_SCHEME) {
+    material = encoder.encode(password); // pre-pepper hash — verify as the old code did
+  } else {
+    return false;
+  }
+  const actual = await deriveKey(material, hexToBytes(saltHex), iterations);
+  return timingSafeEqual(actual, hexToBytes(expectedHex));
+}
+
+/** True when `stored` isn't the current scheme/iterations — re-hash it (with the
+ *  plaintext the user just supplied) on the next successful verify to upgrade. */
+export function needsRehash(stored: string): boolean {
+  const parts = stored.split("$");
+  return parts[0] !== SCHEME || Number(parts[1]) !== PBKDF2_ITERATIONS;
 }

@@ -14,6 +14,7 @@ import {
   sum,
 } from "drizzle-orm";
 import type { AppEnv } from "../env";
+import { readDeceptionCounts } from "../lib/captcha/escalation";
 import { buildShortUrl, invalidateDomainHost } from "../lib/domainScope";
 import { softDeleteUser } from "../lib/accountLifecycle";
 import { purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
@@ -29,6 +30,19 @@ import {
   authRateLimitFrom,
   blockedDomainsFrom,
   brandColorFrom,
+  captchaChallengeTtlFrom,
+  captchaCreateLimitFrom,
+  captchaGamesFrom,
+  captchaMaxEventsFrom,
+  captchaMaxGamesFrom,
+  captchaMaxRetriesFrom,
+  captchaMinGamesFrom,
+  captchaRiskHighFrom,
+  captchaRiskMediumFrom,
+  captchaToleranceFrom,
+  captchaTokenTtlFrom,
+  captchaVerifyLimitFrom,
+  captchaEnforceFrom,
   challengeModeFrom,
   createRateLimitFrom,
   emailBlockDaysFrom,
@@ -118,6 +132,19 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     emailBlockDays: emailBlockDaysFrom(map),
     challengeMode: challengeModeFrom(map),
     powDifficulty: powDifficultyFrom(map),
+    captchaGames: captchaGamesFrom(map),
+    captchaMinGames: captchaMinGamesFrom(map),
+    captchaMaxGames: captchaMaxGamesFrom(map),
+    captchaChallengeTtl: captchaChallengeTtlFrom(map),
+    captchaTokenTtl: captchaTokenTtlFrom(map),
+    captchaMaxRetries: captchaMaxRetriesFrom(map),
+    captchaMaxEvents: captchaMaxEventsFrom(map),
+    captchaRiskMedium: captchaRiskMediumFrom(map),
+    captchaRiskHigh: captchaRiskHighFrom(map),
+    captchaTolerance: captchaToleranceFrom(map),
+    captchaCreateLimit: captchaCreateLimitFrom(map),
+    captchaVerifyLimit: captchaVerifyLimitFrom(map),
+    captchaEnforce: captchaEnforceFrom(map),
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
@@ -134,6 +161,45 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
 admin.get("/settings", async (c) => {
   const map = await getAllSettings(c.var.db, c.var.schema);
   return c.json(toSettingsDTO(map));
+});
+
+// Human-check observability (Phase G). Aggregates over the LIVE challenge rows
+// (kept ~minutes before the cron purges them), so it adds NO writes — it just
+// reads what's already there. Shows pass/lock rates + the risk-score spread so
+// an admin can tune thresholds (and run shadow mode) on real traffic.
+admin.get("/captcha-stats", async (c) => {
+  const db = c.var.db;
+  const { humanChallenges } = c.var.schema;
+  const map = await getAllSettings(db, c.var.schema);
+  const riskHigh = captchaRiskHighFrom(map);
+  const rows = await db
+    .select({ status: humanChallenges.status, risk: humanChallenges.riskScore })
+    .from(humanChallenges);
+  let active = 0, done = 0, locked = 0, wouldBlock = 0, riskSum = 0, riskMax = 0;
+  for (const r of rows) {
+    if (r.status === "active") active++;
+    else if (r.status === "done") done++;
+    else if (r.status === "locked") locked++;
+    riskSum += r.risk;
+    if (r.risk > riskMax) riskMax = r.risk;
+    if (r.risk >= riskHigh) wouldBlock++;
+  }
+  const total = rows.length;
+  // Security Deception Monitor — rolling per-kind trap counters.
+  const deception = await readDeceptionCounts(c.env);
+  return c.json({
+    window: "live (unpurged challenges)",
+    total,
+    active,
+    done,
+    locked,
+    wouldBlockAtThreshold: wouldBlock,
+    avgRisk: total ? Math.round(riskSum / total) : 0,
+    maxRisk: riskMax,
+    riskHigh,
+    enforcing: captchaEnforceFrom(map),
+    deception,
+  });
 });
 
 admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
@@ -217,6 +283,45 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.challengeMode !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.challengeMode, input.challengeMode);
+  }
+  if (input.captchaGames !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaGames, input.captchaGames);
+  }
+  if (input.captchaMinGames !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaMinGames, input.captchaMinGames);
+  }
+  if (input.captchaMaxGames !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaMaxGames, input.captchaMaxGames);
+  }
+  if (input.captchaChallengeTtl !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaChallengeTtl, input.captchaChallengeTtl);
+  }
+  if (input.captchaTokenTtl !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaTokenTtl, input.captchaTokenTtl);
+  }
+  if (input.captchaMaxRetries !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaMaxRetries, input.captchaMaxRetries);
+  }
+  if (input.captchaMaxEvents !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaMaxEvents, input.captchaMaxEvents);
+  }
+  if (input.captchaRiskMedium !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaRiskMedium, input.captchaRiskMedium);
+  }
+  if (input.captchaRiskHigh !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaRiskHigh, input.captchaRiskHigh);
+  }
+  if (input.captchaTolerance !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaTolerance, input.captchaTolerance);
+  }
+  if (input.captchaCreateLimit !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaCreateLimit, input.captchaCreateLimit);
+  }
+  if (input.captchaVerifyLimit !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaVerifyLimit, input.captchaVerifyLimit);
+  }
+  if (input.captchaEnforce !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaEnforce, input.captchaEnforce);
   }
   // Custom-domain (Cloudflare for SaaS) config — set via the web, no env vars.
   // An empty token clears it; a blank token is ignored so it isn't wiped on save.
@@ -536,7 +641,7 @@ admin.post("/users", zValidator("json", createUserSchema), async (c) => {
   if (existing.length > 0) {
     return c.json({ error: "A member with that email already exists" }, 409);
   }
-  const passwordHash = await hashPassword(password);
+  const passwordHash = await hashPassword(password, c.env.SESSION_SECRET);
   const row = (
     await db
       .insert(users)
@@ -563,7 +668,7 @@ admin.post(
     const id = c.req.param("id");
     if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
     const { users, sessions } = c.var.schema;
-    const passwordHash = await hashPassword(c.req.valid("json").password);
+    const passwordHash = await hashPassword(c.req.valid("json").password, c.env.SESSION_SECRET);
     const rows = await c.var.db
       .update(users)
       .set({ passwordHash })

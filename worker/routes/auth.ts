@@ -3,16 +3,18 @@ import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
 import type { AppContext, AppEnv, SessionUser } from "../env";
 import { createSession, invalidateSession } from "../lib/auth";
-import { hashPassword, verifyPassword } from "../lib/password";
+import { getDbHandle } from "../db";
+import { hashPassword, needsRehash, verifyPassword } from "../lib/password";
 import { clearSessionCookie, setSessionCookie } from "../lib/cookies";
 import {
   SETTING_KEYS,
   authRateLimitFrom,
   challengeModeFrom,
   getAllSettings,
-  powDifficultyFrom,
 } from "../lib/settings";
-import { issueChallenge, verifyGame, verifySolution } from "../lib/pow";
+import { consumeHumanToken } from "../lib/captcha/service";
+import { recordCheckFailure } from "../lib/captcha/escalation";
+import type { CaptchaAction } from "@shared/captcha";
 import { isEmailBlocked } from "../lib/accountLifecycle";
 import { isRateLimited } from "../lib/ratelimit";
 import { getClientIp, getCountry, parseUserAgent } from "../lib/geo";
@@ -34,46 +36,37 @@ async function authThrottled(c: AppContext, map: Record<string, unknown>) {
 }
 
 interface ChallengeEvidence {
-  challenge?: string;
-  solution?: string;
-  gamePos?: number;
-  gameDuration?: number;
-  gameMoves?: number;
+  humanToken?: string;
   website?: string;
 }
 
 /**
- * The human check shared by sign-in and sign-up. Layers, all of which must
- * pass when enabled: honeypot empty → proof-of-work (HMAC-signed, IP-bound,
- * single-use, real CPU burned) → in game mode, the slider released on the
- * server-chosen target with human-looking motion. Always fails generically.
+ * The human check shared by sign-in and sign-up. The heavy lifting (games,
+ * proof-of-work, interaction risk) already happened in /api/captcha/*; what
+ * arrives here is a one-time verification token, redeemed ATOMICALLY and bound
+ * to this exact action + hostname + caller. The protected action never runs on
+ * a token that is missing, expired, replayed, or minted for anything else.
+ * Always fails generically — the reason is never disclosed.
  */
 async function verifyHumanity(
   c: AppContext,
   map: Record<string, unknown>,
   body: ChallengeEvidence,
+  action: CaptchaAction,
 ): Promise<boolean> {
   const ip = getClientIp(c) ?? "";
   const fail = async () => {
     // Feed the adaptive escalator — this IP's next challenge costs double.
-    c.executionCtx.waitUntil(recordCheckFailure(c, ip).catch(() => {}));
+    c.executionCtx.waitUntil(recordCheckFailure(c.env, ip).catch(() => {}));
     return false;
   };
   if (body.website) return fail(); // honeypot
   const mode = challengeModeFrom(map);
-  if (mode === "off") return true;
-  const difficulty = powDifficultyFrom(map);
-  if (difficulty > 0) {
-    const ok = await verifySolution(c.env, ip, difficulty, body.challenge, body.solution);
-    if (!ok) return fail();
-  }
-  if (mode === "game") {
-    const ok = verifyGame(body.challenge ?? "", {
-      pos: body.gamePos,
-      duration: body.gameDuration,
-      moves: body.gameMoves,
-    });
-    if (!ok) return fail();
+  if (mode === "disabled") return true;
+  // Fail closed: when verification is on, no token (or a service hiccup while
+  // checking one) means no account action — auth is a high-stakes path.
+  if (!(await consumeHumanToken(c, body.humanToken, action).catch(() => false))) {
+    return fail();
   }
   return true;
 }
@@ -84,34 +77,8 @@ function toUserDTO(u: SessionUser): UserDTO {
   return { id: u.id, email: u.email, role: u.role };
 }
 
-// Adaptive difficulty: every human-check failure from an IP doubles the CPU its
-// NEXT challenge costs (max +6 bits = 64×). Real users never fail (the client
-// only submits after solving), so they never escalate — zero false positives;
-// grinding bots price themselves out exponentially.
-const ESCALATE_TTL = 3600;
-const ESCALATE_MAX = 6;
-
-async function escalationFor(c: AppContext, ip: string): Promise<number> {
-  const n = Number(await c.env.LINKS_KV.get(`powfail:${ip}`)) || 0;
-  return Math.min(ESCALATE_MAX, n);
-}
-
-async function recordCheckFailure(c: AppContext, ip: string): Promise<void> {
-  const key = `powfail:${ip}`;
-  const n = Number(await c.env.LINKS_KV.get(key)) || 0;
-  await c.env.LINKS_KV.put(key, String(n + 1), { expirationTtl: ESCALATE_TTL });
-}
-
-// Hand the browser a proof-of-work challenge it solves in the background
-// (humans never interact with the PoW itself).
-auth.get("/challenge", async (c) => {
-  const map = await getAllSettings(c.var.db, c.var.schema);
-  const base = powDifficultyFrom(map);
-  if (base <= 0) return c.json({ challenge: null, difficulty: 0 });
-  const ip = getClientIp(c) ?? "";
-  const difficulty = Math.min(26, base + (await escalationFor(c, ip)));
-  return c.json(await issueChallenge(c.env, ip, difficulty));
-});
+// The v2 GET /challenge endpoint is gone: the human check now lives at
+// /api/captcha/challenge + /api/captcha/verify (worker/routes/captcha.ts).
 
 auth.post("/register", zValidator("json", registerSchema), async (c) => {
   const db = c.var.db;
@@ -128,7 +95,7 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
   const body = c.req.valid("json");
   const { email, password } = body;
 
-  if (!(await verifyHumanity(c, map, body))) {
+  if (!(await verifyHumanity(c, map, body, "register"))) {
     return c.json({ error: "Verification failed — please try again" }, 403);
   }
 
@@ -148,11 +115,11 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
     existing.length > 0 ||
     (tombstone[0] && isEmailBlocked(tombstone[0].deletedAt, map))
   ) {
-    await hashPassword(password); // equalize timing
+    await hashPassword(password, c.env.SESSION_SECRET); // equalize timing
     return c.json({ error: "Unable to register with those details" }, 409);
   }
 
-  const passwordHash = await hashPassword(password);
+  const passwordHash = await hashPassword(password, c.env.SESSION_SECRET);
   const inserted = await db
     .insert(users)
     .values({ email, passwordHash })
@@ -174,7 +141,7 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const body = c.req.valid("json");
   const { email, password } = body;
 
-  if (!(await verifyHumanity(c, map, body))) {
+  if (!(await verifyHumanity(c, map, body, "login"))) {
     return c.json({ error: "Verification failed — please try again" }, 403);
   }
 
@@ -193,15 +160,35 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const user = rows[0];
   if (!user) {
     // Burn equivalent time so unknown accounts aren't distinguishable.
-    await hashPassword(password);
+    await hashPassword(password, c.env.SESSION_SECRET);
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
   // A closed (soft-deleted) account can never sign in; verify first so the
   // timing matches a wrong password, and keep the message generic.
-  const valid = await verifyPassword(password, user.passwordHash);
+  const valid = await verifyPassword(password, user.passwordHash, c.env.SESSION_SECRET);
   if (!valid || user.deletedAt) {
     return c.json({ error: "Invalid email or password" }, 401);
+  }
+
+  // Upgrade a legacy / lower-cost hash to the current peppered scheme on a
+  // successful login — off the response path, with its own DB handle (the
+  // request handle is closed in waitUntil after we respond).
+  if (needsRehash(user.passwordHash)) {
+    c.executionCtx.waitUntil(
+      (async () => {
+        const upgraded = await hashPassword(password, c.env.SESSION_SECRET);
+        const { db: db2, schema, close } = getDbHandle(c.env);
+        try {
+          await db2
+            .update(schema.users)
+            .set({ passwordHash: upgraded })
+            .where(eq(schema.users.id, user.id));
+        } finally {
+          await close();
+        }
+      })().catch(() => {}),
+    );
   }
 
   const session = await createSession(db, c.var.schema, user.id, sessionMeta(c));

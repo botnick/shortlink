@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_BRAND_COLOR } from "@shared/defaults";
+import { POOL_GAME_TYPES } from "@shared/captcha";
 
 const httpUrl = z
   .string()
@@ -39,14 +40,11 @@ const longText = z
   .max(800_000, "Image is too large — please use a smaller file");
 const description = z.string().trim().max(300);
 
-// Human-check evidence sent with sign-in and sign-up when the admin enables it:
-// the solved proof-of-work, the slider-game telemetry, and a honeypot field.
+// Human-check fields sent with sign-in and sign-up when the admin enables it:
+// the one-time verification token minted by /api/captcha/verify, plus a
+// honeypot field.
 const challengeFields = {
-  challenge: z.string().max(2048).optional(),
-  solution: z.string().max(64).optional(),
-  gamePos: z.number().finite().optional(),
-  gameDuration: z.number().finite().optional(),
-  gameMoves: z.number().finite().optional(),
+  humanToken: z.string().max(200).optional(),
   // Honeypot — humans never fill this; bots that do are rejected generically.
   website: z.string().max(200).optional(),
 };
@@ -117,7 +115,32 @@ export const settingsSchema = z
     accountHoldDays: z.number().int().min(0).max(3650).optional(),
     emailBlockDays: z.number().int().min(0).max(3650).optional(),
     powDifficulty: z.number().int().min(0).max(26).optional(),
-    challengeMode: z.enum(["off", "invisible", "game"]).optional(),
+    // v3 modes; "off"/"game" are the legacy v2 spellings, still accepted so
+    // older clients/tests keep working (the getter maps them).
+    challengeMode: z
+      .enum(["disabled", "invisible", "game-only", "off", "game", "forced-game"])
+      .optional(),
+    // Pool of visual games the admin can enable. Bound to the shared
+    // POOL_GAME_TYPES so it can never drift out of sync (it was missing
+    // "slide", which rejected the default games list). key-count is excluded
+    // by design — it's the keyboard-only fallback, not part of the rotation.
+    captchaGames: z
+      .array(z.enum(POOL_GAME_TYPES))
+      .min(1)
+      .max(POOL_GAME_TYPES.length)
+      .optional(),
+    captchaMinGames: z.number().int().min(1).max(3).optional(),
+    captchaMaxGames: z.number().int().min(1).max(3).optional(),
+    captchaChallengeTtl: z.number().int().min(30).max(600).optional(),
+    captchaTokenTtl: z.number().int().min(60).max(900).optional(),
+    captchaMaxRetries: z.number().int().min(1).max(10).optional(),
+    captchaMaxEvents: z.number().int().min(50).max(1000).optional(),
+    captchaRiskMedium: z.number().int().min(1).max(100).optional(),
+    captchaRiskHigh: z.number().int().min(1).max(100).optional(),
+    captchaTolerance: z.enum(["lenient", "standard", "strict"]).optional(),
+    captchaCreateLimit: z.number().int().min(0).max(10_000).optional(),
+    captchaVerifyLimit: z.number().int().min(0).max(10_000).optional(),
+    captchaEnforce: z.boolean().optional(),
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),
@@ -160,6 +183,59 @@ export const settingsSchema = z
 
 export const apiKeyCreateSchema = z.object({
   name: z.string().trim().min(1, "Give the key a name").max(40),
+});
+
+// --- Human check v3 (interactive game CAPTCHA) --------------------------------
+
+export const captchaChallengeSchema = z.object({
+  action: z.enum(["login", "register"]),
+  // Phase H: opt into the non-visual, keyboard-only accessible challenge.
+  accessible: z.boolean().optional(),
+});
+
+// One compact interaction event. Coordinates are scene units (0–100, slack for
+// edge overshoot); offsets are bounded by the longest possible challenge.
+const captchaEventSchema = z.object({
+  t: z.enum(["pointer-down", "pointer-move", "pointer-up", "key-down"]),
+  x: z.number().min(-10).max(110).optional(),
+  y: z.number().min(-10).max(110).optional(),
+  targetId: z.string().max(16).optional(),
+  offsetMs: z.number().min(0).max(600_000),
+});
+
+// Static ceiling of 1000 events — the admin-set per-challenge cap (default
+// 300) is enforced in the service on top of this transport bound.
+export const captchaVerifySchema = z.object({
+  ref: z.string().regex(/^hc1_[0-9a-f]{64}$/),
+  powSolution: z.string().max(64).optional(),
+  gameId: z.string().max(16).optional(),
+  answer: z.unknown().optional(),
+  evidence: z
+    .object({
+      startedAtOffsetMs: z.number().min(0).max(600_000),
+      completedAtOffsetMs: z.number().min(0).max(600_000),
+      viewport: z.object({
+        w: z.number().min(0).max(100_000),
+        h: z.number().min(0).max(100_000),
+        dpr: z.number().min(0).max(16),
+      }),
+      inputMode: z.enum(["mouse", "touch", "pen", "keyboard", "mixed"]),
+      events: z.array(captchaEventSchema).max(1000),
+      signals: z
+        .object({
+          webdriver: z.boolean().optional(),
+          touch: z.boolean().optional(),
+          softwareRender: z.boolean().optional(),
+          headlessHints: z.number().int().min(0).max(20).optional(),
+          pageDwellMs: z.number().min(0).max(86_400_000).optional(),
+          interactedBefore: z.boolean().optional(),
+          automationMarkers: z.number().int().min(0).max(50).optional(),
+          untrusted: z.boolean().optional(),
+          clientCanary: z.boolean().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 // --- Account self-service (all require the current password) ------------------

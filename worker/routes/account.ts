@@ -48,7 +48,7 @@ async function checkPassword(
     .where(eq(users.id, c.var.user!.id))
     .limit(1);
   const hash = rows[0]?.passwordHash;
-  return Boolean(hash) && verifyPassword(currentPassword, hash!);
+  return Boolean(hash) && verifyPassword(currentPassword, hash!, c.env.SESSION_SECRET);
 }
 
 // Summary for the account page: email, role, member-since, session count.
@@ -84,7 +84,7 @@ route.patch("/password", zValidator("json", changePasswordSchema), async (c) => 
   const { users, sessions } = c.var.schema;
   await c.var.db
     .update(users)
-    .set({ passwordHash: await hashPassword(newPassword) })
+    .set({ passwordHash: await hashPassword(newPassword, c.env.SESSION_SECRET) })
     .where(eq(users.id, c.var.user!.id));
   await c.var.db
     .delete(sessions)

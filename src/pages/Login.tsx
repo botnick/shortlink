@@ -1,11 +1,16 @@
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useConfig } from "@/lib/config";
 import { ApiError } from "@/lib/api";
-import { HumanCheck, type HumanPayload } from "@/components/HumanCheck";
+import type { HumanPayload } from "@/components/HumanCheck";
+// Lazy: keep the whole captcha (8 games + 11 themes + recorder + PoW) out of the
+// login critical-path bundle; it streams in while the user reads the form.
+const HumanCheck = lazy(() =>
+  import("@/components/HumanCheck").then((m) => ({ default: m.HumanCheck })),
+);
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,8 +32,8 @@ export function Login() {
   const [submitting, setSubmitting] = useState(false);
   // Honeypot — invisible to humans; bots that fill it are rejected.
   const [website, setWebsite] = useState("");
-  // Human check (invisible PoW or slider game, per admin setting).
-  const checkOn = config.challengeMode !== "off";
+  // Human check (invisible / game, per admin setting).
+  const checkOn = config.challengeMode !== "disabled";
   const [human, setHuman] = useState<HumanPayload | null>(null);
   const [hcNonce, setHcNonce] = useState(0);
 
@@ -108,7 +113,11 @@ export function Login() {
               />
             </div>
 
-            {checkOn && <HumanCheck nonce={hcNonce} onChange={setHuman} />}
+            {checkOn && (
+              <Suspense fallback={<div className="h-24 animate-pulse rounded-xl border bg-muted/30" />}>
+                <HumanCheck action="login" nonce={hcNonce} onChange={setHuman} />
+              </Suspense>
+            )}
 
             <Button type="submit" className="w-full" disabled={!canSubmit}>
               {submitting && <Loader2 className="animate-spin" />}

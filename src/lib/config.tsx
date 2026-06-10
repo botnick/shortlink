@@ -35,7 +35,7 @@ const DEFAULT: AppConfigDTO = {
   apiEnabled: true,
   mcpEnabled: true,
   slugLength: 6,
-  challengeMode: "off",
+  challengeMode: "disabled",
   powDifficulty: 0,
 };
 

@@ -36,7 +36,7 @@ setup.post("/", zValidator("json", setupSchema), async (c) => {
     return c.json({ error: "Invalid setup token" }, 403);
   }
 
-  const passwordHash = await hashPassword(input.password);
+  const passwordHash = await hashPassword(input.password, c.env.SESSION_SECRET);
   const db = c.var.db;
   const { settings, users } = c.var.schema;
 

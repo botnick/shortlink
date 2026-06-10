@@ -58,6 +58,14 @@
       "bucket_name": "shortlink-logos"
     }
   ],
+  // Exact rate-limit counter for the human check (Phase F). SQLite-backed, so it
+  // runs on the Workers FREE plan; the migration below registers the class. The
+  // worker falls back to the KV limiter if this binding is ever absent, so it's
+  // safe to remove. Local dev simulates it automatically.
+  "durable_objects": {
+    "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }],
   // Set this to your own short-link domain (its zone must be on Cloudflare).
   // Short links live at <your-domain>/<slug>.
   "routes": [

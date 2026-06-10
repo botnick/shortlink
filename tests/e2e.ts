@@ -206,6 +206,16 @@ async function main() {
     const c = await req("GET", "/api/config");
     check("config.needsSetup false after setup", c.json?.needsSetup === false, c.json);
     check("config.appName persisted", c.json?.appName === "Test App", c.json);
+
+    // Turn the human check OFF for the rest of this suite — these tests cover
+    // links/auth/admin, not the interactive CAPTCHA (which has its own suite,
+    // tests/captcha.ts). With it on (the default), every login/register here
+    // would 403 before reaching the logic under test.
+    const offHc = await req("PATCH", "/api/admin/settings", {
+      jar: admin,
+      body: { challengeMode: "disabled" },
+    });
+    check("disable human check for suite", offHc.json?.challengeMode === "disabled", offHc.json);
   }
 
   console.log("\n[4] Auth");

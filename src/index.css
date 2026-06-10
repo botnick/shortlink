@@ -185,6 +185,17 @@
   }
 }
 
+/* Human-check: 16-bit pixel type for the game screen, so the on-board copy
+   (prompt, counter, hints) matches the pixel-art pieces. Scoped to the widget
+   via this class — never the app's body text. Press Start 2P is already a
+   bitmap design, so a relaxed line-height keeps short prompts legible. */
+.hc-pixel {
+  font-family: "Press Start 2P", ui-monospace, monospace;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.7;
+}
+
 /* Human-check mini-game: gentle miss feedback. */
 @keyframes hc-shake {
   0%, 100% { transform: translateX(0); }
@@ -193,4 +204,31 @@
 }
 .hc-shake {
   animation: hc-shake 0.28s ease-in-out;
+}
+
+/* Human-check key game: a quick pop when the arrow advances, so each correct
+   press gives a clear, satisfying beat. Keyed on the step index so it replays. */
+@keyframes hc-pop {
+  0% { transform: scale(0.7); opacity: 0.35; }
+  55% { transform: scale(1.14); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.hc-pop {
+  animation: hc-pop 0.2s ease-out;
+}
+
+/* Human-check pieces: slow idle bob. Decorative — it makes a screenshot of the
+   board go stale — and fully disabled for reduced-motion users. (SVG px map to
+   viewBox units here, so 1.2px ≈ 1.2 scene units.) */
+@keyframes hc-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.2px); }
+}
+.hc-bob {
+  animation: hc-bob 3.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hc-bob, .hc-shake, .hc-pop {
+    animation: none;
+  }
 }

@@ -103,12 +103,21 @@ table read via `getAllSettings` — adding settings needs no migration.
 
 - Sessions: PBKDF2 passwords, 256-bit token (the `sessions.id` PK **is** the secret — expose only
   `public_id`), device snapshot at sign-in, sliding renewal + throttled `last_active_at`.
-- Human check (`worker/lib/pow.ts`, mode = admin setting): HMAC-signed challenge bound to IP,
-  5-min expiry, single-use KV tombstone, carrying proof-of-work difficulty + a randomized
-  mini-game variant/target. Client (`src/components/HumanCheck.tsx`, shared by Login/Register)
-  solves the PoW silently and renders one of the one-gesture games. Server: `verifyHumanity()`
-  in `worker/routes/auth.ts`. Security is economic (CPU per attempt), not secrecy — there is
-  deliberately nothing client-side worth reverse-engineering.
+- Human check v3 (`worker/lib/captcha/`, `worker/routes/captcha.ts`, mode = admin setting):
+  Turnstile-style interactive game CAPTCHA. `POST /api/captcha/challenge` mints an opaque
+  256-bit `ref` (only its SHA-256 is stored) + a server-chosen game whose SECRET answer never
+  leaves the server; `POST /api/captcha/verify` checks proof-of-work + interaction evidence +
+  per-game `validate()` + the risk engine, advancing an atomic challenge state machine
+  (`humanChallenges`/`humanVerifications` rows, optimistic-concurrency `version` guard) until it
+  issues a one-time verification token. Auth's `verifyHumanity()` "siteverifies" by atomically
+  consuming that token (single-use, bound to action+hostname+IP-HMAC). Modes: disabled /
+  invisible / game-only / forced-game. The game piece geometry is shipped as nameless jittered
+  **polygons** (no `shape` field), so a script must visually classify, not read a field. Six
+  games in `worker/lib/captcha/games/` (plugin interface; client renderers in
+  `src/components/captcha/games/`). Security is the layered moat (PoW economics + single-use +
+  interaction risk + game rotation + bindings), NOT client secrecy — see `docs/human-check-v3.md`
+  for the threat model and the Turnstile/reCAPTCHA comparison. Tests: `npm run test:captcha`
+  (unit, no DB) + `tests/captcha-flow.ts` (full chain vs a real DB).
 - Account closure is a **soft delete** (`worker/lib/accountLifecycle.ts`, same path for
   self-service and admin removal): links paused + caches purged instantly, sessions/API keys
   killed, email tombstoned in `deleted_accounts`; cron purges after the hold window and the email

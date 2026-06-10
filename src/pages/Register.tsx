@@ -1,11 +1,15 @@
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Check, Eye, EyeOff, Loader2, LockKeyhole, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useConfig } from "@/lib/config";
 import { ApiError } from "@/lib/api";
-import { HumanCheck, type HumanPayload } from "@/components/HumanCheck";
+import type { HumanPayload } from "@/components/HumanCheck";
+// Lazy: keep the captcha bundle off the sign-up critical path.
+const HumanCheck = lazy(() =>
+  import("@/components/HumanCheck").then((m) => ({ default: m.HumanCheck })),
+);
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,8 +54,8 @@ export function Register() {
   // Honeypot — invisible to humans; bots that fill it are rejected.
   const [website, setWebsite] = useState("");
 
-  // Human check (invisible PoW or slider game, per admin setting).
-  const checkOn = config.challengeMode !== "off";
+  // Human check (invisible / game, per admin setting).
+  const checkOn = config.challengeMode !== "disabled";
   const [human, setHuman] = useState<HumanPayload | null>(null);
   const [hcNonce, setHcNonce] = useState(0);
 
@@ -210,7 +214,9 @@ export function Register() {
               </div>
 
               {checkOn && !closed && (
-                <HumanCheck nonce={hcNonce} onChange={setHuman} />
+                <Suspense fallback={<div className="h-24 animate-pulse rounded-xl border bg-muted/30" />}>
+                  <HumanCheck action="register" nonce={hcNonce} onChange={setHuman} />
+                </Suspense>
               )}
 
               <Button type="submit" className="w-full" disabled={!canSubmit}>

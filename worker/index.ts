@@ -4,7 +4,9 @@ import { HTTPException } from "hono/http-exception";
 import { and, eq, lt, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "./env";
 import { getDbHandle } from "./db";
+import { isRateLimited } from "./lib/ratelimit";
 import {
+  authRateLimitFrom,
   domainUnverifiedDaysFrom,
   getAllSettings,
   saasConfigFrom,
@@ -14,6 +16,7 @@ import { dbMiddleware } from "./middleware/db";
 import { apiKeyAuth, loadSession } from "./middleware/auth";
 import { requireSameOrigin, securityHeaders } from "./middleware/security";
 import authRoutes from "./routes/auth";
+import captchaRoutes from "./routes/captcha";
 import linkRoutes from "./routes/links";
 import adminRoutes from "./routes/admin";
 import setupRoutes from "./routes/setup";
@@ -24,6 +27,7 @@ import projectRoutes from "./routes/projects";
 import keyRoutes from "./routes/keys";
 import accountRoutes from "./routes/account";
 import { purgeDeletedAccounts } from "./lib/accountLifecycle";
+import { purgeHumanRecords } from "./lib/captcha/store";
 import { handleMcp } from "./mcp";
 import { getCachedPublicConfig, shortOrigin } from "./lib/appconfig";
 import { linkErrorPage, passwordPage } from "./lib/brandPages";
@@ -76,6 +80,7 @@ api.use("*", loadSession);
 // JSON+Bearer clients pass both untouched.
 api.use("*", apiKeyAuth);
 api.route("/auth", authRoutes);
+api.route("/captcha", captchaRoutes);
 api.route("/links", linkRoutes);
 api.route("/admin", adminRoutes);
 api.route("/setup", setupRoutes);
@@ -152,13 +157,20 @@ app.post("/api/unlock/:slug", async (c) => {
   const scope = await resolveScope(c, c.req.header("host"));
   const { db, schema, close } = getDbHandle(c.env);
   try {
+    // Throttle online password guessing: the no-JS unlock page has no human
+    // check, so a per-IP rate limit is its only brake (reuses the admin
+    // auth-rate-limit setting; 15-min window like login).
+    const map = await getAllSettings(db, schema);
+    if (await isRateLimited(c.env, `unlock:${getClientIp(c)}`, authRateLimitFrom(map), 900)) {
+      return passwordPage(c, slug, "Too many attempts — please wait a moment.");
+    }
     const l = await findLinkRow(db, schema, scope.domainId, slug);
     if (!l) return linkErrorPage(c, "not-found");
     if (!l.isActive) return linkErrorPage(c, "disabled");
     if (l.expiresAt && l.expiresAt.getTime() <= Date.now()) {
       return linkErrorPage(c, "expired");
     }
-    if (l.passwordHash && !(await verifyPassword(password, l.passwordHash))) {
+    if (l.passwordHash && !(await verifyPassword(password, l.passwordHash, c.env.SESSION_SECRET))) {
       return passwordPage(c, slug, "Incorrect password. Try again.");
     }
     c.executionCtx.waitUntil(logClick(c, l.id));
@@ -264,8 +276,12 @@ app.get("/:slug", async (c) => {
   // redirect, so a shared link can show a branded card. Bots don't run JS and
   // aren't counted as clicks; humans always fall through to the fast path.
   if (isCrawler(c.req.header("user-agent") ?? null)) {
-    const preview = await serveSocialPreview(c, scope.domainId, slug);
-    if (preview) return preview;
+    try {
+      const preview = await serveSocialPreview(c, scope.domainId, slug);
+      if (preview) return preview;
+    } catch {
+      // Preview unavailable (DB/KV blip) → fall through to the normal redirect.
+    }
   }
 
   const kv = c.env.LINKS_KV;
@@ -281,6 +297,10 @@ app.get("/:slug", async (c) => {
         cached = cachePayload(row);
         c.executionCtx.waitUntil(putCachedLink(kv, scope.domainId, slug, cached));
       }
+    } catch {
+      // DB unavailable — a cached link would still have served (KV hit above);
+      // an uncached one can't be resolved now, so degrade to the branded
+      // not-found page below rather than 500ing the redirect.
     } finally {
       c.executionCtx.waitUntil(close());
     }
@@ -328,6 +348,14 @@ app.onError((err, c) => {
     return err.getResponse();
   }
   console.error("Unhandled error:", err);
+  // Local dev only (plain http): surface the message so failures are
+  // debuggable from curl. Production (always https) stays generic.
+  if (new URL(c.req.url).protocol === "http:") {
+    return c.json(
+      { error: "Internal Server Error", detail: String(err) },
+      500,
+    );
+  }
   return c.json({ error: "Internal Server Error" }, 500);
 });
 
@@ -502,6 +530,11 @@ async function cleanupUnverifiedDomains(env: AppBindings): Promise<void> {
   }
 }
 
+// Phase F: the exact rate-limit Durable Object. Exported from the entry so the
+// runtime can instantiate it; used via the optional RATE_LIMITER binding (the
+// worker falls back to KV when it isn't configured).
+export { RateLimiter } from "./durable/RateLimiter";
+
 export default {
   fetch: app.fetch,
   async scheduled(
@@ -511,5 +544,17 @@ export default {
   ): Promise<void> {
     ctx.waitUntil(cleanupUnverifiedDomains(env));
     ctx.waitUntil(purgeDeletedAccounts(env));
+    ctx.waitUntil(purgeExpiredHumanRecords(env));
   },
 };
+
+/** Cron: TTL hygiene for the human check — challenge + token rows an hour past
+ *  expiry carry no value (they can never verify or consume again). */
+async function purgeExpiredHumanRecords(env: AppBindings): Promise<void> {
+  const { db, schema, close } = getDbHandle(env);
+  try {
+    await purgeHumanRecords(db, schema);
+  } finally {
+    await close();
+  }
+}

@@ -2,6 +2,11 @@ import { count, eq } from "drizzle-orm";
 import type { DB, DbSchema } from "../db";
 import type { AppConfigDTO } from "@shared/types";
 import {
+  POOL_GAME_TYPES,
+  type GameType,
+  type VerificationMode,
+} from "@shared/captcha";
+import {
   DEFAULT_APP_NAME,
   DEFAULT_BRAND_COLOR,
   DEFAULT_OG_FONT,
@@ -33,6 +38,19 @@ export const SETTING_KEYS = {
   emailBlockDays: "email_block_days",
   powDifficulty: "pow_difficulty",
   challengeMode: "challenge_mode",
+  captchaGames: "captcha_games",
+  captchaMinGames: "captcha_min_games",
+  captchaMaxGames: "captcha_max_games",
+  captchaChallengeTtl: "captcha_challenge_ttl",
+  captchaTokenTtl: "captcha_token_ttl",
+  captchaMaxRetries: "captcha_max_retries",
+  captchaMaxEvents: "captcha_max_events",
+  captchaRiskMedium: "captcha_risk_medium",
+  captchaRiskHigh: "captcha_risk_high",
+  captchaTolerance: "captcha_tolerance",
+  captchaCreateLimit: "captcha_create_limit",
+  captchaVerifyLimit: "captcha_verify_limit",
+  captchaEnforce: "captcha_enforce",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
@@ -54,6 +72,28 @@ export async function getAllSettings(
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
+// In-isolate memo of the settings map for HOT, latency-sensitive read paths
+// (the human-check challenge mint runs an INSERT already; skipping the settings
+// SELECT halves its DB round-trips). Short TTL so an admin save takes effect
+// quickly; setSetting clears it immediately within the same isolate.
+let settingsMemo: { map: Record<string, unknown>; until: number } | null = null;
+const SETTINGS_MEMO_MS = 8000;
+
+export async function getCachedSettings(
+  db: DB,
+  schema: DbSchema,
+): Promise<Record<string, unknown>> {
+  if (settingsMemo && settingsMemo.until > Date.now()) return settingsMemo.map;
+  const map = await getAllSettings(db, schema);
+  settingsMemo = { map, until: Date.now() + SETTINGS_MEMO_MS };
+  return map;
+}
+
+/** Drop the memo (called after any write so reads don't serve a stale map). */
+export function resetSettingsCache(): void {
+  settingsMemo = null;
+}
+
 export async function setSetting(
   db: DB,
   schema: DbSchema,
@@ -65,6 +105,7 @@ export async function setSetting(
     .insert(settings)
     .values({ key, value })
     .onConflictDoUpdate({ target: settings.key, set: { value } });
+  resetSettingsCache(); // never serve the just-overwritten value from the memo
 }
 
 export async function getRegistrationEnabled(
@@ -255,22 +296,174 @@ export function emailBlockDaysFrom(map: Record<string, unknown>): number {
 }
 
 /** Sign-up bot deterrence: leading zero bits the browser's proof-of-work hash
- *  must have. 0 disables; ~16–20 is invisible to humans but costly at scale.
- *  Self-hosted by design — no third-party challenge service. */
+ *  must have. 0 disables. The base is deliberately modest (≈65k hashes ≈ tens
+ *  of ms in the Web Worker solver) so a real user — who never fails — barely
+ *  waits; every failed attempt escalates this by +1 bit (×2 cost) per the
+ *  adaptive layer, so grinding bots are the ones that pay. Self-hosted by
+ *  design — no third-party challenge service. */
 export function powDifficultyFrom(map: Record<string, unknown>): number {
   const v = map[SETTING_KEYS.powDifficulty];
-  const n = typeof v === "number" ? Math.floor(v) : 19;
+  const n = typeof v === "number" ? Math.floor(v) : 16;
   return Math.min(26, Math.max(0, n));
 }
 
-export type ChallengeMode = "off" | "invisible" | "game";
+export type ChallengeMode = VerificationMode;
 
-/** Human check on sign-in AND sign-up: off, invisible (silent proof-of-work
- *  only), or game (a one-swipe slider puzzle on top of the proof-of-work). */
-export function challengeModeFrom(map: Record<string, unknown>): ChallengeMode {
+/** Human check on sign-in AND sign-up. v3 modes, with the v2 values that may
+ *  still sit in the settings table mapped onto them (off→disabled,
+ *  game→game-only) so existing installs keep their behavior untouched. */
+export function challengeModeFrom(map: Record<string, unknown>): VerificationMode {
   const v = map[SETTING_KEYS.challengeMode];
-  if (v === "off" || v === "invisible" || v === "game") return v;
-  return "game";
+  if (v === "off") return "disabled"; // legacy v2 value
+  if (v === "game" || v === "forced-game") return "game-only"; // legacy values
+  if (v === "disabled" || v === "invisible" || v === "game-only") return v;
+  return "game-only";
+}
+
+// --- Human check v3 (interactive game CAPTCHA) --------------------------------
+// Every knob is an admin setting; nothing about the check is hardcoded.
+
+// The default-on pool: the three games a person understands at a glance — tap
+// one shape, drag one shape into a ring, trace numbered dots. The more
+// cognitive games (rotate / connect-the-pair / sort-by-size) ship implemented
+// but OFF, so an admin can opt in without us starting anyone on a harder puzzle.
+const DEFAULT_GAMES: GameType[] = ["slide", "tap-match", "drag-target", "path-trace"];
+
+/** Which VISUAL games the pool may serve. Unknown/non-pool entries (e.g. the
+ *  accessible `key-count`, which is never in the rotation) are dropped; an empty
+ *  or missing list falls back to the simple default set. */
+export function captchaGamesFrom(map: Record<string, unknown>): GameType[] {
+  const v = map[SETTING_KEYS.captchaGames];
+  const valid = Array.isArray(v)
+    ? (v.filter(
+        (g): g is GameType =>
+          typeof g === "string" && (POOL_GAME_TYPES as readonly string[]).includes(g),
+      ) as GameType[])
+    : [];
+  return valid.length > 0 ? valid : [...DEFAULT_GAMES];
+}
+
+function clampInt(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const n = typeof value === "number" ? Math.floor(value) : fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+/** Games per challenge in forced-game mode (floor; risk can add up to max). */
+export function captchaMinGamesFrom(map: Record<string, unknown>): number {
+  return clampInt(map[SETTING_KEYS.captchaMinGames], 1, 1, 3);
+}
+
+export function captchaMaxGamesFrom(map: Record<string, unknown>): number {
+  const min = captchaMinGamesFrom(map);
+  return clampInt(map[SETTING_KEYS.captchaMaxGames], Math.max(2, min), min, 3);
+}
+
+/** Seconds a challenge stays playable. Short on purpose — staleness is a core
+ *  screenshot/replay defense. */
+export function captchaChallengeTtlFrom(map: Record<string, unknown>): number {
+  return clampInt(map[SETTING_KEYS.captchaChallengeTtl], 120, 30, 600);
+}
+
+/** Seconds a verification token stays redeemable (single-use either way). */
+export function captchaTokenTtlFrom(map: Record<string, unknown>): number {
+  return clampInt(map[SETTING_KEYS.captchaTokenTtl], 300, 60, 900);
+}
+
+/** Wrong-answer retries before a challenge locks (each retry = fresh layout). */
+export function captchaMaxRetriesFrom(map: Record<string, unknown>): number {
+  return clampInt(map[SETTING_KEYS.captchaMaxRetries], 3, 1, 10);
+}
+
+/** Interaction events accepted per submit (cost + flooding cap). */
+export function captchaMaxEventsFrom(map: Record<string, unknown>): number {
+  return clampInt(map[SETTING_KEYS.captchaMaxEvents], 300, 50, 1000);
+}
+
+/** Risk score from which a submit gets logged for review. */
+export function captchaRiskMediumFrom(map: Record<string, unknown>): number {
+  return clampInt(map[SETTING_KEYS.captchaRiskMedium], 30, 1, 100);
+}
+
+/** Risk score from which a submit is rejected (counts as a failed attempt). */
+export function captchaRiskHighFrom(map: Record<string, unknown>): number {
+  return clampInt(map[SETTING_KEYS.captchaRiskHigh], 60, 1, 100);
+}
+
+export type CaptchaTolerance = "lenient" | "standard" | "strict";
+
+/** Geometry forgiveness for shaky hands / coarse touch. */
+export function captchaToleranceFrom(
+  map: Record<string, unknown>,
+): CaptchaTolerance {
+  const v = map[SETTING_KEYS.captchaTolerance];
+  return v === "lenient" || v === "strict" ? v : "standard";
+}
+
+const TOLERANCE_MULT: Record<CaptchaTolerance, number> = {
+  lenient: 1.3,
+  standard: 1.0,
+  strict: 0.8,
+};
+
+/** Challenge mints allowed per IP per minute (0 = unlimited). */
+export function captchaCreateLimitFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.captchaCreateLimit], 10);
+}
+
+/** Verify submits allowed per IP per minute (0 = unlimited). */
+export function captchaVerifyLimitFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.captchaVerifyLimit], 30);
+}
+
+/** Enforce the risk score, or run in SHADOW mode. Default on (enforce). When
+ *  off, a high risk score is logged but never blocks — so an admin can watch the
+ *  numbers on real traffic and tune the thresholds before turning on blocking,
+ *  which is how you keep false-positives at zero. The game itself is still
+ *  required either way (shadow disables only the behavioral-risk block). */
+export function captchaEnforceFrom(map: Record<string, unknown>): boolean {
+  return map[SETTING_KEYS.captchaEnforce] !== false;
+}
+
+/** Everything the challenge engine needs, resolved in one place. */
+export interface CaptchaConfig {
+  mode: VerificationMode;
+  games: GameType[];
+  minGames: number;
+  maxGames: number;
+  challengeTtlSec: number;
+  tokenTtlSec: number;
+  maxRetries: number;
+  maxEvents: number;
+  riskMedium: number;
+  riskHigh: number;
+  toleranceMult: number;
+  createLimit: number;
+  verifyLimit: number;
+  enforce: boolean;
+}
+
+export function captchaConfigFrom(map: Record<string, unknown>): CaptchaConfig {
+  return {
+    mode: challengeModeFrom(map),
+    games: captchaGamesFrom(map),
+    minGames: captchaMinGamesFrom(map),
+    maxGames: captchaMaxGamesFrom(map),
+    challengeTtlSec: captchaChallengeTtlFrom(map),
+    tokenTtlSec: captchaTokenTtlFrom(map),
+    maxRetries: captchaMaxRetriesFrom(map),
+    maxEvents: captchaMaxEventsFrom(map),
+    riskMedium: captchaRiskMediumFrom(map),
+    riskHigh: captchaRiskHighFrom(map),
+    toleranceMult: TOLERANCE_MULT[captchaToleranceFrom(map)],
+    createLimit: captchaCreateLimitFrom(map),
+    verifyLimit: captchaVerifyLimitFrom(map),
+    enforce: captchaEnforceFrom(map),
+  };
 }
 
 /** Length of auto-generated back-halves (server defaults + editor suggestions),

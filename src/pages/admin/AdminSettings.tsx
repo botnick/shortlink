@@ -15,6 +15,21 @@ import {
   DEFAULT_OG_TEMPLATE,
 } from "@shared/defaults";
 import type { SettingsDTO } from "@shared/types";
+import {
+  POOL_GAME_TYPES,
+  type GameType,
+  type VerificationMode,
+} from "@shared/captcha";
+
+const GAME_LABELS: Record<(typeof POOL_GAME_TYPES)[number], string> = {
+  slide: "Slide to notch",
+  "drag-target": "Drag to target",
+  "tap-match": "Tap the shape",
+  rotate: "Rotate the arrow",
+  connect: "Connect the pair",
+  "sort-3": "Sort by size",
+  "path-trace": "Trace the path",
+};
 
 function TemplateThumb({
   template,
@@ -72,6 +87,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function ImagePicker({
@@ -152,9 +168,28 @@ export function AdminSettings() {
   const [slugLength, setSlugLength] = useState(6);
   const [accountHoldDays, setAccountHoldDays] = useState(180);
   const [emailBlockDays, setEmailBlockDays] = useState(180);
-  const [powDifficulty, setPowDifficulty] = useState(19);
-  const [challengeMode, setChallengeMode] = useState<"off" | "invisible" | "game">("game");
   const [savingLimits, setSavingLimits] = useState(false);
+
+  // Human check (own card — every knob of the game CAPTCHA is a setting).
+  const [powDifficulty, setPowDifficulty] = useState(16);
+  const [challengeMode, setChallengeMode] = useState<VerificationMode>("game-only");
+  const [captchaGames, setCaptchaGames] = useState<GameType[]>([...POOL_GAME_TYPES]);
+  const [captchaMinGames, setCaptchaMinGames] = useState(1);
+  const [captchaMaxGames, setCaptchaMaxGames] = useState(2);
+  const [captchaChallengeTtl, setCaptchaChallengeTtl] = useState(120);
+  const [captchaTokenTtl, setCaptchaTokenTtl] = useState(300);
+  const [captchaMaxRetries, setCaptchaMaxRetries] = useState(3);
+  const [captchaMaxEvents, setCaptchaMaxEvents] = useState(300);
+  const [captchaRiskMedium, setCaptchaRiskMedium] = useState(30);
+  const [captchaRiskHigh, setCaptchaRiskHigh] = useState(60);
+  const [captchaTolerance, setCaptchaTolerance] = useState<
+    "lenient" | "standard" | "strict"
+  >("standard");
+  const [captchaCreateLimit, setCaptchaCreateLimit] = useState(10);
+  const [captchaVerifyLimit, setCaptchaVerifyLimit] = useState(30);
+  const [captchaEnforce, setCaptchaEnforce] = useState(true);
+  const [savingCaptcha, setSavingCaptcha] = useState(false);
+  const [captchaStats, setCaptchaStats] = useState<Record<string, unknown> | null>(null);
 
   const [cfToken, setCfToken] = useState("");
   const [cfZoneId, setCfZoneId] = useState("");
@@ -196,8 +231,21 @@ export function AdminSettings() {
         setSlugLength(s.slugLength ?? 6);
         setAccountHoldDays(s.accountHoldDays ?? 180);
         setEmailBlockDays(s.emailBlockDays ?? 180);
-        setPowDifficulty(s.powDifficulty ?? 19);
-        setChallengeMode(s.challengeMode ?? "game");
+        setPowDifficulty(s.powDifficulty ?? 16);
+        setChallengeMode(s.challengeMode ?? "game-only");
+        setCaptchaGames(s.captchaGames?.length ? s.captchaGames : [...POOL_GAME_TYPES]);
+        setCaptchaMinGames(s.captchaMinGames ?? 1);
+        setCaptchaMaxGames(s.captchaMaxGames ?? 2);
+        setCaptchaChallengeTtl(s.captchaChallengeTtl ?? 120);
+        setCaptchaTokenTtl(s.captchaTokenTtl ?? 300);
+        setCaptchaMaxRetries(s.captchaMaxRetries ?? 3);
+        setCaptchaMaxEvents(s.captchaMaxEvents ?? 300);
+        setCaptchaRiskMedium(s.captchaRiskMedium ?? 30);
+        setCaptchaRiskHigh(s.captchaRiskHigh ?? 60);
+        setCaptchaTolerance(s.captchaTolerance ?? "standard");
+        setCaptchaCreateLimit(s.captchaCreateLimit ?? 10);
+        setCaptchaVerifyLimit(s.captchaVerifyLimit ?? 30);
+        setCaptchaEnforce(s.captchaEnforce ?? true);
         setCfZoneId(s.cfZoneId);
         setCfFallbackHost(s.cfFallbackHost);
         setUnverifiedDays(s.domainUnverifiedDays);
@@ -205,6 +253,11 @@ export function AdminSettings() {
       })
       .catch(() => toast.error("Couldn't load settings"))
       .finally(() => setLoading(false));
+    // Human-check live activity (best-effort; reads existing rows, no writes).
+    api
+      .get<Record<string, unknown>>("/admin/captcha-stats")
+      .then(setCaptchaStats)
+      .catch(() => {});
   }, []);
 
   async function patch(body: Partial<SettingsDTO>) {
@@ -260,14 +313,42 @@ export function AdminSettings() {
         slugLength: Math.min(32, Math.max(3, Math.floor(slugLength) || 6)),
         accountHoldDays: Math.max(0, Math.floor(accountHoldDays) || 0),
         emailBlockDays: Math.max(0, Math.floor(emailBlockDays) || 0),
-        powDifficulty: Math.min(26, Math.max(0, Math.floor(powDifficulty) || 0)),
-        challengeMode,
       });
       toast.success("Limits saved");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
     } finally {
       setSavingLimits(false);
+    }
+  }
+
+  async function saveCaptcha(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSavingCaptcha(true);
+    try {
+      const minG = Math.min(3, Math.max(1, Math.floor(captchaMinGames) || 1));
+      await patch({
+        challengeMode,
+        powDifficulty: Math.min(26, Math.max(0, Math.floor(powDifficulty) || 0)),
+        captchaGames: captchaGames.length ? captchaGames : [...POOL_GAME_TYPES],
+        captchaMinGames: minG,
+        captchaMaxGames: Math.min(3, Math.max(minG, Math.floor(captchaMaxGames) || minG)),
+        captchaChallengeTtl: Math.min(600, Math.max(30, Math.floor(captchaChallengeTtl) || 120)),
+        captchaTokenTtl: Math.min(900, Math.max(60, Math.floor(captchaTokenTtl) || 300)),
+        captchaMaxRetries: Math.min(10, Math.max(1, Math.floor(captchaMaxRetries) || 3)),
+        captchaMaxEvents: Math.min(1000, Math.max(50, Math.floor(captchaMaxEvents) || 300)),
+        captchaRiskMedium: Math.min(100, Math.max(1, Math.floor(captchaRiskMedium) || 30)),
+        captchaRiskHigh: Math.min(100, Math.max(1, Math.floor(captchaRiskHigh) || 60)),
+        captchaTolerance,
+        captchaCreateLimit: Math.max(0, Math.floor(captchaCreateLimit) || 0),
+        captchaVerifyLimit: Math.max(0, Math.floor(captchaVerifyLimit) || 0),
+        captchaEnforce,
+      });
+      toast.success("Human check saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Update failed");
+    } finally {
+      setSavingCaptcha(false);
     }
   }
 
@@ -692,39 +773,6 @@ export function AdminSettings() {
                       Extra days after the purge before that email can register again.
                     </p>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="hcMode">Human check (sign-in & sign-up)</Label>
-                    <select
-                      id="hcMode"
-                      value={challengeMode}
-                      onChange={(e) =>
-                        setChallengeMode(e.target.value as "off" | "invisible" | "game")
-                      }
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <option value="game">Slider game + proof-of-work</option>
-                      <option value="invisible">Invisible proof-of-work only</option>
-                      <option value="off">Off</option>
-                    </select>
-                    <p className="text-[11px] text-muted-foreground">
-                      One-swipe puzzle for humans; bots must burn CPU per attempt either way.
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="powBits">Proof-of-work difficulty (bits)</Label>
-                    <Input
-                      id="powBits"
-                      type="number"
-                      min={0}
-                      max={26}
-                      value={powDifficulty}
-                      onChange={(e) => setPowDifficulty(Number(e.target.value))}
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Each +1 doubles the CPU a bot pays. 18–20 recommended; 0 disables
-                      the proof-of-work layer.
-                    </p>
-                  </div>
                 </div>
               </div>
 
@@ -785,6 +833,292 @@ export function AdminSettings() {
 
               <Button type="submit" disabled={savingLimits}>
                 {savingLimits && <Loader2 className="animate-spin" />}
+                Save
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Human check (sign-in &amp; sign-up)</CardTitle>
+          <CardDescription>
+            Interactive game CAPTCHA backed by proof-of-work. All decisions are
+            made server-side; tokens are one-time and bound to the action.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ) : (
+            <form onSubmit={saveCaptcha} className="space-y-4">
+              <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+                <div>
+                  <p className="text-sm font-medium">Enforce risk blocking</p>
+                  <p className="text-xs text-muted-foreground">
+                    Off = shadow mode: high-risk attempts are logged but still pass.
+                    Watch the activity below, then turn on. The game is always required.
+                  </p>
+                </div>
+                <Switch
+                  checked={captchaEnforce}
+                  onCheckedChange={setCaptchaEnforce}
+                  aria-label="Enforce risk blocking"
+                />
+              </div>
+
+              {captchaStats && (
+                <div className="rounded-lg border bg-background p-3 text-xs">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="font-medium">Live activity</span>
+                    <span className="text-muted-foreground">{String(captchaStats.window)}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    {[
+                      ["total", "Total"],
+                      ["done", "Passed"],
+                      ["locked", "Locked"],
+                      ["wouldBlockAtThreshold", "≥ block risk"],
+                      ["avgRisk", "Avg risk"],
+                      ["maxRisk", "Max risk"],
+                    ].map(([k, label]) => (
+                      <div key={k} className="rounded-md bg-muted/40 p-2 text-center">
+                        <div className="text-base font-semibold tabular-nums">
+                          {String((captchaStats[k] as number | string) ?? 0)}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[10px] text-muted-foreground">
+                    {captchaStats.enforcing
+                      ? "Enforcing: attempts at/above block risk are rejected."
+                      : "Shadow mode: nothing is blocked — “≥ block risk” is what enforcing WOULD reject."}
+                  </p>
+                  {captchaStats.deception ? (
+                    <div className="mt-2 border-t pt-2">
+                      <div className="mb-1 text-[10px] font-medium text-muted-foreground">
+                        Deception traps (decoys / fake bypass / forged tokens)
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+                        {Object.entries(captchaStats.deception as Record<string, number>).map(
+                          ([k, v]) => (
+                            <span key={k} className="tabular-nums">
+                              <span className="text-muted-foreground">{k}:</span>{" "}
+                              <span className="font-semibold">{v}</span>
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="hcMode">Mode</Label>
+                <select
+                  id="hcMode"
+                  value={challengeMode}
+                  onChange={(e) => setChallengeMode(e.target.value as VerificationMode)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="game-only">
+                    Game — everyone plays (no silent pass)
+                  </option>
+                  <option value="invisible">
+                    Invisible — silent check; an easy game only when unsure
+                  </option>
+                  <option value="disabled">Disabled</option>
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  In Game mode there is no silent pass — risk can make a retry
+                  harder, never skip the game.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Enabled games</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {POOL_GAME_TYPES.map((g) => {
+                    const checked = captchaGames.includes(g);
+                    return (
+                      <label
+                        key={g}
+                        className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-accent"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) =>
+                            setCaptchaGames((prev) =>
+                              v
+                                ? [...prev, g]
+                                : prev.length > 1
+                                  ? prev.filter((x) => x !== g)
+                                  : prev,
+                            )
+                          }
+                        />
+                        {GAME_LABELS[g]}
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Each challenge picks randomly from this pool (at least one stays on);
+                  retries always rotate to a different game.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="powBits">Proof-of-work difficulty (bits)</Label>
+                  <Input
+                    id="powBits"
+                    type="number"
+                    min={0}
+                    max={26}
+                    value={powDifficulty}
+                    onChange={(e) => setPowDifficulty(Number(e.target.value))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Silent CPU cost per attempt, solved in a Web Worker (~tens of ms
+                    at 16). Each +1 doubles it; failures escalate it automatically.
+                    14–18 recommended; 0 turns the layer off.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcTolerance">Touch tolerance</Label>
+                  <select
+                    id="hcTolerance"
+                    value={captchaTolerance}
+                    onChange={(e) =>
+                      setCaptchaTolerance(
+                        e.target.value as "lenient" | "standard" | "strict",
+                      )
+                    }
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="lenient">Lenient — most forgiving</option>
+                    <option value="standard">Standard</option>
+                    <option value="strict">Strict</option>
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    How forgiving the geometry is for shaky hands. Lenient minimizes
+                    false rejections.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcChTtl">Challenge lifetime (seconds)</Label>
+                  <Input
+                    id="hcChTtl"
+                    type="number"
+                    min={30}
+                    max={600}
+                    value={captchaChallengeTtl}
+                    onChange={(e) => setCaptchaChallengeTtl(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcTokTtl">Token lifetime (seconds)</Label>
+                  <Input
+                    id="hcTokTtl"
+                    type="number"
+                    min={60}
+                    max={900}
+                    value={captchaTokenTtl}
+                    onChange={(e) => setCaptchaTokenTtl(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcRetries">Retries per game</Label>
+                  <Input
+                    id="hcRetries"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={captchaMaxRetries}
+                    onChange={(e) => setCaptchaMaxRetries(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcEvents">Max interaction events</Label>
+                  <Input
+                    id="hcEvents"
+                    type="number"
+                    min={50}
+                    max={1000}
+                    value={captchaMaxEvents}
+                    onChange={(e) => setCaptchaMaxEvents(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcRiskMed">Risk: log from score</Label>
+                  <Input
+                    id="hcRiskMed"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={captchaRiskMedium}
+                    onChange={(e) => setCaptchaRiskMedium(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcRiskHigh">Risk: reject from score</Label>
+                  <Input
+                    id="hcRiskHigh"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={captchaRiskHigh}
+                    onChange={(e) => setCaptchaRiskHigh(Number(e.target.value))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Signals are weighted so no single one reaches this on its own.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcMinG">Games per challenge</Label>
+                  <Input
+                    id="hcMinG"
+                    type="number"
+                    min={1}
+                    max={3}
+                    value={captchaMinGames}
+                    onChange={(e) => setCaptchaMinGames(Number(e.target.value))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    How many short games everyone plays (1 = one game).
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcCreate">Challenges / minute / IP</Label>
+                  <Input
+                    id="hcCreate"
+                    type="number"
+                    min={0}
+                    value={captchaCreateLimit}
+                    onChange={(e) => setCaptchaCreateLimit(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hcVerify">Verifies / minute / IP</Label>
+                  <Input
+                    id="hcVerify"
+                    type="number"
+                    min={0}
+                    value={captchaVerifyLimit}
+                    onChange={(e) => setCaptchaVerifyLimit(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <Button type="submit" disabled={savingCaptcha}>
+                {savingCaptcha && <Loader2 className="animate-spin" />}
                 Save
               </Button>
             </form>

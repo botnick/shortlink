@@ -251,6 +251,65 @@ export const apiKeys = pgTable(
   ],
 );
 
+// --- Human check v3 (interactive game CAPTCHA) --------------------------------
+// Challenge state machine + one-time verification tokens. These live in the DB
+// (not KV) because single-use semantics need atomic claims and KV is eventually
+// consistent. Only SHA-256 hashes of the opaque secrets are stored; rows are
+// purged by the daily cron once expired.
+export const humanChallenges = pgTable(
+  "human_challenges",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    // Hash of the opaque challenge ref the client holds (256-bit random).
+    refHash: text().notNull(),
+    // Bindings: the action/host/network that minted the challenge must redeem it.
+    action: text().notNull(),
+    hostname: text().notNull(),
+    clientKey: text().notNull(),
+    mode: text().notNull(),
+    status: text().notNull().default("active"), // "active" | "done" | "locked"
+    // Optimistic-concurrency guard: every state transition must match the
+    // version it read, so parallel submits can't double-advance or double-issue.
+    version: integer().notNull().default(0),
+    gameIndex: integer().notNull().default(0),
+    gamesTotal: integer().notNull().default(0),
+    retries: integer().notNull().default(0),
+    powDifficulty: integer().notNull().default(0),
+    powDone: boolean().notNull().default(false),
+    riskScore: integer().notNull().default(0),
+    // Current game instance: public payload + SERVER-ONLY secret state.
+    game: jsonb(),
+    playedTypes: jsonb().$type<string[]>(),
+    issuedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("human_challenges_ref_idx").on(t.refHash),
+    index("human_challenges_expires_idx").on(t.expiresAt),
+  ],
+);
+
+export const humanVerifications = pgTable(
+  "human_verifications",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    // Hash of the opaque one-time token (the token itself is never stored).
+    tokenHash: text().notNull(),
+    challengeId: uuid().notNull(),
+    action: text().notNull(),
+    hostname: text().notNull(),
+    clientKey: text().notNull(),
+    issuedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    // Set exactly once by the atomic consume — single-use enforcement.
+    consumedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("human_verifications_token_idx").on(t.tokenHash),
+    index("human_verifications_expires_idx").on(t.expiresAt),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
 export type LinkAliasRow = typeof linkAliases.$inferSelect;

@@ -215,6 +215,54 @@ export const apiKeys = sqliteTable(
   ],
 );
 
+// Human check v3 — see schema.ts for the full commentary. Mirror, same names.
+export const humanChallenges = sqliteTable(
+  "human_challenges",
+  {
+    id: text().primaryKey().$defaultFn(uuid),
+    refHash: text().notNull(),
+    action: text().notNull(),
+    hostname: text().notNull(),
+    clientKey: text().notNull(),
+    mode: text().notNull(),
+    status: text().notNull().default("active"), // "active" | "done" | "locked"
+    version: integer().notNull().default(0),
+    gameIndex: integer().notNull().default(0),
+    gamesTotal: integer().notNull().default(0),
+    retries: integer().notNull().default(0),
+    powDifficulty: integer().notNull().default(0),
+    powDone: integer({ mode: "boolean" }).notNull().default(false),
+    riskScore: integer().notNull().default(0),
+    game: text({ mode: "json" }),
+    playedTypes: text({ mode: "json" }).$type<string[]>(),
+    issuedAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
+    expiresAt: integer({ mode: "timestamp" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("human_challenges_ref_idx").on(t.refHash),
+    index("human_challenges_expires_idx").on(t.expiresAt),
+  ],
+);
+
+export const humanVerifications = sqliteTable(
+  "human_verifications",
+  {
+    id: text().primaryKey().$defaultFn(uuid),
+    tokenHash: text().notNull(),
+    challengeId: text().notNull(),
+    action: text().notNull(),
+    hostname: text().notNull(),
+    clientKey: text().notNull(),
+    issuedAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
+    expiresAt: integer({ mode: "timestamp" }).notNull(),
+    consumedAt: integer({ mode: "timestamp" }),
+  },
+  (t) => [
+    uniqueIndex("human_verifications_token_idx").on(t.tokenHash),
+    index("human_verifications_expires_idx").on(t.expiresAt),
+  ],
+);
+
 export const domains = sqliteTable(
   "domains",
   {

@@ -15,6 +15,9 @@ export interface AppBindings extends Env {
    *  comes from the generated Env (a wrangler var). Cloudflare-for-SaaS custom
    *  domain credentials live in settings (configured via /admin), not env. */
   DB?: D1Database;
+  /** Exact rate-limit Durable Object (Phase F). Optional — when absent, the
+   *  human check falls back to the KV limiter, so deploys without it still work. */
+  RATE_LIMITER?: DurableObjectNamespace;
 }
 
 export interface SessionUser {

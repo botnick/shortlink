@@ -1,5 +1,7 @@
 // Shared DTOs between the Worker API and the React client.
 
+import type { GameType, VerificationMode } from "./captcha";
+
 export type Role = "user" | "admin";
 
 export interface UserDTO {
@@ -236,10 +238,25 @@ export interface SettingsDTO {
   /** Closed accounts: days held before purge, then extra days the email stays blocked. */
   accountHoldDays: number;
   emailBlockDays: number;
-  /** Human check (sign-in & sign-up): off | invisible | game. */
-  challengeMode: "off" | "invisible" | "game";
+  /** Human check (sign-in & sign-up): disabled | invisible | game-only | forced-game. */
+  challengeMode: VerificationMode;
   /** Proof-of-work difficulty in bits (0 = off, ~18–20 recommended). */
   powDifficulty: number;
+  /** Human check v3 — every knob of the interactive game CAPTCHA. */
+  captchaGames: GameType[];
+  captchaMinGames: number;
+  captchaMaxGames: number;
+  captchaChallengeTtl: number;
+  captchaTokenTtl: number;
+  captchaMaxRetries: number;
+  captchaMaxEvents: number;
+  captchaRiskMedium: number;
+  captchaRiskHigh: number;
+  captchaTolerance: "lenient" | "standard" | "strict";
+  captchaCreateLimit: number;
+  captchaVerifyLimit: number;
+  /** Enforce the risk block, or run in shadow mode (log-only) to tune. */
+  captchaEnforce: boolean;
   /** Cloudflare for SaaS — configured via /admin. The token is never returned;
    *  `cfConfigured` reflects whether a token + zone id are set. */
   cfZoneId: string;
@@ -281,8 +298,10 @@ export interface AppConfigDTO {
   mcpEnabled: boolean;
   /** Length of auto-generated back-halves. */
   slugLength: number;
-  /** Human check on sign-in/sign-up: off | invisible (silent PoW) | game (slider). */
-  challengeMode: "off" | "invisible" | "game";
+  /** Human check on sign-in/sign-up: disabled | invisible (silent, escalates
+   *  to a game when unsure) | game-only (always one game) | forced-game
+   *  (always games; risk tunes difficulty/count). */
+  challengeMode: VerificationMode;
   /** Proof-of-work difficulty in bits backing the human check. */
   powDifficulty: number;
 }
