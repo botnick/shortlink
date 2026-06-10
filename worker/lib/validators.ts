@@ -419,6 +419,9 @@ export const bulkImportSchema = z.object({
     )
     .min(1)
     .max(500),
+  // The whole batch lands in this project (the dashboard's selected one);
+  // resolveProjectId validates ownership and falls back to the default.
+  projectId: z.string().uuid().optional(),
 });
 
 const projectName = z.string().trim().min(1).max(60);

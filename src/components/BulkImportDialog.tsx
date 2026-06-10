@@ -44,10 +44,13 @@ export function BulkImportDialog({
   open,
   onOpenChange,
   onImported,
+  projectId,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   onImported: () => void;
+  /** Import the batch into this project (the dashboard's selected one). */
+  projectId?: string | null;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -100,6 +103,7 @@ export function BulkImportDialog({
     try {
       const res = await api.post<BulkImportResultDTO>("/links/import", {
         rows: rows.map((r) => ({ ...r, domainId: domainId ?? undefined })),
+        projectId: projectId ?? undefined,
       });
       setResult(res);
       if (res.created.length) onImported();

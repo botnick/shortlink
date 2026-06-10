@@ -403,14 +403,16 @@ route.post("/import", zValidator("json", bulkImportSchema), async (c) => {
   const schema = c.var.schema;
   const { links } = schema;
   const user = c.var.user!;
-  const { rows } = c.req.valid("json");
+  const { rows, projectId: inputProjectId } = c.req.valid("json");
 
   const settings = await getAllSettings(db, schema);
   const blocked = blockedDomainsFrom(settings);
   const reserved = extraReservedFrom(settings);
   const maxLinks = maxLinksPerUserFrom(settings);
   const slugLen = slugLengthFrom(settings);
-  const projectId = await resolveProjectId(db, schema, user.id, user.email, undefined);
+  // The whole batch goes into the dashboard's selected project (validated +
+  // defaulted by resolveProjectId), not always the user's default.
+  const projectId = await resolveProjectId(db, schema, user.id, user.email, inputProjectId);
   let total = Number(
     (await db.select({ n: count() }).from(links).where(eq(links.userId, user.id)))[0].n,
   );

@@ -340,6 +340,7 @@ export function Dashboard() {
       <BulkImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
+        projectId={selectedId}
         onImported={() => {
           setNonce((n) => n + 1);
           void refreshProjects();
