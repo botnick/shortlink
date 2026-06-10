@@ -28,7 +28,7 @@ function sessionMeta(c: Ctx) {
 import { loginSchema, registerSchema } from "../lib/validators";
 import type { UserDTO } from "@shared/types";
 
-const AUTH_WINDOW_SEC = 15 * 60; // attempts counted per 15-minute window per IP
+export const AUTH_WINDOW_SEC = 15 * 60; // attempts counted per 15-minute window per IP
 
 /** Shared per-IP throttle for the auth endpoints. */
 async function authThrottled(c: AppContext, map: Record<string, unknown>) {

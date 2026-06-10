@@ -69,7 +69,9 @@ import {
   ogTaglineRawFrom,
   ogTemplateFrom,
   ogTitleRawFrom,
+  brandCopyFrom,
   saasConfigFrom,
+  safetyInterstitialFrom,
   setSetting,
   shortDomainFrom,
 } from "../lib/settings";
@@ -155,6 +157,8 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     ogTitle: ogTitleRawFrom(map),
     ogTagline: ogTaglineRawFrom(map),
     ogAccent: ogAccentRawFrom(map),
+    brandCopy: brandCopyFrom(map),
+    safetyInterstitial: safetyInterstitialFrom(map),
   };
 }
 
@@ -354,6 +358,12 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.ogAccent !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.ogAccent, input.ogAccent);
+  }
+  if (input.brandCopy !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.brandCopy, input.brandCopy);
+  }
+  if (input.safetyInterstitial !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.safetyInterstitial, input.safetyInterstitial);
   }
   await invalidateSeo(c.env.LINKS_KV);
   await invalidatePublicConfig(c.env.LINKS_KV);

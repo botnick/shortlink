@@ -15,7 +15,7 @@ import { deleteCustomHostname } from "./lib/cloudflare";
 import { dbMiddleware } from "./middleware/db";
 import { apiKeyAuth, loadSession } from "./middleware/auth";
 import { requireSameOrigin, securityHeaders } from "./middleware/security";
-import authRoutes from "./routes/auth";
+import authRoutes, { AUTH_WINDOW_SEC } from "./routes/auth";
 import captchaRoutes from "./routes/captcha";
 import linkRoutes from "./routes/links";
 import adminRoutes from "./routes/admin";
@@ -30,7 +30,7 @@ import { purgeDeletedAccounts } from "./lib/accountLifecycle";
 import { purgeHumanRecords } from "./lib/captcha/store";
 import { handleMcp } from "./mcp";
 import { getCachedPublicConfig, shortOrigin } from "./lib/appconfig";
-import { linkErrorPage, passwordPage } from "./lib/brandPages";
+import { interstitialPage, linkErrorPage, passwordPage } from "./lib/brandPages";
 import { getCachedLink, putCachedLink, routeDestination } from "./lib/cache";
 import { cachePayload } from "./lib/linkCache";
 import { buildShortUrl, findLinkRow, resolveScope } from "./lib/domainScope";
@@ -161,8 +161,8 @@ app.post("/api/unlock/:slug", async (c) => {
     // check, so a per-IP rate limit is its only brake (reuses the admin
     // auth-rate-limit setting; 15-min window like login).
     const map = await getAllSettings(db, schema);
-    if (await isRateLimited(c.env, `unlock:${getClientIp(c)}`, authRateLimitFrom(map), 900)) {
-      return passwordPage(c, slug, "Too many attempts — please wait a moment.");
+    if (await isRateLimited(c.env, `unlock:${getClientIp(c)}`, authRateLimitFrom(map), AUTH_WINDOW_SEC)) {
+      return linkErrorPage(c, "rate-limited");
     }
     const l = await findLinkRow(db, schema, scope.domainId, slug);
     if (!l) return linkErrorPage(c, "not-found");
@@ -316,12 +316,30 @@ app.get("/:slug", async (c) => {
   // click is counted on a successful unlock (in /api/unlock), not here.
   if (cached.hasPassword) return passwordPage(c, slug);
 
-  // Log the click off the response path so the redirect stays instant.
-  c.executionCtx.waitUntil(logClick(c, cached.id));
   // Per-OS deep-link routing (iOS / Android / desktop), resolved on the cached
   // payload so it stays on the edge with no extra DB read.
   const { os, deviceType } = parseUserAgent(c.req.header("user-agent") ?? null);
   const target = routeDestination(cached, os, deviceType);
+
+  // Optional link-safety interstitial: confirm before forwarding to an external
+  // site. The toggle is read from the 30s-memoised public config (no per-redirect
+  // KV read on a warm isolate); the Continue link re-requests with ?go=1 to skip
+  // the gate, so the click is logged once — on the real forward, not the gate.
+  if (c.req.query("go") !== "1") {
+    const cfg = await getCachedPublicConfig(c.env);
+    if (cfg.safetyInterstitial) {
+      let host = target;
+      try {
+        host = new URL(target).hostname;
+      } catch {
+        // non-URL destination → show it as-is
+      }
+      return interstitialPage(c, slug, host);
+    }
+  }
+
+  // Log the click off the response path so the redirect stays instant.
+  c.executionCtx.waitUntil(logClick(c, cached.id));
   // 302 (not 301) + no-store: never let a browser/proxy cache the hop. This is
   // the deliberate opposite of the big shorteners' cacheable 301 — it guarantees
   // every click reaches us (so analytics are complete) and a destination edit
@@ -348,6 +366,13 @@ app.onError((err, c) => {
     return err.getResponse();
   }
   console.error("Unhandled error:", err);
+  // A non-API (redirect / page) request gets the branded error page; the API
+  // gets JSON. Fall back to a bare 500 only if even the branded page can't render.
+  if (!new URL(c.req.url).pathname.startsWith("/api")) {
+    return linkErrorPage(c, "error").catch(() =>
+      c.json({ error: "Internal Server Error" }, 500),
+    );
+  }
   // Local dev only (plain http): surface the message so failures are
   // debuggable from curl. Production (always https) stays generic.
   if (new URL(c.req.url).protocol === "http:") {

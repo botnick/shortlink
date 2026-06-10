@@ -210,6 +210,34 @@ export interface AdminOverviewDTO {
   dbDriver: "postgres" | "sqlite";
 }
 
+/** One branded page's copy (heading + supporting line). */
+export interface BrandPageCopy {
+  heading: string;
+  sub: string;
+}
+
+/**
+ * Every editable string on the worker-served no-JS branded pages. Admin-settable
+ * (one `brand_copy` object setting); defaults live in shared/defaults.ts. Nothing
+ * is hardcoded in the renderers — they read from here.
+ */
+export interface BrandCopy {
+  errors: {
+    "not-found": BrandPageCopy;
+    expired: BrandPageCopy;
+    disabled: BrandPageCopy;
+    "rate-limited": BrandPageCopy;
+    error: BrandPageCopy;
+  };
+  password: { heading: string; sub: string; label: string; button: string };
+  /** Link-safety interstitial (shown only when the admin enables it). */
+  interstitial: { heading: string; sub: string; leaving: string; continue: string };
+  /** Label of the "go home" button on the error pages. */
+  homeCta: string;
+  /** Optional support link shown in the footer (blank url = hidden). */
+  support: { label: string; url: string };
+}
+
 export interface SettingsDTO {
   registrationEnabled: boolean;
   appName: string;
@@ -270,6 +298,10 @@ export interface SettingsDTO {
   ogTagline: string;
   ogAccent: string;
   domainUnverifiedDays: number;
+  /** Editable copy for the worker-served branded pages. */
+  brandCopy: BrandCopy;
+  /** Show a "you're leaving to …" interstitial before redirecting. */
+  safetyInterstitial: boolean;
 }
 
 export interface AppConfigDTO {
@@ -304,6 +336,10 @@ export interface AppConfigDTO {
   challengeMode: VerificationMode;
   /** Proof-of-work difficulty in bits backing the human check. */
   powDifficulty: number;
+  /** Editable copy for the worker-served branded pages. */
+  brandCopy: BrandCopy;
+  /** Show a "you're leaving to …" interstitial before redirecting. */
+  safetyInterstitial: boolean;
 }
 
 /** A destination URL's own metadata, for the rich link-preview card. */

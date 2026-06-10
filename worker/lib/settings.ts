@@ -1,6 +1,6 @@
 import { count, eq } from "drizzle-orm";
 import type { DB, DbSchema } from "../db";
-import type { AppConfigDTO } from "@shared/types";
+import type { AppConfigDTO, BrandCopy } from "@shared/types";
 import {
   POOL_GAME_TYPES,
   type GameType,
@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_APP_NAME,
   DEFAULT_BRAND_COLOR,
+  DEFAULT_BRAND_COPY,
   DEFAULT_OG_FONT,
   DEFAULT_OG_TEMPLATE,
 } from "@shared/defaults";
@@ -61,6 +62,8 @@ export const SETTING_KEYS = {
   ogTitle: "og_title",
   ogTagline: "og_tagline",
   ogAccent: "og_accent",
+  brandCopy: "brand_copy",
+  safetyInterstitial: "safety_interstitial",
   setupCompleted: "setup_completed",
 } as const;
 
@@ -154,6 +157,58 @@ export function ogImageFrom(map: Record<string, unknown>): string {
 
 export function indexableFrom(map: Record<string, unknown>): boolean {
   return map[SETTING_KEYS.indexable] !== false; // default: indexable
+}
+
+export function safetyInterstitialFrom(map: Record<string, unknown>): boolean {
+  return map[SETTING_KEYS.safetyInterstitial] === true; // default: off
+}
+
+/**
+ * Resolve the editable brand-page copy: a stored partial override DEEP-MERGED
+ * onto DEFAULT_BRAND_COPY, field by field. So an admin can override just one
+ * string, missing/new fields always fall back to the centralised default, and a
+ * malformed stored value degrades to all defaults. Nothing hardcoded here — the
+ * literals live in shared/defaults.ts.
+ */
+export function brandCopyFrom(map: Record<string, unknown>): BrandCopy {
+  const v = map[SETTING_KEYS.brandCopy];
+  const o = (typeof v === "object" && v !== null && !Array.isArray(v) ? v : {}) as Record<string, unknown>;
+  const d = DEFAULT_BRAND_COPY;
+  const sub = (k: string): Record<string, unknown> => {
+    const x = o[k];
+    return typeof x === "object" && x !== null ? (x as Record<string, unknown>) : {};
+  };
+  const errIn = sub("errors");
+  const oneErr = (k: keyof BrandCopy["errors"]) => {
+    const e = typeof errIn[k] === "object" && errIn[k] !== null ? (errIn[k] as Record<string, unknown>) : {};
+    return { heading: asString(e.heading, d.errors[k].heading), sub: asString(e.sub, d.errors[k].sub) };
+  };
+  const pw = sub("password");
+  const it = sub("interstitial");
+  const sp = sub("support");
+  return {
+    errors: {
+      "not-found": oneErr("not-found"),
+      expired: oneErr("expired"),
+      disabled: oneErr("disabled"),
+      "rate-limited": oneErr("rate-limited"),
+      error: oneErr("error"),
+    },
+    password: {
+      heading: asString(pw.heading, d.password.heading),
+      sub: asString(pw.sub, d.password.sub),
+      label: asString(pw.label, d.password.label),
+      button: asString(pw.button, d.password.button),
+    },
+    interstitial: {
+      heading: asString(it.heading, d.interstitial.heading),
+      sub: asString(it.sub, d.interstitial.sub),
+      leaving: asString(it.leaving, d.interstitial.leaving),
+      continue: asString(it.continue, d.interstitial.continue),
+    },
+    homeCta: asString(o.homeCta, d.homeCta),
+    support: { label: asString(sp.label, d.support.label), url: asString(sp.url, d.support.url) },
+  };
 }
 
 const OG_TEMPLATE_IDS = [
@@ -596,5 +651,7 @@ export async function getPublicConfig(
     // Human check (sign-in & sign-up): mode + proof-of-work difficulty.
     challengeMode: challengeModeFrom(map),
     powDifficulty: powDifficultyFrom(map),
+    brandCopy: brandCopyFrom(map),
+    safetyInterstitial: safetyInterstitialFrom(map),
   };
 }

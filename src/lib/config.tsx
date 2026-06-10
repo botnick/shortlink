@@ -10,6 +10,7 @@ import type { AppConfigDTO } from "@shared/types";
 import {
   DEFAULT_APP_NAME,
   DEFAULT_BRAND_COLOR,
+  DEFAULT_BRAND_COPY,
   DEFAULT_OG_FONT,
   DEFAULT_OG_TEMPLATE,
 } from "@shared/defaults";
@@ -37,6 +38,8 @@ const DEFAULT: AppConfigDTO = {
   slugLength: 6,
   challengeMode: "disabled",
   powDifficulty: 0,
+  brandCopy: DEFAULT_BRAND_COPY,
+  safetyInterstitial: false,
 };
 
 function upsertMeta(key: "name" | "property", keyName: string, content: string) {

@@ -11,10 +11,11 @@ import { ColorPicker } from "@/components/ColorPicker";
 import {
   DEFAULT_APP_NAME,
   DEFAULT_BRAND_COLOR,
+  DEFAULT_BRAND_COPY,
   DEFAULT_OG_FONT,
   DEFAULT_OG_TEMPLATE,
 } from "@shared/defaults";
-import type { SettingsDTO } from "@shared/types";
+import type { BrandCopy, SettingsDTO } from "@shared/types";
 import {
   POOL_GAME_TYPES,
   type GameType,
@@ -30,6 +31,15 @@ const GAME_LABELS: Record<(typeof POOL_GAME_TYPES)[number], string> = {
   "sort-3": "Sort by size",
   "path-trace": "Trace the path",
 };
+
+/** The branded error/status pages, in the order shown in the admin form. */
+const BRAND_ERROR_KINDS: { key: keyof BrandCopy["errors"]; label: string }[] = [
+  { key: "not-found", label: "Not found (404)" },
+  { key: "expired", label: "Expired (410)" },
+  { key: "disabled", label: "Disabled (410)" },
+  { key: "rate-limited", label: "Rate limited (429)" },
+  { key: "error", label: "Error (500)" },
+];
 
 function TemplateThumb({
   template,
@@ -145,6 +155,11 @@ export function AdminSettings() {
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [indexable, setIndexable] = useState(true);
 
+  // Branded no-JS pages: every string is editable; blank falls back to defaults.
+  const [savingBrand, setSavingBrand] = useState(false);
+  const [brandCopy, setBrandCopy] = useState<BrandCopy>(DEFAULT_BRAND_COPY);
+  const [safetyInterstitial, setSafetyInterstitial] = useState(false);
+
   // Social card — configured independently of branding (blank field = inherit).
   const [savingCard, setSavingCard] = useState(false);
   const [ogTemplate, setOgTemplate] = useState(DEFAULT_OG_TEMPLATE);
@@ -210,6 +225,8 @@ export function AdminSettings() {
         setDescription(s.description);
         setOgImageUrl(s.ogImageUrl);
         setIndexable(s.indexable);
+        setBrandCopy(s.brandCopy);
+        setSafetyInterstitial(s.safetyInterstitial);
         setOgTemplate(s.ogTemplate);
         setOgFont(s.ogFont);
         setOgLabel(s.ogLabel);
@@ -288,6 +305,29 @@ export function AdminSettings() {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
     } finally {
       setSavingApp(false);
+    }
+  }
+
+  // Immutable nested updates for the brand-copy object.
+  const setErr = (k: keyof BrandCopy["errors"], f: "heading" | "sub", v: string) =>
+    setBrandCopy((p) => ({ ...p, errors: { ...p.errors, [k]: { ...p.errors[k], [f]: v } } }));
+  const setPw = (f: keyof BrandCopy["password"], v: string) =>
+    setBrandCopy((p) => ({ ...p, password: { ...p.password, [f]: v } }));
+  const setIt = (f: keyof BrandCopy["interstitial"], v: string) =>
+    setBrandCopy((p) => ({ ...p, interstitial: { ...p.interstitial, [f]: v } }));
+  const setSup = (f: keyof BrandCopy["support"], v: string) =>
+    setBrandCopy((p) => ({ ...p, support: { ...p.support, [f]: v } }));
+
+  async function saveBrand(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSavingBrand(true);
+    try {
+      await patch({ brandCopy, safetyInterstitial });
+      toast.success("Brand pages saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Update failed");
+    } finally {
+      setSavingBrand(false);
     }
   }
 
@@ -469,6 +509,104 @@ export function AdminSettings() {
 
               <Button type="submit" disabled={savingApp}>
                 {savingApp && <Loader2 className="animate-spin" />}
+                Save
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Brand pages</CardTitle>
+          <CardDescription>
+            The no-JS pages a visitor can hit on a short link (404, expired, password
+            unlock, …). Every field is optional — blank falls back to the default.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ) : (
+            <form onSubmit={saveBrand} className="space-y-5">
+              <label className="flex cursor-pointer items-center justify-between gap-4">
+                <span className="text-sm">
+                  <span className="block font-medium">Safety interstitial</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Show a “you’re leaving to …” confirmation before forwarding to the destination.
+                  </span>
+                </span>
+                <Switch checked={safetyInterstitial} onCheckedChange={setSafetyInterstitial} />
+              </label>
+
+              {BRAND_ERROR_KINDS.map(({ key, label }) => (
+                <fieldset key={key} className="space-y-2 border-l-2 border-muted pl-3">
+                  <legend className="text-xs font-semibold text-muted-foreground">{label}</legend>
+                  <Input
+                    maxLength={120}
+                    placeholder="Heading"
+                    value={brandCopy.errors[key].heading}
+                    onChange={(e) => setErr(key, "heading", e.target.value)}
+                  />
+                  <textarea
+                    rows={2}
+                    maxLength={400}
+                    placeholder="Subtext"
+                    value={brandCopy.errors[key].sub}
+                    onChange={(e) => setErr(key, "sub", e.target.value)}
+                    className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </fieldset>
+              ))}
+
+              <fieldset className="space-y-2 border-l-2 border-muted pl-3">
+                <legend className="text-xs font-semibold text-muted-foreground">Password unlock</legend>
+                <Input maxLength={120} placeholder="Heading" value={brandCopy.password.heading} onChange={(e) => setPw("heading", e.target.value)} />
+                <textarea
+                  rows={2}
+                  maxLength={400}
+                  placeholder="Subtext"
+                  value={brandCopy.password.sub}
+                  onChange={(e) => setPw("sub", e.target.value)}
+                  className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input maxLength={60} placeholder="Input label" value={brandCopy.password.label} onChange={(e) => setPw("label", e.target.value)} />
+                  <Input maxLength={60} placeholder="Button" value={brandCopy.password.button} onChange={(e) => setPw("button", e.target.value)} />
+                </div>
+              </fieldset>
+
+              <fieldset className="space-y-2 border-l-2 border-muted pl-3">
+                <legend className="text-xs font-semibold text-muted-foreground">Interstitial</legend>
+                <Input maxLength={120} placeholder="Heading" value={brandCopy.interstitial.heading} onChange={(e) => setIt("heading", e.target.value)} />
+                <textarea
+                  rows={2}
+                  maxLength={400}
+                  placeholder="Subtext"
+                  value={brandCopy.interstitial.sub}
+                  onChange={(e) => setIt("sub", e.target.value)}
+                  className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input maxLength={120} placeholder="“Leaving to” line" value={brandCopy.interstitial.leaving} onChange={(e) => setIt("leaving", e.target.value)} />
+                  <Input maxLength={60} placeholder="Continue button" value={brandCopy.interstitial.continue} onChange={(e) => setIt("continue", e.target.value)} />
+                </div>
+              </fieldset>
+
+              <fieldset className="space-y-2 border-l-2 border-muted pl-3">
+                <legend className="text-xs font-semibold text-muted-foreground">Shared</legend>
+                <Input maxLength={60} placeholder="“Go to homepage” button" value={brandCopy.homeCta} onChange={(e) => setBrandCopy((p) => ({ ...p, homeCta: e.target.value }))} />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input maxLength={60} placeholder="Support label" value={brandCopy.support.label} onChange={(e) => setSup("label", e.target.value)} />
+                  <Input type="url" maxLength={2048} placeholder="Support URL (optional)" value={brandCopy.support.url} onChange={(e) => setSup("url", e.target.value)} />
+                </div>
+              </fieldset>
+
+              <Button type="submit" disabled={savingBrand}>
+                {savingBrand && <Loader2 className="animate-spin" />}
                 Save
               </Button>
             </form>

@@ -90,6 +90,15 @@ export const bulkLinksSchema = z.object({
   action: z.enum(["pause", "activate", "delete"]),
 });
 
+// Reusable field caps for the editable brand-page copy.
+const brandHeading = z.string().trim().max(120);
+const brandSub = z.string().trim().max(400);
+const brandShort = z.string().trim().max(60);
+const brandPageCopy = z.object({
+  heading: brandHeading.optional(),
+  sub: brandSub.optional(),
+});
+
 export const settingsSchema = z
   .object({
     registrationEnabled: z.boolean().optional(),
@@ -177,6 +186,45 @@ export const settingsSchema = z
       .string()
       .trim()
       .regex(/^(#[0-9a-fA-F]{6})?$/, "Use a 6-digit hex color")
+      .optional(),
+    // Branded no-JS pages — admin-editable copy (every field optional; missing
+    // ones fall back to shared/defaults.ts via brandCopyFrom).
+    safetyInterstitial: z.boolean().optional(),
+    brandCopy: z
+      .object({
+        errors: z
+          .object({
+            "not-found": brandPageCopy.optional(),
+            expired: brandPageCopy.optional(),
+            disabled: brandPageCopy.optional(),
+            "rate-limited": brandPageCopy.optional(),
+            error: brandPageCopy.optional(),
+          })
+          .optional(),
+        password: z
+          .object({
+            heading: brandHeading.optional(),
+            sub: brandSub.optional(),
+            label: brandShort.optional(),
+            button: brandShort.optional(),
+          })
+          .optional(),
+        interstitial: z
+          .object({
+            heading: brandHeading.optional(),
+            sub: brandSub.optional(),
+            leaving: brandHeading.optional(),
+            continue: brandShort.optional(),
+          })
+          .optional(),
+        homeCta: brandShort.optional(),
+        support: z
+          .object({
+            label: brandShort.optional(),
+            url: z.string().trim().max(2048).optional(),
+          })
+          .optional(),
+      })
       .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "No settings provided");
