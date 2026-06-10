@@ -84,6 +84,10 @@ export async function getSeoBundle(env: AppBindings): Promise<SeoBundle> {
 }
 
 export async function invalidateSeo(kv: KVNamespace): Promise<void> {
+  // Clear the in-isolate memo too (like invalidatePublicConfig) so the isolate
+  // that served the settings PATCH stops handing out the stale bundle at once,
+  // instead of waiting up to MEMO_MS for it to expire.
+  memo = null;
   await kv.delete(KEY);
 }
 

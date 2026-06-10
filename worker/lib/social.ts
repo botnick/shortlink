@@ -206,7 +206,10 @@ export async function destinationPreview(
 }
 
 export async function invalidateLinkPreview(env: AppBindings, linkId: string) {
-  await env.LINKS_KV.delete(`linkog:${linkId}`);
+  // Must match the key destinationPreview writes (linkog:v2:) — the old key
+  // (no v2:) silently never deleted, so an edited link kept its stale crawler
+  // card for up to a day.
+  await env.LINKS_KV.delete(`linkog:v2:${linkId}`);
 }
 
 export interface UrlMeta {
