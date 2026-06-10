@@ -221,7 +221,17 @@ export const settingsSchema = z
         support: z
           .object({
             label: brandShort.optional(),
-            url: z.string().trim().max(2048).optional(),
+            url: z
+              .string()
+              .trim()
+              .max(2048)
+              .refine((u) => {
+                const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(u);
+                // No scheme (relative) or http/https/mailto only — block
+                // javascript:/data:/vbscript: so the footer link can't run code.
+                return !scheme || /^(https?|mailto)$/i.test(scheme[1]);
+              }, "Support link must be http(s) or mailto")
+              .optional(),
           })
           .optional(),
       })

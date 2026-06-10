@@ -87,6 +87,9 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
 
 export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   if (!c.var.user) return c.json({ error: "Unauthorized" }, 401);
+  // Admin actions are session-only — a leaked/stolen API key (even an admin's)
+  // must never reach the admin surface (mirrors /api/account + /api/keys).
+  if (!c.var.sessionId) return c.json({ error: "Forbidden" }, 403);
   if (c.var.user.role !== "admin") return c.json({ error: "Forbidden" }, 403);
   await next();
 });

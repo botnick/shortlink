@@ -118,6 +118,44 @@ function pick(html: string, patterns: RegExp[]): string {
   return "";
 }
 
+/**
+ * Guard for server-side preview fetches: only public http(s) URLs. Blocks
+ * loopback / private / link-local hosts as defence-in-depth. Cloudflare's edge
+ * already won't route a Worker fetch to private networks or cloud metadata
+ * (Workers aren't on a VM), so this is belt-and-suspenders, not the only line —
+ * and deliberately not a DNS-rebind defence (the platform's lack of
+ * private-network egress is the real backstop). Returns the URL or null.
+ */
+function publicFetchUrl(rawUrl: string): URL | null {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    h === "localhost" ||
+    h.endsWith(".localhost") ||
+    h.endsWith(".local") ||
+    h.endsWith(".internal") ||
+    h === "0.0.0.0" ||
+    h === "::1" ||
+    h === "::" ||
+    /^127\./.test(h) ||
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^169\.254\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
+    /^f[cd][0-9a-f]{2}:/i.test(h) ||
+    /^fe80:/i.test(h)
+  ) {
+    return null;
+  }
+  return u;
+}
+
 /** Fetch the destination's own OG tags (cached in KV per link for a day). */
 export async function destinationPreview(
   env: AppBindings,
@@ -130,8 +168,10 @@ export async function destinationPreview(
 
   const empty: Preview = { title: "", description: "", image: "" };
   let preview = empty;
+  const target = publicFetchUrl(destination);
   try {
-    const res = await fetch(destination, {
+    if (!target) throw new Error("blocked");
+    const res = await fetch(target.toString(), {
       headers: { "user-agent": "Mozilla/5.0 (compatible; LinkPreview/1.0)" },
       redirect: "follow",
       signal: AbortSignal.timeout(4000),
@@ -211,12 +251,8 @@ function emptyMeta(rawUrl: string): UrlMeta {
  * a day. Same fetch surface as `destinationPreview`, keyed by URL not link id.
  */
 export async function fetchMeta(env: AppBindings, rawUrl: string): Promise<UrlMeta> {
-  let u: URL;
-  try {
-    u = new URL(rawUrl);
-  } catch {
-    return emptyMeta(rawUrl);
-  }
+  const u = publicFetchUrl(rawUrl);
+  if (!u) return emptyMeta(rawUrl);
   // `v2` bumps the cache namespace so entries scraped before HTML-entity
   // decoding (which would still show "&#064;" etc.) are skipped, not re-served.
   const key = `meta:v2:${u.host}${u.pathname}`.slice(0, 480);

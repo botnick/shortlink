@@ -7,9 +7,12 @@
  * reserved for cache fills (which are write-once-read-many); a flood of login
  * attempts, API calls, failures or honeypot hits must not be able to burn it.
  *
- * KV is used only as a FALLBACK when the DO binding is absent, and every path
- * fails OPEN: an infra blip must never lock real users out (abuse is still gated
- * by proof-of-work + single-use tokens), and a limit of 0 disables the check.
+ * KV is used only as a FALLBACK when the DO binding is absent. If KV *also*
+ * fails (e.g. read quota exhausted), a last-resort in-isolate counter still
+ * bounds a single-isolate flood — weak (not shared across isolates) but $0 and
+ * far better than failing fully open. Only if all three are unavailable does the
+ * check fail OPEN: an infra blip must never lock real users out (abuse is also
+ * gated by proof-of-work + single-use tokens), and a limit of 0 disables it.
  */
 import type { AppBindings } from "../env";
 
@@ -71,8 +74,32 @@ async function kvFixedWindow(
     });
     return false;
   } catch {
+    // KV down/quota-exhausted → last-resort in-isolate counter (see below).
+    return memoryFixedWindow(bucket, limit, windowSec);
+  }
+}
+
+// Last-resort fixed-window counter held in isolate memory. Persists across
+// requests within one isolate (not shared between isolates, and may reset at
+// any time), so it only *bounds* a flood rather than enforcing an exact limit —
+// but it costs nothing and keeps brute force from running fully unthrottled when
+// both the DO and KV are unavailable.
+const memCounters = new Map<string, { count: number; resetAt: number }>();
+
+function memoryFixedWindow(bucket: string, limit: number, windowSec: number): boolean {
+  const now = Date.now();
+  const slot = Math.floor(now / 1000 / windowSec);
+  const key = `${bucket}:${slot}`;
+  const entry = memCounters.get(key);
+  if (!entry || entry.resetAt <= now) {
+    // New window. Opportunistically cap memory so a key flood can't grow it
+    // without bound (clearing just resets the best-effort counters).
+    if (memCounters.size > 5000) memCounters.clear();
+    memCounters.set(key, { count: 1, resetAt: (slot + 1) * windowSec * 1000 });
     return false;
   }
+  entry.count += 1;
+  return entry.count > limit;
 }
 
 // --- Self-expiring abuse counters --------------------------------------------

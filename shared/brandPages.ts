@@ -39,6 +39,16 @@ interface ShellOpts {
 const htmlEsc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+/** Neutralise dangerous href schemes (javascript:/data:/vbscript:). Relative
+ *  URLs and http/https/mailto pass; anything else collapses to "" (link hidden).
+ *  Last line of defence even if a bad value slipped past input validation. */
+const safeHref = (u: string): string => {
+  const s = u.trim();
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(s);
+  if (scheme && !/^(https?|mailto)$/i.test(scheme[1])) return "";
+  return s;
+};
+
 function renderShell(cfg: BrandBits, o: ShellOpts): string {
   const brand = /^#[0-9a-fA-F]{6}$/.test(cfg.brandColor) ? cfg.brandColor : DEFAULT_BRAND_COLOR;
   const app = htmlEsc(cfg.appName || "Shortlink");
@@ -47,10 +57,10 @@ function renderShell(cfg: BrandBits, o: ShellOpts): string {
     ? `<img src="${htmlEsc(cfg.logoUrl)}" alt="" width="46" height="46">`
     : `<div class="ph" aria-hidden="true">${initial}</div>`;
   const code = o.code ? `<p class="code">${htmlEsc(o.code)}</p>` : "";
-  const support =
-    o.support && o.support.url
-      ? ` · <a href="${htmlEsc(o.support.url)}">${htmlEsc(o.support.label || "Support")}</a>`
-      : "";
+  const supportUrl = o.support ? safeHref(o.support.url) : "";
+  const support = supportUrl
+    ? ` · <a href="${htmlEsc(supportUrl)}">${htmlEsc(o.support!.label || "Support")}</a>`
+    : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="theme-color" content="${brand}"><title>${app} — ${htmlEsc(o.title)}</title><style>
 :root{--b:${brand};--bg:#fafafa;--card:#fff;--bd:#ececef;--fg:#18181b;--mut:#71717a;--faint:#a1a1aa}
 @media(prefers-color-scheme:dark){:root{--bg:#0a0a0c;--card:#141417;--bd:#26262b;--fg:#fafafa;--mut:#a1a1aa;--faint:#6b6b73}}
