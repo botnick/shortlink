@@ -19,10 +19,27 @@ import { bytesToHex, hexToBytes, timingSafeEqual } from "./encoding";
  * lets callers transparently upgrade them on the next successful login.
  */
 // Measured on the workerd runtime (wrangler dev): 20k≈5.5 ms, 30k≈8.3 ms,
-// 50k≈13.8 ms. The login request also spends CPU on the human-check + session,
-// so we leave margin under the 10 ms cap → 20k (~5.5 ms). The PEPPER, not the
-// iteration count, is the real defense (see header), so a modest count is safe.
-const PBKDF2_ITERATIONS = 20_000;
+// 50k≈13.8 ms, 600k≈120 ms. The login request also spends CPU on the human-check
+// + session, so the default leaves margin under the 10 ms free-plan cap → 20k.
+// The PEPPER, not the iteration count, is the real defense (see header), so a
+// modest count is safe. The count is deploy-configurable via the
+// `PBKDF2_ITERATIONS` var: keep ≤ ~45k on the free plan (10 ms CPU), raise toward
+// OWASP's 600k only on the Workers Paid plan (30 s CPU). Changing it is seamless
+// — each hash stores its own count, and `needsRehash` upgrades old hashes on the
+// next successful login.
+const DEFAULT_ITERATIONS = 20_000;
+const MIN_ITERATIONS = 10_000;
+const MAX_ITERATIONS = 2_000_000;
+
+/** Resolve the deploy-time PBKDF2 cost from the `PBKDF2_ITERATIONS` var, falling
+ *  back to the safe default for anything missing or out of range. */
+export function pbkdf2Iterations(env: { PBKDF2_ITERATIONS?: string }): number {
+  const n = Number(env.PBKDF2_ITERATIONS);
+  return Number.isInteger(n) && n >= MIN_ITERATIONS && n <= MAX_ITERATIONS
+    ? n
+    : DEFAULT_ITERATIONS;
+}
+
 const SALT_BYTES = 16;
 const KEY_BYTES = 32;
 const SCHEME = "pbkdf2p1"; // peppered v1
@@ -64,10 +81,14 @@ async function deriveKey(
   return new Uint8Array(bits);
 }
 
-export async function hashPassword(password: string, secret: string): Promise<string> {
+export async function hashPassword(
+  password: string,
+  secret: string,
+  iterations: number = DEFAULT_ITERATIONS,
+): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
-  const key = await deriveKey(await pepper(password, secret), salt, PBKDF2_ITERATIONS);
-  return `${SCHEME}$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${bytesToHex(key)}`;
+  const key = await deriveKey(await pepper(password, secret), salt, iterations);
+  return `${SCHEME}$${iterations}$${bytesToHex(salt)}$${bytesToHex(key)}`;
 }
 
 export async function verifyPassword(
@@ -95,7 +116,7 @@ export async function verifyPassword(
 
 /** True when `stored` isn't the current scheme/iterations — re-hash it (with the
  *  plaintext the user just supplied) on the next successful verify to upgrade. */
-export function needsRehash(stored: string): boolean {
+export function needsRehash(stored: string, iterations: number = DEFAULT_ITERATIONS): boolean {
   const parts = stored.split("$");
-  return parts[0] !== SCHEME || Number(parts[1]) !== PBKDF2_ITERATIONS;
+  return parts[0] !== SCHEME || Number(parts[1]) !== iterations;
 }

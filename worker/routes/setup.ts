@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import type { AppEnv } from "../env";
-import { hashPassword } from "../lib/password";
+import { hashPassword, pbkdf2Iterations } from "../lib/password";
 import { createSession } from "../lib/auth";
 import { setSessionCookie } from "../lib/cookies";
 import { setupSchema } from "../lib/validators";
@@ -36,7 +36,7 @@ setup.post("/", zValidator("json", setupSchema), async (c) => {
     return c.json({ error: "Invalid setup token" }, 403);
   }
 
-  const passwordHash = await hashPassword(input.password, c.env.SESSION_SECRET);
+  const passwordHash = await hashPassword(input.password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env));
   const db = c.var.db;
   const { settings, users } = c.var.schema;
 

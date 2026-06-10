@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import type { AppContext, AppEnv, SessionUser } from "../env";
 import { createSession, invalidateSession } from "../lib/auth";
 import { getDbHandle } from "../db";
-import { hashPassword, needsRehash, verifyPassword } from "../lib/password";
+import { hashPassword, needsRehash, pbkdf2Iterations, verifyPassword } from "../lib/password";
 import { clearSessionCookie, setSessionCookie } from "../lib/cookies";
 import {
   SETTING_KEYS,
@@ -115,11 +115,11 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
     existing.length > 0 ||
     (tombstone[0] && isEmailBlocked(tombstone[0].deletedAt, map))
   ) {
-    await hashPassword(password, c.env.SESSION_SECRET); // equalize timing
+    await hashPassword(password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env)); // equalize timing
     return c.json({ error: "Unable to register with those details" }, 409);
   }
 
-  const passwordHash = await hashPassword(password, c.env.SESSION_SECRET);
+  const passwordHash = await hashPassword(password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env));
   const inserted = await db
     .insert(users)
     .values({ email, passwordHash })
@@ -160,7 +160,7 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const user = rows[0];
   if (!user) {
     // Burn equivalent time so unknown accounts aren't distinguishable.
-    await hashPassword(password, c.env.SESSION_SECRET);
+    await hashPassword(password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env));
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
@@ -174,10 +174,10 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   // Upgrade a legacy / lower-cost hash to the current peppered scheme on a
   // successful login — off the response path, with its own DB handle (the
   // request handle is closed in waitUntil after we respond).
-  if (needsRehash(user.passwordHash)) {
+  if (needsRehash(user.passwordHash, pbkdf2Iterations(c.env))) {
     c.executionCtx.waitUntil(
       (async () => {
-        const upgraded = await hashPassword(password, c.env.SESSION_SECRET);
+        const upgraded = await hashPassword(password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env));
         const { db: db2, schema, close } = getDbHandle(c.env);
         try {
           await db2

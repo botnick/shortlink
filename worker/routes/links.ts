@@ -15,7 +15,7 @@ import { deleteCachedLink, putCachedLink } from "../lib/cache";
 import { buildShortUrl, domainBucket } from "../lib/domainScope";
 import { shortOrigin } from "../lib/appconfig";
 import { cachePayload, purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
-import { hashPassword } from "../lib/password";
+import { hashPassword, pbkdf2Iterations } from "../lib/password";
 import { searchCondition } from "../lib/query";
 import { fetchMeta, invalidateLinkPreview } from "../lib/social";
 import { resolveProjectId } from "../lib/projects";
@@ -332,7 +332,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
 
   // Place the link in the requested project (if owned) or the user's default.
   const projectId = await resolveProjectId(db, schema, user.id, user.email, input.projectId);
-  const passwordHash = input.password ? await hashPassword(input.password, c.env.SESSION_SECRET) : null;
+  const passwordHash = input.password ? await hashPassword(input.password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env)) : null;
 
   const insertOne = async (slug: string) => {
     const row = (
@@ -714,7 +714,7 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
   if (input.androidUrl !== undefined) patch.androidUrl = input.androidUrl;
   if (input.desktopUrl !== undefined) patch.desktopUrl = input.desktopUrl;
   if (input.password !== undefined) {
-    patch.passwordHash = input.password ? await hashPassword(input.password, c.env.SESSION_SECRET) : null;
+    patch.passwordHash = input.password ? await hashPassword(input.password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env)) : null;
   }
   if (input.qrConfig !== undefined) patch.qrConfig = input.qrConfig;
   if (input.tags !== undefined) patch.tags = input.tags;

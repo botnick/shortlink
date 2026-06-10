@@ -26,7 +26,12 @@
     // Database driver: "postgres" (Hyperdrive, below) or "d1". To use D1, set
     // this to "d1", uncomment the d1_databases block, and run the D1 migrations
     // (see README). Default keeps the existing Postgres setup.
-    "DB_DRIVER": "postgres"
+    "DB_DRIVER": "postgres",
+    // Password PBKDF2 cost. Default 20000 fits the Workers FREE 10ms CPU budget
+    // (paired with a server-side pepper — see worker/lib/password.ts). Keep it
+    // <= ~45000 on the free plan; raise toward OWASP's 600000 only on Workers
+    // Paid (30s CPU). Old hashes upgrade automatically on the next login.
+    "PBKDF2_ITERATIONS": "20000"
   },
   // Uncomment to run on Cloudflare D1 (set DB_DRIVER="d1" above):
   //   npx wrangler d1 create shortlink-db   → paste the database_id here

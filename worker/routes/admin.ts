@@ -19,7 +19,7 @@ import { buildShortUrl, invalidateDomainHost } from "../lib/domainScope";
 import { softDeleteUser } from "../lib/accountLifecycle";
 import { purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
 import { dayBucket, searchCondition } from "../lib/query";
-import { hashPassword } from "../lib/password";
+import { hashPassword, pbkdf2Iterations } from "../lib/password";
 import { computeGlobalStats, parseRange } from "./stats";
 import {
   SETTING_KEYS,
@@ -651,7 +651,7 @@ admin.post("/users", zValidator("json", createUserSchema), async (c) => {
   if (existing.length > 0) {
     return c.json({ error: "A member with that email already exists" }, 409);
   }
-  const passwordHash = await hashPassword(password, c.env.SESSION_SECRET);
+  const passwordHash = await hashPassword(password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env));
   const row = (
     await db
       .insert(users)
@@ -678,7 +678,7 @@ admin.post(
     const id = c.req.param("id");
     if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
     const { users, sessions } = c.var.schema;
-    const passwordHash = await hashPassword(c.req.valid("json").password, c.env.SESSION_SECRET);
+    const passwordHash = await hashPassword(c.req.valid("json").password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env));
     const rows = await c.var.db
       .update(users)
       .set({ passwordHash })

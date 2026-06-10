@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { and, count, eq, ne } from "drizzle-orm";
 import type { AppEnv } from "../env";
-import { hashPassword, verifyPassword } from "../lib/password";
+import { hashPassword, pbkdf2Iterations, verifyPassword } from "../lib/password";
 import { clearSessionCookie } from "../lib/cookies";
 import { isRateLimited } from "../lib/ratelimit";
 import { authRateLimitFrom, getAllSettings } from "../lib/settings";
@@ -84,7 +84,7 @@ route.patch("/password", zValidator("json", changePasswordSchema), async (c) => 
   const { users, sessions } = c.var.schema;
   await c.var.db
     .update(users)
-    .set({ passwordHash: await hashPassword(newPassword, c.env.SESSION_SECRET) })
+    .set({ passwordHash: await hashPassword(newPassword, c.env.SESSION_SECRET, pbkdf2Iterations(c.env)) })
     .where(eq(users.id, c.var.user!.id));
   await c.var.db
     .delete(sessions)
