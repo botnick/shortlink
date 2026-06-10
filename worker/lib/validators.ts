@@ -154,6 +154,7 @@ export const settingsSchema = z
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),
     domainUnverifiedDays: z.number().int().min(0).max(3650).optional(),
+    clicksRetentionDays: z.number().int().min(0).max(3650).optional(),
     ogTemplate: z
       .enum([
         "minimal",

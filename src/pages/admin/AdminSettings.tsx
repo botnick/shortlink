@@ -186,6 +186,7 @@ export function AdminSettings() {
   const [slugLength, setSlugLength] = useState(6);
   const [accountHoldDays, setAccountHoldDays] = useState(180);
   const [emailBlockDays, setEmailBlockDays] = useState(180);
+  const [clicksRetentionDays, setClicksRetentionDays] = useState(0);
   const [savingLimits, setSavingLimits] = useState(false);
 
   // Human check (own card — every knob of the game CAPTCHA is a setting).
@@ -251,6 +252,7 @@ export function AdminSettings() {
         setSlugLength(s.slugLength ?? 6);
         setAccountHoldDays(s.accountHoldDays ?? 180);
         setEmailBlockDays(s.emailBlockDays ?? 180);
+        setClicksRetentionDays(s.clicksRetentionDays ?? 0);
         setPowDifficulty(s.powDifficulty ?? 16);
         setChallengeMode(s.challengeMode ?? "game-only");
         setCaptchaGames(s.captchaGames?.length ? s.captchaGames : [...POOL_GAME_TYPES]);
@@ -361,6 +363,7 @@ export function AdminSettings() {
         slugLength: Math.min(32, Math.max(3, Math.floor(slugLength) || 6)),
         accountHoldDays: Math.max(0, Math.floor(accountHoldDays) || 0),
         emailBlockDays: Math.max(0, Math.floor(emailBlockDays) || 0),
+        clicksRetentionDays: Math.max(0, Math.floor(clicksRetentionDays) || 0),
       });
       toast.success("Limits saved");
     } catch (err) {
@@ -911,6 +914,21 @@ export function AdminSettings() {
                     />
                     <p className="text-[11px] text-muted-foreground">
                       Extra days after the purge before that email can register again.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="clicksRetention">Click history retention (days)</Label>
+                    <Input
+                      id="clicksRetention"
+                      type="number"
+                      min={0}
+                      max={3650}
+                      value={clicksRetentionDays}
+                      onChange={(e) => setClicksRetentionDays(Number(e.target.value))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Purge raw click rows older than this (0 = keep forever). Per-link
+                      totals are kept regardless; only old breakdowns/timeline are trimmed.
                     </p>
                   </div>
                 </div>

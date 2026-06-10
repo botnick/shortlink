@@ -57,6 +57,7 @@ import {
   cfZoneIdFrom,
   descriptionFrom,
   domainUnverifiedDaysFrom,
+  clicksRetentionDaysFrom,
   extraReservedFrom,
   getAllSettings,
   indexableFrom,
@@ -151,6 +152,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
     domainUnverifiedDays: domainUnverifiedDaysFrom(map),
+    clicksRetentionDays: clicksRetentionDaysFrom(map),
     ogTemplate: ogTemplateFrom(map),
     ogFont: ogFontFrom(map),
     ogLabel: ogLabelRawFrom(map),
@@ -340,6 +342,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.domainUnverifiedDays !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.domainUnverifiedDays, input.domainUnverifiedDays);
+  }
+  if (input.clicksRetentionDays !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.clicksRetentionDays, input.clicksRetentionDays);
   }
   if (input.ogTemplate !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.ogTemplate, input.ogTemplate);

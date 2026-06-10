@@ -298,6 +298,8 @@ export interface SettingsDTO {
   ogTagline: string;
   ogAccent: string;
   domainUnverifiedDays: number;
+  /** Days of raw click rows to keep (0 = forever); a cron purges older ones. */
+  clicksRetentionDays: number;
   /** Editable copy for the worker-served branded pages. */
   brandCopy: BrandCopy;
   /** Show a "you're leaving to …" interstitial before redirecting. */

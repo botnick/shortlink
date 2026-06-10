@@ -56,6 +56,7 @@ export const SETTING_KEYS = {
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
   domainUnverifiedDays: "domain_unverified_days",
+  clicksRetentionDays: "clicks_retention_days",
   ogTemplate: "og_template",
   ogFont: "og_font",
   ogLabel: "og_label",
@@ -315,6 +316,13 @@ export function createRateLimitFrom(map: Record<string, unknown>): number {
 /** Custom domains a single user may add. */
 export function maxDomainsPerUserFrom(map: Record<string, unknown>): number {
   return asCount(map[SETTING_KEYS.maxDomainsPerUser], 10);
+}
+
+/** Days of raw click rows to keep; a daily cron purges older ones to bound the
+ *  clicks table (the only table that grows with traffic). 0 = keep forever.
+ *  All-time totals survive purges via the denormalized links.click_count. */
+export function clicksRetentionDaysFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.clicksRetentionDays], 0);
 }
 
 /** How many times a link's back-half may be changed (each change retires the old

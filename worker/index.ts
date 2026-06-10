@@ -27,6 +27,7 @@ import projectRoutes from "./routes/projects";
 import keyRoutes from "./routes/keys";
 import accountRoutes from "./routes/account";
 import { purgeDeletedAccounts } from "./lib/accountLifecycle";
+import { purgeOldClicks } from "./lib/clicksRetention";
 import { purgeHumanRecords } from "./lib/captcha/store";
 import { handleMcp } from "./mcp";
 import { getCachedPublicConfig, shortOrigin } from "./lib/appconfig";
@@ -582,6 +583,7 @@ export default {
     ctx.waitUntil(cleanupUnverifiedDomains(env));
     ctx.waitUntil(purgeDeletedAccounts(env));
     ctx.waitUntil(purgeExpiredHumanRecords(env));
+    ctx.waitUntil(purgeOldClicks(env));
   },
 };
 
