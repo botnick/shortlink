@@ -1519,9 +1519,9 @@ function QrCard({
   useEffect(() => {
     let active = true;
     const base = makeDefault(config.brandColor);
-    const withLogo = config.logoUrl
-      ? { ...base, logoSrc: config.logoUrl, logo: true }
-      : base;
+    // The app logo is available as the centre-logo source, but OFF by default —
+    // never auto-stamp it onto a user's QR; they opt in via the QR studio.
+    const withLogo = config.logoUrl ? { ...base, logoSrc: config.logoUrl } : base;
     const cfg = savedConfig ? { ...withLogo, ...(savedConfig as Partial<QrCfg>) } : withLogo;
     renderQrSvg(cfg, shortUrl)
       .then((raw) => {

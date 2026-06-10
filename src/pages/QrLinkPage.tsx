@@ -57,7 +57,7 @@ export function QrLinkPage() {
   const cfg = useMemo<QrCfg | null>(() => {
     if (!data) return null;
     const base = makeDefault(data.color || config.brandColor);
-    const withLogo = data.logo ? { ...base, logoSrc: data.logo, logo: true } : base;
+    const withLogo = data.logo ? { ...base, logoSrc: data.logo } : base;
     return data.qrConfig ? { ...withLogo, ...(data.qrConfig as Partial<QrCfg>) } : withLogo;
   }, [data, config.brandColor]);
 
