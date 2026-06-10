@@ -13,16 +13,27 @@ import {
   Plus,
   QrCode,
   Share2,
+  ChevronRight,
   Smartphone,
   Sparkles,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { timeAgo } from "@/lib/format";
 import { compressUpload, ogToJpeg, ogToPng, renderOg, renderPhotoOg } from "@/lib/ogTemplates";
 import { loadOgFont } from "@/lib/ogFonts";
 import { composeFrame, makeDefault, renderQrSvg, svgDataUrl, type QrCfg } from "@/lib/qr";
-import type { LinkDTO, PreviewMode, UrlMetaDTO } from "@shared/types";
+import type {
+  DomainDTO,
+  DomainListDTO,
+  LinkAliasDTO,
+  LinkAliasListDTO,
+  LinkDTO,
+  PreviewMode,
+  UrlMetaDTO,
+} from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -122,9 +133,11 @@ function suggestSource(destination: string, metaTitle?: string): string {
     return "";
   }
 }
+// "shortest"/"random" lengths come from the admin setting (config.slugLength);
+// desc strings for those two are computed at render time.
 const SLUG_OPTIONS = [
-  { kind: "shortest", label: "Shortest", desc: "Shortest random — 4 characters", needsSource: false },
-  { kind: "random", label: "Random", desc: "Longer random — 8 characters", needsSource: false },
+  { kind: "shortest", label: "Shortest", desc: "", needsSource: false },
+  { kind: "random", label: "Random", desc: "", needsSource: false },
   { kind: "plain", label: "Suggested", desc: "Words from the destination, joined", needsSource: true },
   { kind: "dash", label: "Suggested with dash", desc: "Dash-separated (SEO-friendly)", needsSource: true },
   { kind: "camel", label: "Suggested camel case", desc: "camelCase from the destination", needsSource: true },
@@ -245,6 +258,39 @@ function CopyRow({ value, label }: { value: string; label: string }) {
   );
 }
 
+/** One retired back-half in the edit history: its URL, age, and a copy button.
+ *  Old back-halves are permanent (they keep redirecting) — no remove. */
+function AliasRow({ alias }: { alias: LinkAliasDTO }) {
+  const [copied, setCopied] = useState(false);
+  const display = alias.shortUrl.replace(/^https?:\/\//, "");
+  return (
+    <li className="flex items-center gap-2 px-2.5 py-1.5">
+      <span
+        className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+        title={alias.shortUrl}
+      >
+        {display}
+      </span>
+      <span className="shrink-0 text-[10px] text-muted-foreground/70">
+        {timeAgo(alias.createdAt)}
+      </span>
+      <button
+        type="button"
+        aria-label="Copy old short link"
+        title="Copy"
+        onClick={() => {
+          void navigator.clipboard.writeText(alias.shortUrl);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {copied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+      </button>
+    </li>
+  );
+}
+
 /** Full-page link create/edit in Rebrandly's clean, progressive-disclosure style:
  *  a focused form (destination → short link → collapsible advanced sections) with
  *  a sticky preview rail (short link + QR). Our restraint, their friendliness. */
@@ -263,8 +309,14 @@ export function LinkEditor() {
   const [destination, setDestination] = useState("");
   const [utm, setUtm] = useState<Utm>(EMPTY_UTM);
   const [alias, setAlias] = useState("");
-  const [title, setTitle] = useState("");
+  // The custom domain the back-half lives on (null = the default short host).
+  const [domainId, setDomainId] = useState<string | null>(null);
+  const [domains, setDomains] = useState<DomainDTO[]>([]);
+  // Retired back-halves that still redirect here (edit history).
+  const [aliases, setAliases] = useState<LinkAliasDTO[]>([]);
   const [isActive, setIsActive] = useState(true);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [iosUrl, setIosUrl] = useState("");
   const [androidUrl, setAndroidUrl] = useState("");
   const [desktopUrl, setDesktopUrl] = useState("");
@@ -299,8 +351,10 @@ export function LinkEditor() {
         setLink(l);
         setDestination(l.destination);
         setUtm(parseUtm(l.destination));
-        setTitle(l.title ?? "");
+        setAlias(l.slug);
+        setDomainId(l.domainId);
         setIsActive(l.isActive);
+        setTags(l.tags ?? []);
         setIosUrl(l.iosUrl ?? "");
         setAndroidUrl(l.androidUrl ?? "");
         setDesktopUrl(l.desktopUrl ?? "");
@@ -321,6 +375,52 @@ export function LinkEditor() {
     };
   }, [isEdit, id, navigate]);
 
+  // Domains the user can host a back-half on (ownership confirmed → usable).
+  useEffect(() => {
+    let active = true;
+    api
+      .get<DomainListDTO>("/domains")
+      .then((r) => {
+        if (active)
+          setDomains(
+            r.domains.filter((d) => d.status === "verified" || d.status === "active"),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // On create, start new links on the selected project's default domain.
+  const projectDomainApplied = useRef(false);
+  useEffect(() => {
+    if (isEdit || projectDomainApplied.current || !selected) return;
+    projectDomainApplied.current = true;
+    if (selected.defaultDomainId) setDomainId(selected.defaultDomainId);
+  }, [isEdit, selected]);
+
+  // Retired back-halves (history). Refetched after a back-half change saves.
+  function loadAliases() {
+    if (!isEdit || !id) return;
+    api
+      .get<LinkAliasListDTO>(`/links/${id}/aliases`)
+      .then((r) => setAliases(r.aliases))
+      .catch(() => {});
+  }
+  useEffect(() => {
+    if (!isEdit || !id) return;
+    let active = true;
+    api
+      .get<LinkAliasListDTO>(`/links/${id}/aliases`)
+      .then((r) => active && setAliases(r.aliases))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isEdit, id]);
+
+
   const destValid = isHttpUrl(destination);
   const previewDomain = (() => {
     try {
@@ -329,13 +429,12 @@ export function LinkEditor() {
       return shortHost;
     }
   })();
-  const aliasOrSlug = link?.slug || alias.trim();
-  const shortUrlText = `${shortHost}/${aliasOrSlug || "your-link"}`;
-  const ogCardUrl = link?.shortUrl
-    ? link.shortUrl.replace(/^https?:\/\//, "")
-    : alias.trim()
-      ? `${shortHost}/${alias.trim()}`
-      : shortHost;
+  // The host the short link lives on: the chosen custom domain, or the default.
+  const selectedDomain = domains.find((d) => d.id === domainId) ?? null;
+  const selectedHost = selectedDomain?.hostname ?? shortHost;
+  const aliasOrSlug = alias.trim() || link?.slug || "";
+  const shortUrlText = `${selectedHost}/${aliasOrSlug || "your-link"}`;
+  const ogCardUrl = `${selectedHost}/${aliasOrSlug || "your-link"}`;
 
   const utmCount = Object.values(utm).filter((v) => v.trim()).length;
   const deepCount = [iosUrl, androidUrl, desktopUrl].filter((v) => v.trim()).length;
@@ -347,10 +446,10 @@ export function LinkEditor() {
   // Compact "Link preview" shown in the rail — mirrors how the link unfurls.
   const pvTitle =
     previewMode === "custom"
-      ? ogTitle.trim() || destMeta?.title || title.trim()
+      ? ogTitle.trim() || destMeta?.title || ""
       : previewMode === "destination"
         ? destMeta?.title || ""
-        : title.trim();
+        : "";
   const pvDesc =
     previewMode === "custom"
       ? ogDescription.trim()
@@ -383,10 +482,13 @@ export function LinkEditor() {
       onDestinationChange(`https://${v}`);
     }
   }
+  // Random lengths follow the admin-configured default (config.slugLength).
+  const shortLen = Math.min(32, Math.max(3, config.slugLength));
+  const longLen = Math.min(32, shortLen + 2);
   function optimizeSlug(kind: (typeof SLUG_OPTIONS)[number]["kind"]) {
     setSlugStrategy(SLUG_OPTIONS.find((o) => o.kind === kind)?.label ?? "");
-    if (kind === "shortest") return setAlias(randomSlug(4));
-    if (kind === "random") return setAlias(randomSlug(8));
+    if (kind === "shortest") return setAlias(randomSlug(shortLen));
+    if (kind === "random") return setAlias(randomSlug(longLen));
     const s = toSlug(slugSource, kind);
     setAlias(s.length >= 3 ? s : (s + randomSlug(4)).slice(0, 32));
   }
@@ -408,7 +510,7 @@ export function LinkEditor() {
       renderOg(canvas, {
         template: ogTemplate,
         font: family,
-        title: ogTitle.trim() || destMeta?.title?.trim() || title.trim() || config.ogTitle,
+        title: ogTitle.trim() || destMeta?.title?.trim() || config.ogTitle,
         description: ogDescription.trim() || destMeta?.description?.trim() || config.ogTagline,
         appName: config.ogLabel,
         brandColor: config.ogAccent,
@@ -421,7 +523,7 @@ export function LinkEditor() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewMode, ogSource, ogTemplate, config.ogFont, config.ogLabel, config.ogTitle, config.ogTagline, config.ogAccent, ogTitle, ogDescription, title, ogCardUrl, destMeta, brandLogo]);
+  }, [previewMode, ogSource, ogTemplate, config.ogFont, config.ogLabel, config.ogTitle, config.ogTagline, config.ogAccent, ogTitle, ogDescription, ogCardUrl, destMeta, brandLogo]);
 
   useEffect(() => {
     const wantMeta =
@@ -482,10 +584,14 @@ export function LinkEditor() {
     };
   }, [config.logoUrl]);
 
-  // Live back-half availability (create only; the back-half can't change on edit).
+  // Live back-half availability, scoped to the chosen domain. The link's own
+  // current (slug, domain) is always available to itself, so skip that case.
   useEffect(() => {
-    if (isEdit) return;
     const s = alias.trim();
+    if (isEdit && link && s === link.slug && domainId === link.domainId) {
+      setSlugStatus("idle");
+      return;
+    }
     if (!s || !/^[a-zA-Z0-9_-]{3,32}$/.test(s)) {
       setSlugStatus("idle");
       return;
@@ -494,8 +600,10 @@ export function LinkEditor() {
     setSlugStatus("checking");
     const t = setTimeout(async () => {
       try {
+        const params = new URLSearchParams({ slug: s });
+        if (domainId) params.set("domainId", domainId);
         const r = await api.get<{ available: boolean; reason?: string }>(
-          `/links/slug-check?slug=${encodeURIComponent(s)}`,
+          `/links/slug-check?${params}`,
         );
         if (!active) return;
         setSlugStatus(r.available ? "available" : r.reason === "reserved" ? "reserved" : "taken");
@@ -507,7 +615,7 @@ export function LinkEditor() {
       active = false;
       clearTimeout(t);
     };
-  }, [alias, isEdit]);
+  }, [alias, domainId, isEdit, link]);
 
   function previewPayload() {
     let image: string | null = null;
@@ -577,6 +685,16 @@ export function LinkEditor() {
     return link?.hasPassword ? { password: null } : {};
   }
 
+  function addTag(raw: string) {
+    const t = raw.trim().slice(0, 40);
+    if (!t) return;
+    setTags((prev) => (prev.includes(t) || prev.length >= 20 ? prev : [...prev, t]));
+    setTagInput("");
+  }
+  function commitPendingTag() {
+    if (tagInput.trim()) addTag(tagInput);
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!destValid) {
@@ -597,31 +715,73 @@ export function LinkEditor() {
       toast.error("Enter a password, or turn off password protection");
       return;
     }
+    const aliasTrim = alias.trim();
+    if (isEdit && !aliasTrim) {
+      toast.error("The back-half can’t be empty");
+      return;
+    }
+    if (aliasTrim && !/^[a-zA-Z0-9_-]{3,32}$/.test(aliasTrim)) {
+      toast.error("Back-half: 3–32 characters — letters, numbers, - or _");
+      return;
+    }
+    if (slugStatus === "taken" || slugStatus === "reserved") {
+      toast.error("That back-half isn’t available — try another");
+      return;
+    }
+    // Fold a typed-but-not-committed tag into the set being saved.
+    const effectiveTags = tagInput.trim()
+      ? Array.from(new Set([...tags, tagInput.trim().slice(0, 40)])).slice(0, 20)
+      : tags;
     setSubmitting(true);
     try {
       if (isEdit && link) {
-        await api.patch<{ link: LinkDTO }>(`/links/${link.id}`, {
+        // Diff against what's saved and PATCH only the fields that changed —
+        // no point re-sending an unchanged destination or a heavy social image.
+        const candidate: Record<string, unknown> = {
           destination,
-          title: title.trim() || null,
+          slug: aliasTrim,
+          domainId,
           isActive,
           ...deepLinks(),
-          ...passwordField(),
           ...previewPayload(),
-        });
-        toast.success("Link updated");
+        };
+        const patch: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(candidate)) {
+          if (v !== ((link as unknown as Record<string, unknown>)[k] ?? null)) patch[k] = v;
+        }
+        // Tags are an array — compare by value, not reference.
+        if (JSON.stringify(effectiveTags) !== JSON.stringify(link.tags ?? []))
+          patch.tags = effectiveTags;
+        Object.assign(patch, passwordField()); // already only set when changed
+        if (Object.keys(patch).length === 0) {
+          toast.success("No changes to save");
+          return;
+        }
+        const { link: updated } = await api.patch<{ link: LinkDTO }>(
+          `/links/${link.id}`,
+          patch,
+        );
+        // Stay on the page; refresh the baseline so the next save diffs cleanly.
+        setLink(updated);
+        setIsActive(updated.isActive);
+        loadAliases(); // a back-half change may have added to the history
+        toast.success("Changes saved");
       } else {
-        await api.post<{ link: LinkDTO }>("/links", {
+        const { link: created } = await api.post<{ link: LinkDTO }>("/links", {
           destination,
-          slug: alias.trim() || undefined,
-          title: title.trim() || undefined,
+          slug: aliasTrim || undefined,
+          domainId: domainId ?? undefined,
           projectId: selectedId ?? undefined,
+          tags: effectiveTags,
           ...deepLinks(),
           ...passwordField(),
           ...previewPayload(),
         });
         toast.success("Short link created");
+        // Drop into the new link's editor (QR, stats, more edits) instead of
+        // bouncing back to the dashboard.
+        navigate(`/dashboard/links/${created.id}/edit`);
       }
-      navigate("/dashboard");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {
@@ -716,91 +876,183 @@ export function LinkEditor() {
 
           {/* Short link */}
           <section className="space-y-4 rounded-2xl border bg-card p-5">
-            {!isEdit && (
-              <div className="space-y-2">
-                <Label htmlFor="alias">
-                  Custom back-half{" "}
-                  <span className="font-normal text-muted-foreground">(optional)</span>
-                </Label>
-                <div className="flex items-stretch gap-2">
-                  <div className="flex flex-1 items-center overflow-hidden rounded-md border border-input bg-transparent text-sm focus-within:ring-2 focus-within:ring-ring">
-                    <span className="whitespace-nowrap pl-3 text-muted-foreground">{shortHost}/</span>
-                    <input
-                      id="alias"
-                      className="h-9 w-full bg-transparent px-1 text-base outline-none md:text-sm"
-                      placeholder="my-link"
-                      value={alias}
-                      onChange={(e) => {
-                        setAlias(e.target.value);
-                        setSlugStrategy("");
-                      }}
-                    />
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button type="button" variant="outline" className="shrink-0 gap-1.5">
-                        <Sparkles className="size-4" /> Optimize
-                        <ChevronDown className="size-3.5 opacity-60" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-64">
-                      {SLUG_OPTIONS.map((o) => {
-                        const disabled = o.needsSource && !hasSlugSource;
-                        return (
-                          <DropdownMenuItem
-                            key={o.kind}
-                            disabled={disabled}
-                            onClick={() => optimizeSlug(o.kind)}
-                            className="flex-col items-start gap-0.5"
-                          >
-                            <span className="text-sm font-medium">{o.label}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {disabled ? "Enter a destination first" : o.desc}
-                            </span>
+            <div className="space-y-2">
+              <Label htmlFor="alias">
+                {isEdit ? (
+                  "Back-half"
+                ) : (
+                  <>
+                    Custom back-half{" "}
+                    <span className="font-normal text-muted-foreground">(optional)</span>
+                  </>
+                )}
+              </Label>
+              <div className="flex items-stretch gap-2">
+                <div className="flex h-9 min-w-0 flex-1 items-center overflow-hidden rounded-md border border-input bg-transparent text-sm focus-within:ring-2 focus-within:ring-ring">
+                  {domains.length > 0 ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex max-w-[45%] shrink-0 items-center gap-1 whitespace-nowrap rounded-l-md py-2 pl-3 text-muted-foreground hover:text-foreground"
+                          title="Choose a domain"
+                        >
+                          <span className="truncate">{selectedHost}</span>
+                          <ChevronDown className="size-3 shrink-0 opacity-60" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-w-[16rem]">
+                        <DropdownMenuItem onClick={() => setDomainId(null)}>
+                          <span className="flex-1 truncate">{shortHost}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">default</span>
+                          {domainId === null && <Check className="ml-1 size-3.5" />}
+                        </DropdownMenuItem>
+                        {domains.map((d) => (
+                          <DropdownMenuItem key={d.id} onClick={() => setDomainId(d.id)}>
+                            <span className="flex-1 truncate">{d.hostname}</span>
+                            {domainId === d.id && <Check className="ml-1 size-3.5" />}
                           </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <span className="shrink-0 whitespace-nowrap pl-3 text-muted-foreground">
+                      {shortHost}
+                    </span>
+                  )}
+                  <span className="px-0.5 text-muted-foreground">/</span>
+                  <input
+                    id="alias"
+                    className="h-full w-full min-w-0 bg-transparent px-1 text-base outline-none md:text-sm"
+                    placeholder="my-link"
+                    value={alias}
+                    onChange={(e) => {
+                      setAlias(e.target.value);
+                      setSlugStrategy("");
+                    }}
+                  />
                 </div>
-                {alias.trim() && !/^[a-zA-Z0-9_-]{3,32}$/.test(alias.trim()) ? (
-                  <p className="text-[11px] text-amber-600">
-                    3–32 characters: letters, numbers, - or _
-                  </p>
-                ) : slugStatus === "checking" ? (
-                  <p className="text-[11px] text-muted-foreground">Checking availability…</p>
-                ) : slugStatus === "taken" ? (
-                  <p className="text-[11px] text-red-600">That back-half is taken — try another.</p>
-                ) : slugStatus === "reserved" ? (
-                  <p className="text-[11px] text-red-600">That back-half is reserved.</p>
-                ) : slugStatus === "available" ? (
-                  <p className="flex items-center gap-1 text-[11px] text-emerald-600">
-                    <Check className="size-3" /> Available
-                  </p>
-                ) : slugStrategy ? (
-                  <p className="text-[11px] text-muted-foreground">{slugStrategy} back-half</p>
-                ) : null}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" className="shrink-0 gap-1.5">
+                      <Sparkles className="size-4" /> Optimize
+                      <ChevronDown className="size-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    {SLUG_OPTIONS.map((o) => {
+                      const disabled = o.needsSource && !hasSlugSource;
+                      const desc =
+                        o.kind === "shortest"
+                          ? `Shortest random — ${shortLen} characters`
+                          : o.kind === "random"
+                            ? `Longer random — ${longLen} characters`
+                            : o.desc;
+                      return (
+                        <DropdownMenuItem
+                          key={o.kind}
+                          disabled={disabled}
+                          onClick={() => optimizeSlug(o.kind)}
+                          className="flex-col items-start gap-0.5"
+                        >
+                          <span className="text-sm font-medium">{o.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {disabled ? "Enter a destination first" : desc}
+                          </span>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
+              {alias.trim() && !/^[a-zA-Z0-9_-]{3,32}$/.test(alias.trim()) ? (
+                <p className="text-[11px] text-amber-600">
+                  3–32 characters: letters, numbers, - or _
+                </p>
+              ) : slugStatus === "checking" ? (
+                <p className="text-[11px] text-muted-foreground">Checking availability…</p>
+              ) : slugStatus === "taken" ? (
+                <p className="text-[11px] text-red-600">That back-half is taken — try another.</p>
+              ) : slugStatus === "reserved" ? (
+                <p className="text-[11px] text-red-600">That back-half is reserved.</p>
+              ) : slugStatus === "available" ? (
+                <p className="flex items-center gap-1 text-[11px] text-emerald-600">
+                  <Check className="size-3" /> Available
+                </p>
+              ) : slugStrategy ? (
+                <p className="text-[11px] text-muted-foreground">{slugStrategy} back-half</p>
+              ) : null}
+              {isEdit && (
+                <p className="text-[11px] text-muted-foreground">
+                  Changing the back-half or domain keeps the old short link working — it
+                  still redirects here.
+                </p>
+              )}
+              {isEdit && aliases.length > 0 && (
+                <details className="group pt-0.5">
+                  <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground">
+                    <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
+                    {aliases.length} previous back-half{aliases.length > 1 ? "es" : ""} ·
+                    still redirect here
+                  </summary>
+                  <ul className="mt-1 divide-y rounded-md border">
+                    {aliases.map((a) => (
+                      <AliasRow key={a.id} alias={a} />
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+
+            {!isEdit && selected && (
+              <p className="text-[11px] text-muted-foreground">
+                Saving to{" "}
+                <span className="font-medium text-foreground/70">{selected.name}</span> —
+                switch projects on the dashboard.
+              </p>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="title">
-                Title{" "}
-                <span className="font-normal text-muted-foreground">(optional)</span>
+              <Label htmlFor="tags">
+                Tags <span className="font-normal text-muted-foreground">(optional)</span>
               </Label>
-              <Input
-                id="title"
-                placeholder="Spring campaign"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-              {!isEdit && selected && (
-                <p className="text-[11px] text-muted-foreground">
-                  Saving to{" "}
-                  <span className="font-medium text-foreground/70">{selected.name}</span> —
-                  switch projects on the dashboard.
-                </p>
-              )}
+              <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input px-2 py-1.5 text-sm focus-within:ring-2 focus-within:ring-ring">
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-xs"
+                  >
+                    {t}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${t}`}
+                      onClick={() => setTags(tags.filter((x) => x !== t))}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  id="tags"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.key === "Enter" || e.key === ",") && tagInput.trim()) {
+                      e.preventDefault();
+                      addTag(tagInput);
+                    } else if (e.key === "Backspace" && !tagInput && tags.length) {
+                      setTags(tags.slice(0, -1));
+                    }
+                  }}
+                  onBlur={commitPendingTag}
+                  placeholder={tags.length ? "" : "marketing, q1-campaign…"}
+                  className="min-w-[8ch] flex-1 bg-transparent outline-none"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Press Enter or comma to add. Up to 20.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -1210,7 +1462,12 @@ export function LinkEditor() {
           </section>
 
           {isEdit && link ? (
-            <QrCard slug={link.slug} linkId={link.id} savedConfig={link.qrConfig} />
+            <QrCard
+              shortUrl={link.shortUrl}
+              slug={link.slug}
+              linkId={link.id}
+              savedConfig={link.qrConfig}
+            />
           ) : (
             <section className="space-y-3 rounded-2xl border bg-card p-4">
               <span className="text-xs font-medium text-muted-foreground">QR code</span>
@@ -1233,40 +1490,48 @@ export function LinkEditor() {
   );
 }
 
-/** QR block in the preview rail: a live QR plus its public /qr/<slug> share page. */
+/** QR block in the preview rail: a live QR plus its public /qr/<slug> share page.
+ *  Rendered client-side from the link's own short URL + brand so it works the
+ *  same whether the link is on the default host or a custom domain. */
 function QrCard({
+  shortUrl,
   slug,
   linkId,
   savedConfig,
 }: {
+  shortUrl: string;
   slug: string;
   linkId: string;
   savedConfig?: Record<string, unknown> | null;
 }) {
   const { config } = useConfig();
   const [svg, setSvg] = useState("");
-  const qrUrl = `${window.location.origin}/qr/${slug}`;
+  // The QR (and its share page) live on the link's host, not necessarily this one.
+  const origin = (() => {
+    try {
+      return new URL(shortUrl).origin;
+    } catch {
+      return window.location.origin;
+    }
+  })();
+  const qrUrl = `${origin}/qr/${slug}`;
 
   useEffect(() => {
     let active = true;
-    // Same source as the QR studio + the /qr page: brand colour, project logo,
-    // and the canonical short URL — so every QR view of the link is identical.
-    fetch(`/api/qr/${slug}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { shortUrl: string; color: string | null; logo: string | null } | null) => {
-        if (!active || !d) return;
-        const base = makeDefault(d.color || config.brandColor);
-        const withLogo = d.logo ? { ...base, logoSrc: d.logo, logo: true } : base;
-        const cfg = savedConfig ? { ...withLogo, ...(savedConfig as Partial<QrCfg>) } : withLogo;
-        return renderQrSvg(cfg, d.shortUrl).then((raw) => {
-          if (active) setSvg(composeFrame(raw, cfg).svg);
-        });
+    const base = makeDefault(config.brandColor);
+    // The app logo is available as the centre-logo source, but OFF by default —
+    // never auto-stamp it onto a user's QR; they opt in via the QR studio.
+    const withLogo = config.logoUrl ? { ...base, logoSrc: config.logoUrl } : base;
+    const cfg = savedConfig ? { ...withLogo, ...(savedConfig as Partial<QrCfg>) } : withLogo;
+    renderQrSvg(cfg, shortUrl)
+      .then((raw) => {
+        if (active) setSvg(composeFrame(raw, cfg).svg);
       })
       .catch(() => {});
     return () => {
       active = false;
     };
-  }, [slug, config.brandColor, savedConfig]);
+  }, [shortUrl, config.brandColor, config.logoUrl, savedConfig]);
 
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4">
@@ -1292,7 +1557,7 @@ function QrCard({
       </div>
       <div className="space-y-1.5 border-t pt-3">
         <span className="text-[11px] text-muted-foreground">Direct image link (SVG)</span>
-        <CopyRow value={`${window.location.origin}/qr/${slug}.svg`} label="Copy direct QR image link" />
+        <CopyRow value={`${origin}/qr/${slug}.svg`} label="Copy direct QR image link" />
       </div>
     </section>
   );

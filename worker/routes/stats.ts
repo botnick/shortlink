@@ -69,8 +69,16 @@ export async function computeStats(
 ): Promise<StatsDTO> {
   const { clicks } = schema;
   const start = rangeStart(range);
-  const link = eq(clicks.linkId, linkId);
+  // Analytics count humans only — bot rows are kept but filtered out here.
+  // "is not true" also covers legacy rows where is_bot is null.
+  const human = sql`${clicks.isBot} is not true`;
+  const link = and(eq(clicks.linkId, linkId), human) as SQL;
   const base: SQL = start ? (and(link, gte(clicks.createdAt, start)) as SQL) : link;
+  const botCond = and(
+    eq(clicks.linkId, linkId),
+    eq(clicks.isBot, true),
+    ...(start ? [gte(clicks.createdAt, start)] : []),
+  ) as SQL;
 
   // Day bucket is the only dialect-specific bit. Comparisons use the query
   // builder (gte/isNull) so Drizzle serialises Dates correctly per driver.
@@ -101,6 +109,7 @@ export async function computeStats(
     best,
     directRows,
     referrerRows,
+    botClicks,
   ] = await Promise.all([
     db
       .select({ total: count(), unique: countDistinct(clicks.ipHash) })
@@ -138,6 +147,11 @@ export async function computeStats(
       .from(clicks)
       .where(and(base, isNotNull(clicks.referrer)))
       .then((r) => Number(r[0]?.v ?? 0)),
+    db
+      .select({ v: count() })
+      .from(clicks)
+      .where(botCond)
+      .then((r) => Number(r[0]?.v ?? 0)),
   ]);
 
   const b = best[0];
@@ -151,6 +165,7 @@ export async function computeStats(
     bestDay: b ? { day: b.day, count: Number(b.value) } : null,
     directClicks: directRows,
     referrerClicks: referrerRows,
+    botClicks,
     timeseries: series.map((r) => ({ day: r.day, count: Number(r.value) })),
     countries,
     referrers,
@@ -173,7 +188,8 @@ export async function computeGlobalStats(
 ): Promise<AdminAnalyticsDTO> {
   const { clicks, links, users } = schema;
   const start = rangeStart(range);
-  const base: SQL = start ? (gte(clicks.createdAt, start) as SQL) : sql`1=1`;
+  const human = sql`${clicks.isBot} is not true`;
+  const base: SQL = start ? (and(gte(clicks.createdAt, start), human) as SQL) : human;
   const dayExpr = dayBucket(dialect, sql`${clicks.createdAt}`);
 
   const [totals, series, countries, referrers, devices, browsers, oss, top] =

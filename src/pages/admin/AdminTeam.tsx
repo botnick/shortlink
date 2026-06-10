@@ -112,7 +112,7 @@ export function AdminTeam() {
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="User actions"><MoreHorizontal /></Button>
+                    <Button variant="ghost" size="icon" aria-label="User actions" title="More actions"><MoreHorizontal /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                     {u.linkCount > 0 && (

@@ -81,7 +81,12 @@ export function previewHtml(
     m.push(`<meta name="twitter:card" content="summary">`);
   }
   const dest = esc(destination);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${m.join("")}<meta http-equiv="refresh" content="0;url=${dest}"></head><body><a href="${dest}">Continue</a><script>location.replace(${JSON.stringify(destination)})</script></body></html>`;
+  // The destination is stored as-entered (the validator checks it's http(s) but
+  // doesn't percent-encode), so a path like `…/</script><script>…` would break
+  // out of the inline script. Escape `<`/`>` in the JS string literal (CSP also
+  // blocks inline-script execution in prod, but this stops the markup breakout).
+  const destJs = JSON.stringify(destination).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${m.join("")}<meta http-equiv="refresh" content="0;url=${dest}"></head><body><a href="${dest}">Continue</a><script>location.replace(${destJs})</script></body></html>`;
 }
 
 // Common named HTML entities found in <title>/<meta> text. Numeric ones
@@ -118,6 +123,44 @@ function pick(html: string, patterns: RegExp[]): string {
   return "";
 }
 
+/**
+ * Guard for server-side preview fetches: only public http(s) URLs. Blocks
+ * loopback / private / link-local hosts as defence-in-depth. Cloudflare's edge
+ * already won't route a Worker fetch to private networks or cloud metadata
+ * (Workers aren't on a VM), so this is belt-and-suspenders, not the only line —
+ * and deliberately not a DNS-rebind defence (the platform's lack of
+ * private-network egress is the real backstop). Returns the URL or null.
+ */
+function publicFetchUrl(rawUrl: string): URL | null {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    h === "localhost" ||
+    h.endsWith(".localhost") ||
+    h.endsWith(".local") ||
+    h.endsWith(".internal") ||
+    h === "0.0.0.0" ||
+    h === "::1" ||
+    h === "::" ||
+    /^127\./.test(h) ||
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^169\.254\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
+    /^f[cd][0-9a-f]{2}:/i.test(h) ||
+    /^fe80:/i.test(h)
+  ) {
+    return null;
+  }
+  return u;
+}
+
 /** Fetch the destination's own OG tags (cached in KV per link for a day). */
 export async function destinationPreview(
   env: AppBindings,
@@ -130,8 +173,10 @@ export async function destinationPreview(
 
   const empty: Preview = { title: "", description: "", image: "" };
   let preview = empty;
+  const target = publicFetchUrl(destination);
   try {
-    const res = await fetch(destination, {
+    if (!target) throw new Error("blocked");
+    const res = await fetch(target.toString(), {
       headers: { "user-agent": "Mozilla/5.0 (compatible; LinkPreview/1.0)" },
       redirect: "follow",
       signal: AbortSignal.timeout(4000),
@@ -161,7 +206,10 @@ export async function destinationPreview(
 }
 
 export async function invalidateLinkPreview(env: AppBindings, linkId: string) {
-  await env.LINKS_KV.delete(`linkog:${linkId}`);
+  // Must match the key destinationPreview writes (linkog:v2:) — the old key
+  // (no v2:) silently never deleted, so an edited link kept its stale crawler
+  // card for up to a day.
+  await env.LINKS_KV.delete(`linkog:v2:${linkId}`);
 }
 
 export interface UrlMeta {
@@ -211,12 +259,8 @@ function emptyMeta(rawUrl: string): UrlMeta {
  * a day. Same fetch surface as `destinationPreview`, keyed by URL not link id.
  */
 export async function fetchMeta(env: AppBindings, rawUrl: string): Promise<UrlMeta> {
-  let u: URL;
-  try {
-    u = new URL(rawUrl);
-  } catch {
-    return emptyMeta(rawUrl);
-  }
+  const u = publicFetchUrl(rawUrl);
+  if (!u) return emptyMeta(rawUrl);
   // `v2` bumps the cache namespace so entries scraped before HTML-entity
   // decoding (which would still show "&#064;" etc.) are skipped, not re-served.
   const key = `meta:v2:${u.host}${u.pathname}`.slice(0, 480);

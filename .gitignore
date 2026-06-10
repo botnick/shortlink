@@ -24,3 +24,9 @@ worker-configuration.d.ts
 # OG template preview artifacts (dev)
 _og/
 _og-preview.png
+
+# Brand page preview artifacts (dev)
+_brand-pages/
+
+# Captcha / theme / misc preview PNGs emitted by scripts (dev)
+scripts/*-preview.png

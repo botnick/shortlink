@@ -10,15 +10,18 @@ import {
   QrCode,
   Search,
   Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import { cn, shortUrlFor } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { formatNumber, timeAgo } from "@/lib/format";
 import type { LinkDTO, LinkListDTO, ProjectDTO } from "@shared/types";
 import { useProjects } from "@/lib/useProjects";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { ProjectDialog } from "@/components/ProjectDialog";
+import { BulkImportDialog } from "@/components/BulkImportDialog";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +44,9 @@ export function Dashboard() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [nonce, setNonce] = useState(0);
   const reqId = useRef(0);
   const navigate = useNavigate();
 
@@ -53,11 +59,12 @@ export function Dashboard() {
   }>({ open: false, project: null });
 
   const fetchPage = useCallback(
-    async (q: string, cur: string | null, pid: string | null) => {
+    async (q: string, cur: string | null, pid: string | null, tag: string | null) => {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (cur) params.set("cursor", cur);
       if (pid) params.set("projectId", pid);
+      if (tag) params.set("tag", tag);
       return api.get<LinkListDTO>(`/links?${params}`);
     },
     [],
@@ -73,7 +80,7 @@ export function Dashboard() {
   useEffect(() => {
     const id = ++reqId.current;
     setLoading(true);
-    fetchPage(search, null, selectedId)
+    fetchPage(search, null, selectedId, activeTag)
       .then((data) => {
         if (id !== reqId.current) return;
         setLinks(data.links);
@@ -85,13 +92,13 @@ export function Dashboard() {
       .finally(() => {
         if (id === reqId.current) setLoading(false);
       });
-  }, [search, selectedId, fetchPage]);
+  }, [search, selectedId, activeTag, nonce, fetchPage]);
 
   async function loadMore() {
     if (!cursor) return;
     setLoadingMore(true);
     try {
-      const data = await fetchPage(search, cursor, selectedId);
+      const data = await fetchPage(search, cursor, selectedId, activeTag);
       setLinks((prev) => [...prev, ...data.links]);
       setCursor(data.nextCursor);
     } catch {
@@ -158,9 +165,19 @@ export function Dashboard() {
             </span>
           )}
         </div>
-        <Button onClick={() => navigate("/dashboard/links/new")} className="shrink-0" aria-label="New link">
-          <Plus /> <span className="hidden sm:inline">New link</span>
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+            aria-label="Import links"
+            title="Import links"
+          >
+            <Upload /> <span className="hidden sm:inline">Import</span>
+          </Button>
+          <Button onClick={() => navigate("/dashboard/links/new")} aria-label="New link">
+            <Plus /> <span className="hidden sm:inline">New link</span>
+          </Button>
+        </div>
       </div>
 
       <div className="relative">
@@ -172,6 +189,19 @@ export function Dashboard() {
           className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
+
+      {activeTag && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Filtered by tag</span>
+          <button
+            type="button"
+            onClick={() => setActiveTag(null)}
+            className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
+          >
+            {activeTag} <X className="size-3" />
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-3">
@@ -201,7 +231,7 @@ export function Dashboard() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <a
-                    href={shortUrlFor(link.slug)}
+                    href={link.shortUrl}
                     target="_blank"
                     rel="noreferrer"
                     className={cn(
@@ -214,9 +244,25 @@ export function Dashboard() {
                   {!link.isActive && <Badge variant="muted">Inactive</Badge>}
                 </div>
                 <div className="truncate text-sm text-muted-foreground">
-                  {link.title ? `${link.title} · ` : ""}
                   {link.destination}
                 </div>
+                {link.tags.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {link.tags.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setActiveTag(t)}
+                        className={cn(
+                          "rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground",
+                          activeTag === t && "bg-primary/10 text-primary",
+                        )}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="hidden flex-col items-end text-xs text-muted-foreground sm:flex">
@@ -226,7 +272,7 @@ export function Dashboard() {
                 <span>{timeAgo(link.createdAt)}</span>
               </div>
 
-              <CopyButton value={shortUrlFor(link.slug)} />
+              <CopyButton value={link.shortUrl} />
 
               <Hint label="Edit">
                 <Button
@@ -249,7 +295,7 @@ export function Dashboard() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Link actions">
+                  <Button variant="ghost" size="icon" aria-label="Link actions" title="More actions">
                     <MoreHorizontal />
                   </Button>
                 </DropdownMenuTrigger>
@@ -265,7 +311,7 @@ export function Dashboard() {
                     </RouterLink>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <a href={shortUrlFor(link.slug)} target="_blank" rel="noreferrer">
+                    <a href={link.shortUrl} target="_blank" rel="noreferrer">
                       <ExternalLink /> Open link
                     </a>
                   </DropdownMenuItem>
@@ -290,6 +336,16 @@ export function Dashboard() {
           </Button>
         </div>
       )}
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        projectId={selectedId}
+        onImported={() => {
+          setNonce((n) => n + 1);
+          void refreshProjects();
+        }}
+      />
 
       <ProjectDialog
         open={projectDialog.open}

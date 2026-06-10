@@ -117,7 +117,33 @@ const user2: Jar = { cookie: null };
 let adminId = "";
 let user2UserId = "";
 
+/**
+ * Refuse to run against a database that already holds data. This suite (and
+ * its cleanup) DELETES EVERY ROW — pointing it at a dev/prod DB destroys the
+ * install. Set E2E_FORCE=1 only for a DB you are happy to wipe.
+ */
+async function assertEmptyDb() {
+  if (process.env.E2E_FORCE === "1") return;
+  const sql = postgres(DB_URL, { max: 1, prepare: false, fetch_types: false });
+  try {
+    const [{ n }] = await sql.unsafe(
+      `select (select count(*) from settings) + (select count(*) from users) as n`,
+    );
+    if (Number(n) > 0) {
+      console.error(
+        "ABORT: this database is not empty (settings/users exist). " +
+          "tests/e2e.ts deletes ALL rows when it finishes. " +
+          "Point DBURL at a disposable test database, or set E2E_FORCE=1 to wipe this one.",
+      );
+      process.exit(2);
+    }
+  } finally {
+    await sql.end();
+  }
+}
+
 async function main() {
+  await assertEmptyDb();
   console.log("\n[1] Health + initial config");
   {
     const h = await req("GET", "/api/health");
@@ -156,7 +182,6 @@ async function main() {
       body: {
         token: "correct-setup-token",
         appName: "Test App",
-        shortDomain: "links.example.com",
         email: "admin@example.test",
         password: "adminpassword123",
         registrationEnabled: false,
@@ -180,6 +205,16 @@ async function main() {
     const c = await req("GET", "/api/config");
     check("config.needsSetup false after setup", c.json?.needsSetup === false, c.json);
     check("config.appName persisted", c.json?.appName === "Test App", c.json);
+
+    // Turn the human check OFF for the rest of this suite — these tests cover
+    // links/auth/admin, not the interactive CAPTCHA (which has its own suite,
+    // tests/captcha.ts). With it on (the default), every login/register here
+    // would 403 before reaching the logic under test.
+    const offHc = await req("PATCH", "/api/admin/settings", {
+      jar: admin,
+      body: { challengeMode: "disabled" },
+    });
+    check("disable human check for suite", offHc.json?.challengeMode === "disabled", offHc.json);
   }
 
   console.log("\n[4] Auth");
@@ -271,7 +306,7 @@ async function main() {
     check("third redirect -> 302", r3.status === 302);
 
     const missing = await req("GET", "/no-such-slug");
-    check("unknown slug -> 404 (SPA)", missing.status === 404, missing.status);
+    check("unknown slug -> 404 (branded page)", missing.status === 404, missing.status);
   }
 
   console.log("\n[7] Stats");

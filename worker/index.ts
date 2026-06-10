@@ -1,18 +1,22 @@
 import { Hono } from "hono";
 import { csrf } from "hono/csrf";
-import { and, eq, lt, sql } from "drizzle-orm";
+import { HTTPException } from "hono/http-exception";
+import { and, eq, lt, notInArray, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "./env";
 import { getDbHandle } from "./db";
+import { isRateLimited } from "./lib/ratelimit";
 import {
+  authRateLimitFrom,
   domainUnverifiedDaysFrom,
   getAllSettings,
   saasConfigFrom,
 } from "./lib/settings";
 import { deleteCustomHostname } from "./lib/cloudflare";
 import { dbMiddleware } from "./middleware/db";
-import { loadSession } from "./middleware/auth";
+import { apiKeyAuth, loadSession } from "./middleware/auth";
 import { requireSameOrigin, securityHeaders } from "./middleware/security";
-import authRoutes from "./routes/auth";
+import authRoutes, { AUTH_WINDOW_SEC } from "./routes/auth";
+import captchaRoutes from "./routes/captcha";
 import linkRoutes from "./routes/links";
 import adminRoutes from "./routes/admin";
 import setupRoutes from "./routes/setup";
@@ -20,8 +24,17 @@ import qrPresetRoutes from "./routes/qr-presets";
 import assetRoutes from "./routes/assets";
 import domainRoutes from "./routes/domains";
 import projectRoutes from "./routes/projects";
-import { getCachedPublicConfig } from "./lib/appconfig";
+import keyRoutes from "./routes/keys";
+import accountRoutes from "./routes/account";
+import { purgeDeletedAccounts } from "./lib/accountLifecycle";
+import { purgeOldClicks } from "./lib/clicksRetention";
+import { purgeHumanRecords } from "./lib/captcha/store";
+import { handleMcp } from "./mcp";
+import { getCachedPublicConfig, shortOrigin } from "./lib/appconfig";
+import { interstitialPage, linkErrorPage, passwordPage } from "./lib/brandPages";
 import { getCachedLink, putCachedLink, routeDestination } from "./lib/cache";
+import { cachePayload } from "./lib/linkCache";
+import { buildShortUrl, findLinkRow, resolveScope } from "./lib/domainScope";
 import {
   getSeoBundle,
   injectSeo,
@@ -31,15 +44,25 @@ import {
 import { isValidCustomSlug } from "./lib/slug";
 import { destinationPreview, isCrawler, previewHtml } from "./lib/social";
 import { verifyPassword } from "./lib/password";
+import { assertSessionSecret } from "./lib/secret";
 import { qrSvg } from "./lib/qrsvg";
 import {
   getClientIp,
   getCountry,
   getReferrer,
+  hashIp,
+  isBotUA,
   parseUserAgent,
 } from "./lib/geo";
 
 const app = new Hono<AppEnv>();
+
+// Refuse to serve with a weak/missing SESSION_SECRET (memoised: once per isolate).
+// Runs before anything that signs cookies or hashes with it.
+app.use("*", async (c, next) => {
+  assertSessionSecret(c.env.SESSION_SECRET);
+  await next();
+});
 
 // Security headers on every response (incl. the SPA and redirects).
 app.use("*", securityHeaders);
@@ -47,10 +70,26 @@ app.use("*", securityHeaders);
 // --- JSON API ---------------------------------------------------------------
 const api = new Hono<AppEnv>();
 api.use("*", dbMiddleware);
-api.use("*", csrf());
-api.use("*", requireSameOrigin);
+// CSRF protections guard cookie-based sessions. Bearer-key requests are
+// CSRF-immune by construction (a browser can't attach the header cross-site),
+// and non-browser clients often omit Content-Type/Origin — so they skip these
+// two checks and authenticate via apiKeyAuth instead.
+const csrfMw = csrf();
+api.use("*", (c, next) =>
+  c.req.header("authorization")?.startsWith("Bearer ") ? next() : csrfMw(c, next),
+);
+api.use("*", (c, next) =>
+  c.req.header("authorization")?.startsWith("Bearer ")
+    ? next()
+    : requireSameOrigin(c, next),
+);
 api.use("*", loadSession);
+// Bearer API-key auth (the public API). Hono's csrf() only inspects form
+// content types and requireSameOrigin allows requests without an Origin, so
+// JSON+Bearer clients pass both untouched.
+api.use("*", apiKeyAuth);
 api.route("/auth", authRoutes);
+api.route("/captcha", captchaRoutes);
 api.route("/links", linkRoutes);
 api.route("/admin", adminRoutes);
 api.route("/setup", setupRoutes);
@@ -58,6 +97,12 @@ api.route("/qr-presets", qrPresetRoutes);
 api.route("/assets", assetRoutes);
 api.route("/domains", domainRoutes);
 api.route("/projects", projectRoutes);
+api.route("/keys", keyRoutes);
+api.route("/account", accountRoutes);
+// Versioned aliases for the public API — same handlers, stable paths.
+api.route("/v1/links", linkRoutes);
+api.route("/v1/domains", domainRoutes);
+api.route("/v1/projects", projectRoutes);
 
 // Public, cacheable endpoints — registered before the API group so they skip the
 // per-request DB client + auth/CSRF middleware entirely. /config is served from
@@ -71,29 +116,37 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 app.get("/api/qr/:slug", async (c) => {
   const slug = c.req.param("slug");
   if (!isValidCustomSlug(slug)) return c.json({ error: "Not found" }, 404);
+  const scope = await resolveScope(c, c.req.header("host"));
   const { db, schema, close } = getDbHandle(c.env);
-  const { links, projects } = schema;
+  const { projects } = schema;
   try {
-    const rows = await db
-      .select({
-        slug: links.slug,
-        isActive: links.isActive,
-        expiresAt: links.expiresAt,
-        color: projects.color,
-        logo: projects.logo,
-        qrConfig: links.qrConfig,
-      })
-      .from(links)
-      .leftJoin(projects, eq(links.projectId, projects.id))
-      .where(eq(links.slug, slug))
-      .limit(1);
-    const l = rows[0];
+    const l = await findLinkRow(db, schema, scope.domainId, slug);
     const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l || !l.isActive || expired) return c.json({ error: "Not found" }, 404);
+    const p = l.projectId
+      ? (
+          await db
+            .select({ color: projects.color, logo: projects.logo })
+            .from(projects)
+            .where(eq(projects.id, l.projectId))
+            .limit(1)
+        )[0]
+      : undefined;
     const logo =
-      l.logo && (l.logo.startsWith("data:") || l.logo.startsWith("http")) ? l.logo : null;
+      p?.logo && (p.logo.startsWith("data:") || p.logo.startsWith("http"))
+        ? p.logo
+        : null;
     return c.json(
-      { shortUrl: `${c.env.APP_URL}/${l.slug}`, color: l.color ?? null, logo, qrConfig: l.qrConfig ?? null },
+      {
+        shortUrl: buildShortUrl(
+          await shortOrigin(c.env),
+          scope.domainId ? scope.host : null,
+          l.slug,
+        ),
+        color: p?.color ?? null,
+        logo,
+        qrConfig: l.qrConfig ?? null,
+      },
       200,
       { "cache-control": "public, max-age=300" },
     );
@@ -107,30 +160,26 @@ app.get("/api/qr/:slug", async (c) => {
 // brute force slow; the no-JS form posts here from the unlock page.
 app.post("/api/unlock/:slug", async (c) => {
   const slug = c.req.param("slug");
-  if (!isValidCustomSlug(slug)) return spa(c, 404);
+  if (!isValidCustomSlug(slug)) return linkErrorPage(c, "not-found");
   const body = await c.req.parseBody();
   const password = typeof body.password === "string" ? body.password : "";
+  const scope = await resolveScope(c, c.req.header("host"));
   const { db, schema, close } = getDbHandle(c.env);
-  const { links } = schema;
   try {
-    const rows = await db
-      .select({
-        id: links.id,
-        destination: links.destination,
-        iosUrl: links.iosUrl,
-        androidUrl: links.androidUrl,
-        desktopUrl: links.desktopUrl,
-        isActive: links.isActive,
-        expiresAt: links.expiresAt,
-        passwordHash: links.passwordHash,
-      })
-      .from(links)
-      .where(eq(links.slug, slug))
-      .limit(1);
-    const l = rows[0];
-    const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
-    if (!l || !l.isActive || expired) return spa(c, 410);
-    if (l.passwordHash && !(await verifyPassword(password, l.passwordHash))) {
+    // Throttle online password guessing: the no-JS unlock page has no human
+    // check, so a per-IP rate limit is its only brake (reuses the admin
+    // auth-rate-limit setting; 15-min window like login).
+    const map = await getAllSettings(db, schema);
+    if (await isRateLimited(c.env, `unlock:${getClientIp(c)}`, authRateLimitFrom(map), AUTH_WINDOW_SEC)) {
+      return linkErrorPage(c, "rate-limited");
+    }
+    const l = await findLinkRow(db, schema, scope.domainId, slug);
+    if (!l) return linkErrorPage(c, "not-found");
+    if (!l.isActive) return linkErrorPage(c, "disabled");
+    if (l.expiresAt && l.expiresAt.getTime() <= Date.now()) {
+      return linkErrorPage(c, "expired");
+    }
+    if (l.passwordHash && !(await verifyPassword(password, l.passwordHash, c.env.SESSION_SECRET))) {
       return passwordPage(c, slug, "Incorrect password. Try again.");
     }
     c.executionCtx.waitUntil(logClick(c, l.id));
@@ -160,6 +209,13 @@ app.post("/api/unlock/:slug", async (c) => {
 
 app.route("/api", api);
 
+// Remote MCP server (context7-style): agents connect to /mcp with their API
+// key as a Bearer token. Tool calls dispatch back through /api/v1 internally,
+// inheriting auth, validation, rate limits and the admin switches.
+app.all("/mcp", (c) =>
+  handleMcp(c, async (req) => app.fetch(req, c.env, c.executionCtx)),
+);
+
 // --- Dynamic branding / SEO endpoints ---------------------------------------
 app.get("/robots.txt", async (c) =>
   c.text(await robotsTxt(c.env), 200, { "cache-control": "public, max-age=3600" }),
@@ -176,25 +232,22 @@ app.get("/qr/:file", async (c) => {
   const m = /^([a-zA-Z0-9_-]{3,32})\.svg$/.exec(file);
   if (!m) return serveAssets(c); // not a .svg request → serve the SPA page
   const slug = m[1];
+  const scope = await resolveScope(c, c.req.header("host"));
   const { db, schema, close } = getDbHandle(c.env);
-  const { links, projects } = schema;
+  const { projects } = schema;
   try {
-    const rows = await db
-      .select({
-        slug: links.slug,
-        isActive: links.isActive,
-        expiresAt: links.expiresAt,
-        color: projects.color,
-        logo: projects.logo,
-        qrConfig: links.qrConfig,
-      })
-      .from(links)
-      .leftJoin(projects, eq(links.projectId, projects.id))
-      .where(eq(links.slug, slug))
-      .limit(1);
-    const l = rows[0];
+    const l = await findLinkRow(db, schema, scope.domainId, slug);
     const expired = l?.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
-    if (!l || !l.isActive || expired) return spa(c, 404);
+    if (!l || !l.isActive || expired) return linkErrorPage(c, "not-found");
+    const projectLogo = l.projectId
+      ? (
+          await db
+            .select({ logo: projects.logo })
+            .from(projects)
+            .where(eq(projects.id, l.projectId))
+            .limit(1)
+        )[0]?.logo ?? null
+      : null;
     // Reflect the saved design's colours + logo (the server can't reproduce
     // qr-code-styling's gradients/frames, but matches the common case).
     const qc = (l.qrConfig as Record<string, unknown> | null) ?? {};
@@ -202,8 +255,13 @@ app.get("/qr/:file", async (c) => {
       typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : fb;
     const fg = hex(qc.fg, "#000000");
     const corner = hex(qc.cornerSquareColor, fg);
-    const logo = qc.logo && typeof qc.logoSrc === "string" ? qc.logoSrc : l.logo;
-    return c.body(qrSvg(`${c.env.APP_URL}/${l.slug}`, { fg, brand: corner, logo }), 200, {
+    const logo = qc.logo && typeof qc.logoSrc === "string" ? qc.logoSrc : projectLogo;
+    const shortUrl = buildShortUrl(
+      await shortOrigin(c.env),
+      scope.domainId ? scope.host : null,
+      l.slug,
+    );
+    return c.body(qrSvg(shortUrl, { fg, brand: corner, logo }), 200, {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "public, max-age=86400",
     });
@@ -219,70 +277,78 @@ app.get("/:slug", async (c) => {
   // app routes, /favicon.ico, and dev module paths like /@react-refresh — is an asset.
   if (!isValidCustomSlug(slug)) return serveAssets(c);
 
+  // Which domain does this host map to? The same slug can exist on several
+  // hosts, so every lookup is scoped to one domain bucket.
+  const scope = await resolveScope(c, c.req.header("host"));
+
   // Social crawlers (FB/X/IG/Slack/…) get an OG-tagged preview instead of the
   // redirect, so a shared link can show a branded card. Bots don't run JS and
   // aren't counted as clicks; humans always fall through to the fast path.
   if (isCrawler(c.req.header("user-agent") ?? null)) {
-    const preview = await serveSocialPreview(c, slug);
-    if (preview) return preview;
+    try {
+      const preview = await serveSocialPreview(c, scope.domainId, slug);
+      if (preview) return preview;
+    } catch {
+      // Preview unavailable (DB/KV blip) → fall through to the normal redirect.
+    }
   }
 
   const kv = c.env.LINKS_KV;
-  let cached = await getCachedLink(kv, slug);
+  let cached = await getCachedLink(kv, scope.domainId, slug);
 
   // KV miss → the database is the source of truth; warm the cache for next time.
+  // findLinkRow also follows a retired alias to its live link (old links work).
   if (!cached) {
     const { db, schema, close } = getDbHandle(c.env);
-    const { links } = schema;
     try {
-      const rows = await db
-        .select({
-          id: links.id,
-          destination: links.destination,
-          iosUrl: links.iosUrl,
-          androidUrl: links.androidUrl,
-          desktopUrl: links.desktopUrl,
-          isActive: links.isActive,
-          passwordHash: links.passwordHash,
-          expiresAt: links.expiresAt,
-        })
-        .from(links)
-        .where(eq(links.slug, slug))
-        .limit(1);
-      const l = rows[0];
-      if (l) {
-        cached = {
-          id: l.id,
-          destination: l.destination,
-          iosUrl: l.iosUrl,
-          androidUrl: l.androidUrl,
-          desktopUrl: l.desktopUrl,
-          isActive: l.isActive,
-          hasPassword: Boolean(l.passwordHash),
-          expiresAt: l.expiresAt ? l.expiresAt.getTime() : null,
-        };
-        c.executionCtx.waitUntil(putCachedLink(kv, slug, cached));
+      const row = await findLinkRow(db, schema, scope.domainId, slug);
+      if (row) {
+        cached = cachePayload(row);
+        c.executionCtx.waitUntil(putCachedLink(kv, scope.domainId, slug, cached));
       }
+    } catch {
+      // DB unavailable — a cached link would still have served (KV hit above);
+      // an uncached one can't be resolved now, so degrade to the branded
+      // not-found page below rather than 500ing the redirect.
     } finally {
       c.executionCtx.waitUntil(close());
     }
   }
 
-  if (!cached) return spa(c, 404);
-  if (!cached.isActive || (cached.expiresAt !== null && cached.expiresAt <= Date.now())) {
-    return spa(c, 410);
+  if (!cached) return linkErrorPage(c, "not-found");
+  if (!cached.isActive) return linkErrorPage(c, "disabled");
+  if (cached.expiresAt !== null && cached.expiresAt <= Date.now()) {
+    return linkErrorPage(c, "expired");
   }
 
   // Password-gated links: show the unlock prompt instead of forwarding. The
   // click is counted on a successful unlock (in /api/unlock), not here.
   if (cached.hasPassword) return passwordPage(c, slug);
 
-  // Log the click off the response path so the redirect stays instant.
-  c.executionCtx.waitUntil(logClick(c, cached.id));
   // Per-OS deep-link routing (iOS / Android / desktop), resolved on the cached
   // payload so it stays on the edge with no extra DB read.
   const { os, deviceType } = parseUserAgent(c.req.header("user-agent") ?? null);
   const target = routeDestination(cached, os, deviceType);
+
+  // Optional link-safety interstitial: confirm before forwarding to an external
+  // site. The toggle is read from the 30s-memoised public config (no per-redirect
+  // KV read on a warm isolate); the Continue link re-requests with ?go=1 to skip
+  // the gate, so the click is logged once — on the real forward, not the gate.
+  if (c.req.query("go") !== "1") {
+    const cfg = await getCachedPublicConfig(c.env);
+    if (cfg.safetyInterstitial) {
+      let host = target;
+      try {
+        host = new URL(target).hostname;
+      } catch {
+        // non-URL destination → show it as-is
+      }
+      return interstitialPage(c, slug, host);
+    }
+  }
+
+  // Log the click off the response path so the redirect stays instant.
+  c.executionCtx.waitUntil(logClick(c, cached.id));
   // 302 (not 301) + no-store: never let a browser/proxy cache the hop. This is
   // the deliberate opposite of the big shorteners' cacheable 301 — it guarantees
   // every click reaches us (so analytics are complete) and a destination edit
@@ -300,7 +366,30 @@ app.get("/:slug", async (c) => {
 app.all("*", (c) => serveAssets(c));
 
 app.onError((err, c) => {
+  // Middleware (csrf, validators) signals intent via HTTPException — keep the
+  // real status instead of masking everything as a 500.
+  if (err instanceof HTTPException) {
+    if (err.status === 403) {
+      return c.json({ error: "Cross-origin request blocked" }, 403);
+    }
+    return err.getResponse();
+  }
   console.error("Unhandled error:", err);
+  // A non-API (redirect / page) request gets the branded error page; the API
+  // gets JSON. Fall back to a bare 500 only if even the branded page can't render.
+  if (!new URL(c.req.url).pathname.startsWith("/api")) {
+    return linkErrorPage(c, "error").catch(() =>
+      c.json({ error: "Internal Server Error" }, 500),
+    );
+  }
+  // Local dev only (plain http): surface the message so failures are
+  // debuggable from curl. Production (always https) stays generic.
+  if (new URL(c.req.url).protocol === "http:") {
+    return c.json(
+      { error: "Internal Server Error", detail: String(err) },
+      500,
+    );
+  }
   return c.json({ error: "Internal Server Error" }, 500);
 });
 
@@ -322,45 +411,6 @@ async function serveAssets(c: AppContext): Promise<Response> {
   return out;
 }
 
-/** Serve the SPA shell with an explicit status (404/410 for SEO correctness). */
-async function spa(c: AppContext, status: number): Promise<Response> {
-  const res = await c.env.ASSETS.fetch(c.req.raw);
-  return new Response(res.body, { status, headers: res.headers });
-}
-
-const htmlEsc = (s: string): string =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-/**
- * A clean, no-JS unlock page for password-protected links. The form POSTs to
- * /api/unlock/:slug; the server 302s on the right password or re-renders this
- * page with an error — so it works under our strict CSP (no inline scripts).
- */
-async function passwordPage(c: AppContext, slug: string, error?: string): Promise<Response> {
-  const cfg = await getCachedPublicConfig(c.env);
-  const brand = /^#[0-9a-fA-F]{6}$/.test(cfg.brandColor) ? cfg.brandColor : "#e5392e";
-  const app = htmlEsc(cfg.appName || "Shortlink");
-  const logo = cfg.logoUrl
-    ? `<img src="${htmlEsc(cfg.logoUrl)}" alt="" width="44" height="44" style="border-radius:10px;object-fit:cover">`
-    : `<div style="width:44px;height:44px;border-radius:10px;background:${brand}"></div>`;
-  const err = error
-    ? `<p style="margin:2px 0 0;color:#dc2626;font-size:13px">${htmlEsc(error)}</p>`
-    : "";
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${app} — Protected link</title><style>
-*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:"IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f4f4f5;color:#18181b}
-.card{width:100%;max-width:380px;background:#fff;border:1px solid #e7e7ea;border-radius:18px;padding:32px;box-shadow:0 8px 30px rgba(0,0,0,.06);text-align:center}
-.mark{display:flex;justify-content:center;margin-bottom:18px}
-h1{margin:0 0 6px;font-size:19px;font-weight:600}
-.sub{margin:0 0 22px;color:#71717a;font-size:14px}
-form{display:flex;flex-direction:column;gap:12px;text-align:left}
-input{height:44px;border:1px solid #d4d4d8;border-radius:10px;padding:0 14px;font-size:16px;outline:none}
-input:focus{border-color:${brand};box-shadow:0 0 0 3px ${brand}22}
-button{height:44px;border:0;border-radius:10px;background:${brand};color:#fff;font-size:15px;font-weight:600;cursor:pointer}
-.foot{margin:22px 0 0;color:#a1a1aa;font-size:12px}
-</style></head><body><div class="card"><div class="mark">${logo}</div><h1>Protected link</h1><p class="sub">Enter the password to continue.</p><form method="POST" action="/api/unlock/${slug}"><input type="password" name="password" placeholder="Password" autofocus required autocomplete="off">${err}<button type="submit">Unlock</button></form><p class="foot">${app}</p></div></body></html>`;
-  return c.html(html, error ? 401 : 200, { "cache-control": "private, no-store" });
-}
-
 /**
  * For social crawlers: return an OG-card HTML when the link opts into a preview,
  * else null (so the caller continues to the normal redirect path). Does a DB
@@ -368,16 +418,19 @@ button{height:44px;border:0;border-radius:10px;background:${brand};color:#fff;fo
  */
 async function serveSocialPreview(
   c: AppContext,
+  domainId: string | null,
   slug: string,
 ): Promise<Response | null> {
   const { db, schema, close } = getDbHandle(c.env);
-  const { links } = schema;
   try {
-    const rows = await db.select().from(links).where(eq(links.slug, slug)).limit(1);
-    const l = rows[0];
+    const l = await findLinkRow(db, schema, domainId, slug);
     if (!l) return null;
     const expired = l.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l.isActive || expired || l.previewMode === "off") return null;
+
+    // Crawlers need an ABSOLUTE og:image on the real short domain — never the
+    // APP_URL placeholder. /ogimg/:id is served on the canonical short origin.
+    const ogOrigin = await shortOrigin(c.env);
 
     let preview;
     if (l.previewMode === "destination") {
@@ -388,7 +441,7 @@ async function serveSocialPreview(
       if (!preview.image && l.ogImage) {
         preview.image = l.ogImage.startsWith("http")
           ? l.ogImage
-          : `${c.env.APP_URL}/ogimg/${l.id}`;
+          : `${ogOrigin}/ogimg/${l.id}`;
       }
     } else {
       // og:image must be a public URL (social ignores data: URLs). A custom
@@ -396,15 +449,15 @@ async function serveSocialPreview(
       const image = l.ogImage
         ? l.ogImage.startsWith("http")
           ? l.ogImage
-          : `${c.env.APP_URL}/ogimg/${l.id}`
+          : `${ogOrigin}/ogimg/${l.id}`
         : "";
       preview = {
-        title: l.ogTitle ?? l.title ?? "",
+        title: l.ogTitle ?? "",
         description: l.ogDescription ?? "",
         image,
       };
     }
-    if (!preview.title) preview.title = l.title ?? l.slug;
+    if (!preview.title) preview.title = l.slug;
     const bundle = await getSeoBundle(c.env);
     // og:url = this short link (the page being shared) so the card is credited to
     // us; the destination is only used for the redirect fallback inside the HTML.
@@ -452,9 +505,11 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
   const { db, schema, close } = getDbHandle(c.env);
   const { clicks, links } = schema;
   try {
-    const { browser, os, deviceType } = parseUserAgent(
-      c.req.header("user-agent") ?? null,
-    );
+    const ua = c.req.header("user-agent") ?? null;
+    const { browser, os, deviceType } = parseUserAgent(ua);
+    // Bot/automation traffic is recorded (for auditing) but kept out of the
+    // denormalized counter so dashboards and analytics agree on human clicks.
+    const isBot = isBotUA(ua);
     await Promise.all([
       db.insert(clicks).values({
         linkId,
@@ -463,13 +518,16 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
         browser,
         os,
         deviceType,
-        // Stored to count unique visitors; disclosed in the privacy policy.
-        ipHash: getClientIp(c),
+        // Salted hash to count unique visitors — the raw IP is never stored.
+        ipHash: await hashIp(getClientIp(c), c.env.SESSION_SECRET),
+        isBot,
       }),
-      db
-        .update(links)
-        .set({ clickCount: sql`${links.clickCount} + 1` })
-        .where(eq(links.id, linkId)),
+      isBot
+        ? Promise.resolve()
+        : db
+            .update(links)
+            .set({ clickCount: sql`${links.clickCount} + 1` })
+            .where(eq(links.id, linkId)),
     ]);
   } catch (err) {
     console.error("logClick failed:", err);
@@ -492,7 +550,15 @@ async function cleanupUnverifiedDomains(env: AppBindings): Promise<void> {
     const stale = await db
       .select({ id: domains.id, cfHostnameId: domains.cfHostnameId })
       .from(domains)
-      .where(and(eq(domains.status, "pending"), lt(domains.createdAt, cutoff)));
+      .where(
+        and(
+          // Anything that never reached a done state (active = SaaS, verified =
+          // DNS). Catches every stuck Cloudflare status — pending_validation,
+          // pending_deployment, blocked, … — not just the literal "pending".
+          notInArray(domains.status, ["active", "verified"]),
+          lt(domains.createdAt, cutoff),
+        ),
+      );
     if (stale.length === 0) return;
     const saas = saasConfigFrom(settings, env.APP_URL);
     if (saas) {
@@ -504,11 +570,24 @@ async function cleanupUnverifiedDomains(env: AppBindings): Promise<void> {
     }
     await db
       .delete(domains)
-      .where(and(eq(domains.status, "pending"), lt(domains.createdAt, cutoff)));
+      .where(
+        and(
+          // Anything that never reached a done state (active = SaaS, verified =
+          // DNS). Catches every stuck Cloudflare status — pending_validation,
+          // pending_deployment, blocked, … — not just the literal "pending".
+          notInArray(domains.status, ["active", "verified"]),
+          lt(domains.createdAt, cutoff),
+        ),
+      );
   } finally {
     await close();
   }
 }
+
+// Phase F: the exact rate-limit Durable Object. Exported from the entry so the
+// runtime can instantiate it; used via the optional RATE_LIMITER binding (the
+// worker falls back to KV when it isn't configured).
+export { RateLimiter } from "./durable/RateLimiter";
 
 export default {
   fetch: app.fetch,
@@ -518,5 +597,19 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     ctx.waitUntil(cleanupUnverifiedDomains(env));
+    ctx.waitUntil(purgeDeletedAccounts(env));
+    ctx.waitUntil(purgeExpiredHumanRecords(env));
+    ctx.waitUntil(purgeOldClicks(env));
   },
 };
+
+/** Cron: TTL hygiene for the human check — challenge + token rows an hour past
+ *  expiry carry no value (they can never verify or consume again). */
+async function purgeExpiredHumanRecords(env: AppBindings): Promise<void> {
+  const { db, schema, close } = getDbHandle(env);
+  try {
+    await purgeHumanRecords(db, schema);
+  } finally {
+    await close();
+  }
+}

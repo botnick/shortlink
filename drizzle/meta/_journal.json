@@ -78,6 +78,76 @@
       "when": 1781023198300,
       "tag": "0010_blushing_blue_shield",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1781026309552,
+      "tag": "0011_cool_ogun",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1781028359052,
+      "tag": "0012_peaceful_mister_fear",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1781028777641,
+      "tag": "0013_known_onslaught",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1781029415606,
+      "tag": "0014_open_titania",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1781030087012,
+      "tag": "0015_rainy_tarot",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1781030515644,
+      "tag": "0016_shocking_randall_flagg",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1781034014325,
+      "tag": "0017_aspiring_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781034260220,
+      "tag": "0018_bouncy_sasquatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1781038912891,
+      "tag": "0019_charming_sunspot",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1781109261437,
+      "tag": "0020_amazing_nitro",
+      "breakpoints": true
     }
   ]
 }

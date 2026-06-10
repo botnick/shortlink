@@ -1,0 +1,2 @@
+ALTER TABLE "projects" ADD COLUMN "default_domain_id" uuid;--> statement-breakpoint
+ALTER TABLE "projects" ADD CONSTRAINT "projects_default_domain_id_domains_id_fk" FOREIGN KEY ("default_domain_id") REFERENCES "public"."domains"("id") ON DELETE set null ON UPDATE no action;

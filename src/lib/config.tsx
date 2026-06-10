@@ -10,6 +10,7 @@ import type { AppConfigDTO } from "@shared/types";
 import {
   DEFAULT_APP_NAME,
   DEFAULT_BRAND_COLOR,
+  DEFAULT_BRAND_COPY,
   DEFAULT_OG_FONT,
   DEFAULT_OG_TEMPLATE,
 } from "@shared/defaults";
@@ -19,6 +20,7 @@ const DEFAULT: AppConfigDTO = {
   needsSetup: false,
   appName: DEFAULT_APP_NAME,
   shortDomain: "",
+  appOrigin: "",
   brandColor: DEFAULT_BRAND_COLOR,
   logoUrl: "",
   description: "",
@@ -31,6 +33,13 @@ const DEFAULT: AppConfigDTO = {
   ogTagline: "",
   ogAccent: DEFAULT_BRAND_COLOR,
   domainUnverifiedDays: 90,
+  apiEnabled: true,
+  mcpEnabled: true,
+  slugLength: 6,
+  challengeMode: "disabled",
+  powDifficulty: 0,
+  brandCopy: DEFAULT_BRAND_COPY,
+  safetyInterstitial: false,
 };
 
 function upsertMeta(key: "name" | "property", keyName: string, content: string) {

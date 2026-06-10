@@ -210,14 +210,14 @@ export function AdminLinks({
                   {!l.isActive && <Badge variant="muted">Paused</Badge>}
                   {l.projectName && <Badge variant="secondary">{l.projectName}</Badge>}
                 </div>
-                <div className="truncate text-xs text-muted-foreground">{l.title || l.destination}</div>
+                <div className="truncate text-xs text-muted-foreground">{l.destination}</div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">
                   {l.ownerEmail} · {formatNumber(l.clickCount)} clicks · {formatDate(l.createdAt)}
                 </div>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Link actions"><MoreHorizontal /></Button>
+                  <Button variant="ghost" size="icon" aria-label="Link actions" title="More actions"><MoreHorizontal /></Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                   <DropdownMenuItem asChild>

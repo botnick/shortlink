@@ -14,20 +14,50 @@ import {
   sum,
 } from "drizzle-orm";
 import type { AppEnv } from "../env";
-import { deleteCachedLink, putCachedLink } from "../lib/cache";
+import { readDeceptionCounts } from "../lib/captcha/escalation";
+import { buildShortUrl, invalidateDomainHost } from "../lib/domainScope";
+import { softDeleteUser } from "../lib/accountLifecycle";
+import { purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
 import { dayBucket, searchCondition } from "../lib/query";
-import { hashPassword } from "../lib/password";
+import { hashPassword, pbkdf2Iterations } from "../lib/password";
 import { computeGlobalStats, parseRange } from "./stats";
 import {
   SETTING_KEYS,
+  accountHoldDaysFrom,
+  apiEnabledFrom,
+  apiRateLimitFrom,
   appNameFrom,
+  authRateLimitFrom,
   blockedDomainsFrom,
   brandColorFrom,
+  captchaChallengeTtlFrom,
+  captchaCreateLimitFrom,
+  captchaGamesFrom,
+  captchaMaxEventsFrom,
+  captchaMaxGamesFrom,
+  captchaMaxRetriesFrom,
+  captchaMinGamesFrom,
+  captchaRiskHighFrom,
+  captchaRiskMediumFrom,
+  captchaToleranceFrom,
+  captchaTokenTtlFrom,
+  captchaVerifyLimitFrom,
+  captchaEnforceFrom,
+  challengeModeFrom,
+  createRateLimitFrom,
+  emailBlockDaysFrom,
+  maxAliasesPerLinkFrom,
+  maxApiKeysPerUserFrom,
+  maxDomainsPerUserFrom,
+  mcpEnabledFrom,
+  powDifficultyFrom,
+  slugLengthFrom,
   cfConfiguredFrom,
   cfFallbackHostFrom,
   cfZoneIdFrom,
   descriptionFrom,
   domainUnverifiedDaysFrom,
+  clicksRetentionDaysFrom,
   extraReservedFrom,
   getAllSettings,
   indexableFrom,
@@ -40,14 +70,15 @@ import {
   ogTaglineRawFrom,
   ogTemplateFrom,
   ogTitleRawFrom,
+  brandCopyFrom,
   saasConfigFrom,
+  safetyInterstitialFrom,
   setSetting,
-  shortDomainFrom,
 } from "../lib/settings";
 import { getCustomHostname } from "../lib/cloudflare";
 import { checkTxtVerification } from "../lib/dns";
 import { invalidateSeo } from "../lib/seo";
-import { invalidatePublicConfig } from "../lib/appconfig";
+import { invalidatePublicConfig, shortOrigin } from "../lib/appconfig";
 import {
   bulkLinksSchema,
   createUserSchema,
@@ -81,7 +112,6 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
   return {
     registrationEnabled: map[SETTING_KEYS.registration] === true,
     appName: appNameFrom(map),
-    shortDomain: shortDomainFrom(map),
     brandColor: brandColorFrom(map),
     logoUrl: logoFrom(map),
     description: descriptionFrom(map),
@@ -90,22 +120,90 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     blockedDomains: blockedDomainsFrom(map),
     extraReserved: extraReservedFrom(map),
     maxLinksPerUser: maxLinksPerUserFrom(map),
+    authRateLimit: authRateLimitFrom(map),
+    createRateLimit: createRateLimitFrom(map),
+    maxDomainsPerUser: maxDomainsPerUserFrom(map),
+    maxAliasesPerLink: maxAliasesPerLinkFrom(map),
+    apiEnabled: apiEnabledFrom(map),
+    apiRateLimit: apiRateLimitFrom(map),
+    maxApiKeysPerUser: maxApiKeysPerUserFrom(map),
+    mcpEnabled: mcpEnabledFrom(map),
+    slugLength: slugLengthFrom(map),
+    accountHoldDays: accountHoldDaysFrom(map),
+    emailBlockDays: emailBlockDaysFrom(map),
+    challengeMode: challengeModeFrom(map),
+    powDifficulty: powDifficultyFrom(map),
+    captchaGames: captchaGamesFrom(map),
+    captchaMinGames: captchaMinGamesFrom(map),
+    captchaMaxGames: captchaMaxGamesFrom(map),
+    captchaChallengeTtl: captchaChallengeTtlFrom(map),
+    captchaTokenTtl: captchaTokenTtlFrom(map),
+    captchaMaxRetries: captchaMaxRetriesFrom(map),
+    captchaMaxEvents: captchaMaxEventsFrom(map),
+    captchaRiskMedium: captchaRiskMediumFrom(map),
+    captchaRiskHigh: captchaRiskHighFrom(map),
+    captchaTolerance: captchaToleranceFrom(map),
+    captchaCreateLimit: captchaCreateLimitFrom(map),
+    captchaVerifyLimit: captchaVerifyLimitFrom(map),
+    captchaEnforce: captchaEnforceFrom(map),
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
     domainUnverifiedDays: domainUnverifiedDaysFrom(map),
+    clicksRetentionDays: clicksRetentionDaysFrom(map),
     ogTemplate: ogTemplateFrom(map),
     ogFont: ogFontFrom(map),
     ogLabel: ogLabelRawFrom(map),
     ogTitle: ogTitleRawFrom(map),
     ogTagline: ogTaglineRawFrom(map),
     ogAccent: ogAccentRawFrom(map),
+    brandCopy: brandCopyFrom(map),
+    safetyInterstitial: safetyInterstitialFrom(map),
   };
 }
 
 admin.get("/settings", async (c) => {
   const map = await getAllSettings(c.var.db, c.var.schema);
   return c.json(toSettingsDTO(map));
+});
+
+// Human-check observability (Phase G). Aggregates over the LIVE challenge rows
+// (kept ~minutes before the cron purges them), so it adds NO writes — it just
+// reads what's already there. Shows pass/lock rates + the risk-score spread so
+// an admin can tune thresholds (and run shadow mode) on real traffic.
+admin.get("/captcha-stats", async (c) => {
+  const db = c.var.db;
+  const { humanChallenges } = c.var.schema;
+  const map = await getAllSettings(db, c.var.schema);
+  const riskHigh = captchaRiskHighFrom(map);
+  const rows = await db
+    .select({ status: humanChallenges.status, risk: humanChallenges.riskScore })
+    .from(humanChallenges);
+  let active = 0, done = 0, locked = 0, wouldBlock = 0, riskSum = 0, riskMax = 0;
+  for (const r of rows) {
+    if (r.status === "active") active++;
+    else if (r.status === "done") done++;
+    else if (r.status === "locked") locked++;
+    riskSum += r.risk;
+    if (r.risk > riskMax) riskMax = r.risk;
+    if (r.risk >= riskHigh) wouldBlock++;
+  }
+  const total = rows.length;
+  // Security Deception Monitor — rolling per-kind trap counters.
+  const deception = await readDeceptionCounts(c.env);
+  return c.json({
+    window: "live (unpurged challenges)",
+    total,
+    active,
+    done,
+    locked,
+    wouldBlockAtThreshold: wouldBlock,
+    avgRisk: total ? Math.round(riskSum / total) : 0,
+    maxRisk: riskMax,
+    riskHigh,
+    enforcing: captchaEnforceFrom(map),
+    deception,
+  });
 });
 
 admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
@@ -117,9 +215,6 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.appName !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.appName, input.appName);
-  }
-  if (input.shortDomain !== undefined) {
-    await setSetting(db, schema, SETTING_KEYS.shortDomain, input.shortDomain);
   }
   if (input.brandColor !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.brandColor, input.brandColor);
@@ -151,6 +246,84 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   if (input.maxLinksPerUser !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.maxLinksPerUser, input.maxLinksPerUser);
   }
+  if (input.authRateLimit !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.authRateLimit, input.authRateLimit);
+  }
+  if (input.createRateLimit !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.createRateLimit, input.createRateLimit);
+  }
+  if (input.maxDomainsPerUser !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.maxDomainsPerUser, input.maxDomainsPerUser);
+  }
+  if (input.maxAliasesPerLink !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.maxAliasesPerLink, input.maxAliasesPerLink);
+  }
+  if (input.apiEnabled !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.apiEnabled, input.apiEnabled);
+  }
+  if (input.apiRateLimit !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.apiRateLimit, input.apiRateLimit);
+  }
+  if (input.maxApiKeysPerUser !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.maxApiKeysPerUser, input.maxApiKeysPerUser);
+  }
+  if (input.mcpEnabled !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.mcpEnabled, input.mcpEnabled);
+  }
+  if (input.slugLength !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.slugLength, input.slugLength);
+  }
+  if (input.accountHoldDays !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.accountHoldDays, input.accountHoldDays);
+  }
+  if (input.emailBlockDays !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.emailBlockDays, input.emailBlockDays);
+  }
+  if (input.powDifficulty !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.powDifficulty, input.powDifficulty);
+  }
+  if (input.challengeMode !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.challengeMode, input.challengeMode);
+  }
+  if (input.captchaGames !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaGames, input.captchaGames);
+  }
+  if (input.captchaMinGames !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaMinGames, input.captchaMinGames);
+  }
+  if (input.captchaMaxGames !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaMaxGames, input.captchaMaxGames);
+  }
+  if (input.captchaChallengeTtl !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaChallengeTtl, input.captchaChallengeTtl);
+  }
+  if (input.captchaTokenTtl !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaTokenTtl, input.captchaTokenTtl);
+  }
+  if (input.captchaMaxRetries !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaMaxRetries, input.captchaMaxRetries);
+  }
+  if (input.captchaMaxEvents !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaMaxEvents, input.captchaMaxEvents);
+  }
+  if (input.captchaRiskMedium !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaRiskMedium, input.captchaRiskMedium);
+  }
+  if (input.captchaRiskHigh !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaRiskHigh, input.captchaRiskHigh);
+  }
+  if (input.captchaTolerance !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaTolerance, input.captchaTolerance);
+  }
+  if (input.captchaCreateLimit !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaCreateLimit, input.captchaCreateLimit);
+  }
+  if (input.captchaVerifyLimit !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaVerifyLimit, input.captchaVerifyLimit);
+  }
+  if (input.captchaEnforce !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaEnforce, input.captchaEnforce);
+  }
   // Custom-domain (Cloudflare for SaaS) config — set via the web, no env vars.
   // An empty token clears it; a blank token is ignored so it isn't wiped on save.
   if (input.cfApiToken !== undefined && input.cfApiToken !== "") {
@@ -164,6 +337,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.domainUnverifiedDays !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.domainUnverifiedDays, input.domainUnverifiedDays);
+  }
+  if (input.clicksRetentionDays !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.clicksRetentionDays, input.clicksRetentionDays);
   }
   if (input.ogTemplate !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.ogTemplate, input.ogTemplate);
@@ -183,6 +359,12 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   if (input.ogAccent !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.ogAccent, input.ogAccent);
   }
+  if (input.brandCopy !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.brandCopy, input.brandCopy);
+  }
+  if (input.safetyInterstitial !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.safetyInterstitial, input.safetyInterstitial);
+  }
   await invalidateSeo(c.env.LINKS_KV);
   await invalidatePublicConfig(c.env.LINKS_KV);
   const map = await getAllSettings(db, schema);
@@ -200,7 +382,9 @@ admin.get("/users", async (c) => {
     cursor && !Number.isNaN(Date.parse(cursor))
       ? lt(users.createdAt, new Date(cursor))
       : undefined;
-  const where = and(...([search, cursorCond].filter(Boolean) as SQL[]));
+  // Soft-deleted accounts are held for the purge cron — not shown as members.
+  const alive = sql`${users.deletedAt} is null`;
+  const where = and(alive, ...([search, cursorCond].filter(Boolean) as SQL[]));
 
   const [rows, totalRow] = await Promise.all([
     db
@@ -218,7 +402,11 @@ admin.get("/users", async (c) => {
       .groupBy(users.id)
       .orderBy(desc(users.createdAt))
       .limit(PAGE + 1),
-    db.select({ v: count() }).from(users).where(search).then((r) => Number(r[0]?.v ?? 0)),
+    db
+      .select({ v: count() })
+      .from(users)
+      .where(and(alive, ...([search].filter(Boolean) as SQL[])))
+      .then((r) => Number(r[0]?.v ?? 0)),
   ]);
 
   const hasMore = rows.length > PAGE;
@@ -327,7 +515,7 @@ admin.get("/overview", async (c) => {
 // All links across every user — keyset paginated + searchable.
 admin.get("/links", async (c) => {
   const db = c.var.db;
-  const { links, users, projects } = c.var.schema;
+  const { links, users, projects, domains } = c.var.schema;
   const q = c.req.query("q") ?? "";
   const cursor = c.req.query("cursor");
   const userId = c.req.query("userId");
@@ -336,7 +524,6 @@ admin.get("/links", async (c) => {
     [
       sql`${links.slug}`,
       sql`${links.destination}`,
-      sql`${links.title}`,
       sql`${users.email}`,
     ],
     q,
@@ -358,16 +545,17 @@ admin.get("/links", async (c) => {
         id: links.id,
         slug: links.slug,
         destination: links.destination,
-        title: links.title,
         isActive: links.isActive,
         clickCount: links.clickCount,
         createdAt: links.createdAt,
         ownerEmail: users.email,
         projectName: projects.name,
+        domainHost: domains.hostname,
       })
       .from(links)
       .innerJoin(users, eq(links.userId, users.id))
       .leftJoin(projects, eq(links.projectId, projects.id))
+      .leftJoin(domains, eq(links.domainId, domains.id))
       .where(where)
       .orderBy(desc(links.createdAt))
       .limit(PAGE + 1),
@@ -381,17 +569,18 @@ admin.get("/links", async (c) => {
 
   const hasMore = rows.length > PAGE;
   const page = hasMore ? rows.slice(0, PAGE) : rows;
+  const base = await shortOrigin(c.env);
   const items: AdminLinkDTO[] = page.map((r) => ({
     id: r.id,
     slug: r.slug,
-    shortUrl: `${c.env.APP_URL}/${r.slug}`,
+    shortUrl: buildShortUrl(base, r.domainHost ?? null, r.slug),
     destination: r.destination,
-    title: r.title,
     isActive: r.isActive,
     clickCount: r.clickCount,
     createdAt: r.createdAt.toISOString(),
     ownerEmail: r.ownerEmail,
     projectName: r.projectName ?? null,
+    domain: r.domainHost ?? null,
   }));
   return c.json({
     links: items,
@@ -416,16 +605,7 @@ admin.patch(
       .returning();
     const row = rows[0];
     if (!row) return c.json({ error: "Not found" }, 404);
-    await putCachedLink(c.env.LINKS_KV, row.slug, {
-      id: row.id,
-      destination: row.destination,
-      iosUrl: row.iosUrl,
-      androidUrl: row.androidUrl,
-      desktopUrl: row.desktopUrl,
-      isActive: row.isActive,
-      hasPassword: Boolean(row.passwordHash),
-      expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
-    });
+    await refreshLinkCache(c.env, c.var.db, c.var.schema, row);
     return c.json({ ok: true });
   },
 );
@@ -435,14 +615,24 @@ admin.delete("/links/:id", async (c) => {
   const id = c.req.param("id");
   if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
   const { links } = c.var.schema;
-  const rows = await c.var.db
-    .delete(links)
-    .where(eq(links.id, id))
-    .returning({ slug: links.slug, id: links.id, ogImage: links.ogImage });
-  if (!rows[0]) return c.json({ error: "Not found" }, 404);
-  await deleteCachedLink(c.env.LINKS_KV, rows[0].slug);
-  if (rows[0].ogImage === "r2") {
-    await c.env.LOGO_BUCKET.delete(`og/${rows[0].id}`).catch(() => {});
+  const existing = (
+    await c.var.db
+      .select({
+        slug: links.slug,
+        id: links.id,
+        domainId: links.domainId,
+        ogImage: links.ogImage,
+      })
+      .from(links)
+      .where(eq(links.id, id))
+      .limit(1)
+  )[0];
+  if (!existing) return c.json({ error: "Not found" }, 404);
+  // Purge every entry point's cache before the cascade removes the alias rows.
+  await purgeLinkCache(c.env, c.var.db, c.var.schema, existing);
+  await c.var.db.delete(links).where(eq(links.id, id));
+  if (existing.ogImage === "r2") {
+    await c.env.LOGO_BUCKET.delete(`og/${existing.id}`).catch(() => {});
   }
   return c.json({ ok: true });
 });
@@ -461,7 +651,7 @@ admin.post("/users", zValidator("json", createUserSchema), async (c) => {
   if (existing.length > 0) {
     return c.json({ error: "A member with that email already exists" }, 409);
   }
-  const passwordHash = await hashPassword(password);
+  const passwordHash = await hashPassword(password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env));
   const row = (
     await db
       .insert(users)
@@ -488,7 +678,7 @@ admin.post(
     const id = c.req.param("id");
     if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
     const { users, sessions } = c.var.schema;
-    const passwordHash = await hashPassword(c.req.valid("json").password);
+    const passwordHash = await hashPassword(c.req.valid("json").password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env));
     const rows = await c.var.db
       .update(users)
       .set({ passwordHash })
@@ -505,22 +695,29 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
   const db = c.var.db;
   const { links } = c.var.schema;
   const { ids, action } = c.req.valid("json");
-  const kv = c.env.LINKS_KV;
 
   if (action === "delete") {
-    const rows = await db
-      .delete(links)
-      .where(inArray(links.id, ids))
-      .returning({ slug: links.slug, id: links.id, ogImage: links.ogImage });
+    // Read the targets first so alias cache keys can be purged before the
+    // cascade removes the alias rows.
+    const targets = await db
+      .select({
+        id: links.id,
+        slug: links.slug,
+        domainId: links.domainId,
+        ogImage: links.ogImage,
+      })
+      .from(links)
+      .where(inArray(links.id, ids));
+    await db.delete(links).where(inArray(links.id, ids));
     c.executionCtx.waitUntil(
       Promise.all([
-        ...rows.map((r) => deleteCachedLink(kv, r.slug)),
-        ...rows
+        ...targets.map((r) => purgeLinkCache(c.env, db, c.var.schema, r)),
+        ...targets
           .filter((r) => r.ogImage === "r2")
           .map((r) => c.env.LOGO_BUCKET.delete(`og/${r.id}`).catch(() => {})),
       ]).then(() => {}),
     );
-    return c.json({ ok: true, count: rows.length });
+    return c.json({ ok: true, count: targets.length });
   }
 
   const isActive = action === "activate";
@@ -531,18 +728,7 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
     .returning();
   c.executionCtx.waitUntil(
     Promise.all(
-      rows.map((r) =>
-        putCachedLink(kv, r.slug, {
-          id: r.id,
-          destination: r.destination,
-          iosUrl: r.iosUrl,
-          androidUrl: r.androidUrl,
-          desktopUrl: r.desktopUrl,
-          isActive: r.isActive,
-          hasPassword: Boolean(r.passwordHash),
-          expiresAt: r.expiresAt ? r.expiresAt.getTime() : null,
-        }),
-      ),
+      rows.map((r) => refreshLinkCache(c.env, db, c.var.schema, r)),
     ).then(() => {}),
   );
   return c.json({ ok: true, count: rows.length });
@@ -566,7 +752,6 @@ admin.get("/export/links.csv", async (c) => {
     .select({
       slug: links.slug,
       destination: links.destination,
-      title: links.title,
       clicks: links.clickCount,
       active: links.isActive,
       owner: users.email,
@@ -576,7 +761,7 @@ admin.get("/export/links.csv", async (c) => {
     .innerJoin(users, eq(links.userId, users.id))
     .orderBy(desc(links.createdAt));
 
-  const head = "slug,destination,title,clicks,active,owner,created\n";
+  const head = "slug,destination,clicks,active,owner,created\n";
   const csv =
     head +
     rows
@@ -584,7 +769,6 @@ admin.get("/export/links.csv", async (c) => {
         [
           r.slug,
           r.destination,
-          r.title ?? "",
           String(r.clicks),
           String(r.active),
           r.owner,
@@ -704,15 +888,31 @@ admin.delete("/domains/:id", async (c) => {
   const id = c.req.param("id");
   if (!UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
   const { domains } = c.var.schema;
-  const rows = await c.var.db
-    .delete(domains)
-    .where(eq(domains.id, id))
-    .returning({ id: domains.id });
-  if (!rows[0]) return c.json({ error: "Not found" }, 404);
+  const existing = (
+    await c.var.db
+      .select({ hostname: domains.hostname })
+      .from(domains)
+      .where(eq(domains.id, id))
+      .limit(1)
+  )[0];
+  if (!existing) return c.json({ error: "Not found" }, 404);
+  // Blocked by the FK while links still point at it — surface a clear message.
+  try {
+    await c.var.db.delete(domains).where(eq(domains.id, id));
+  } catch (e) {
+    const err = e as { code?: string; cause?: { code?: string } } | null;
+    if (err?.code === "23503" || err?.cause?.code === "23503") {
+      return c.json({ error: "That domain still has links — remove them first" }, 409);
+    }
+    throw e;
+  }
+  await invalidateDomainHost(c.env.LINKS_KV, existing.hostname);
   return c.json({ ok: true });
 });
 
-// Delete a user. The primary admin and your own account are protected.
+// Remove a member — same soft-delete lifecycle as self-service account closure
+// (links stop, credentials die, the email is tombstoned, purge by cron).
+// The primary admin and your own account are protected.
 admin.delete("/users/:id", async (c) => {
   const id = c.req.param("id");
   if (!id || !UUID_RE.test(id)) return c.json({ error: "Not found" }, 404);
@@ -732,7 +932,7 @@ admin.delete("/users/:id", async (c) => {
     return c.json({ error: "The primary admin can't be deleted" }, 403);
   }
 
-  await c.var.db.delete(users).where(eq(users.id, id));
+  await softDeleteUser(c.env, c.var.db, c.var.schema, id);
   return c.json({ ok: true });
 });
 

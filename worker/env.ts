@@ -10,11 +10,17 @@ export interface AppBindings extends Env {
   SESSION_SECRET: string;
   /** One-time bootstrap token gating the first-run installer (`POST /api/setup`). */
   SETUP_TOKEN: string;
+  /** Deploy-time PBKDF2 cost (wrangler var, default "20000"). Read + clamped by
+   *  `pbkdf2Iterations()`; see worker/lib/password.ts. */
+  PBKDF2_ITERATIONS: string;
   /** Cloudflare D1 binding, present only when DB_DRIVER="d1" (otherwise absent
    *  from the generated Env, so it's declared optional here). DB_DRIVER itself
    *  comes from the generated Env (a wrangler var). Cloudflare-for-SaaS custom
    *  domain credentials live in settings (configured via /admin), not env. */
   DB?: D1Database;
+  /** Exact rate-limit Durable Object (Phase F). Optional — when absent, the
+   *  human check falls back to the KV limiter, so deploys without it still work. */
+  RATE_LIMITER?: DurableObjectNamespace;
 }
 
 export interface SessionUser {

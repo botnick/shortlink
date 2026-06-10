@@ -33,27 +33,51 @@ export function routeDestination(
   return link.destination;
 }
 
-const TTL_SECONDS = 60 * 60; // 1h backstop; we also invalidate on edit/delete
-const key = (slug: string) => `link:${slug}`;
+// 24h backstop only — correctness comes from explicit invalidation on every
+// edit/delete (refreshLinkCache/purgeLinkCache), and expiry/active/password are
+// re-evaluated from the payload at request time. A long TTL keeps the lazy
+// re-fill from rewriting hot entries hourly (which would eat the KV write cap).
+const TTL_SECONDS = 60 * 60 * 24;
+
+// The cache key is scoped by domain so the same slug can live on more than one
+// host (per-domain custom back-halves). `null` = the default short host bucket.
+const key = (domainId: string | null, slug: string) =>
+  `link:${domainId ?? "_"}:${slug}`;
 
 export async function getCachedLink(
   kv: KVNamespace,
+  domainId: string | null,
   slug: string,
 ): Promise<CachedLink | null> {
-  return kv.get<CachedLink>(key(slug), "json");
+  try {
+    return await kv.get<CachedLink>(key(domainId, slug), "json");
+  } catch {
+    // KV unavailable / over its read quota → treat as a miss so the caller
+    // falls through to the database (the source of truth) instead of 500ing.
+    return null;
+  }
 }
 
 export async function putCachedLink(
   kv: KVNamespace,
+  domainId: string | null,
   slug: string,
   value: CachedLink,
 ): Promise<void> {
-  await kv.put(key(slug), JSON.stringify(value), { expirationTtl: TTL_SECONDS });
+  try {
+    await kv.put(key(domainId, slug), JSON.stringify(value), {
+      expirationTtl: TTL_SECONDS,
+    });
+  } catch {
+    // KV write blip / over quota — the cache just stays cold; the DB still
+    // serves. Never let a cache-warm failure surface to the visitor.
+  }
 }
 
 export async function deleteCachedLink(
   kv: KVNamespace,
+  domainId: string | null,
   slug: string,
 ): Promise<void> {
-  await kv.delete(key(slug));
+  await kv.delete(key(domainId, slug));
 }

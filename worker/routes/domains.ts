@@ -5,7 +5,12 @@ import type { AppContext, AppEnv } from "../env";
 import type { DomainRow } from "../db/schema";
 import { domainSchema } from "../lib/validators";
 import { requireAuth } from "../middleware/auth";
-import { getAllSettings, saasConfigFrom, type SaasConfig } from "../lib/settings";
+import {
+  getAllSettings,
+  maxDomainsPerUserFrom,
+  saasConfigFrom,
+  type SaasConfig,
+} from "../lib/settings";
 import {
   checkTxtVerification,
   newVerifyToken,
@@ -17,12 +22,12 @@ import {
   deleteCustomHostname,
   getCustomHostname,
 } from "../lib/cloudflare";
+import { invalidateDomainHost } from "../lib/domainScope";
 import type { DomainDnsRecord, DomainDTO, DomainListDTO } from "@shared/types";
 
 const route = new Hono<AppEnv>();
 route.use("*", requireAuth);
 
-const MAX_PER_USER = 10;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 async function loadSaas(c: AppContext): Promise<SaasConfig | null> {
@@ -61,6 +66,15 @@ function isUniqueViolation(e: unknown): boolean {
   );
 }
 
+function isForeignKeyViolation(e: unknown): boolean {
+  const err = e as { code?: string; cause?: { code?: string } } | null;
+  return (
+    err?.code === "23503" ||
+    err?.cause?.code === "23503" ||
+    /foreign key|FOREIGN KEY/i.test(String((e as Error)?.message))
+  );
+}
+
 async function ownedDomain(c: AppContext): Promise<DomainRow | null> {
   const id = c.req.param("id");
   if (!id || !UUID_RE.test(id)) return null;
@@ -95,14 +109,16 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
   const { domains } = c.var.schema;
   const user = c.var.user!;
   const { hostname } = c.req.valid("json");
-  const saas = await loadSaas(c);
+  const map = await getAllSettings(c.var.db, c.var.schema);
+  const saas = saasConfigFrom(map, c.env.APP_URL);
+  const cap = maxDomainsPerUserFrom(map);
 
   const existing = await c.var.db
     .select({ id: domains.id })
     .from(domains)
     .where(eq(domains.userId, user.id));
-  if (existing.length >= MAX_PER_USER) {
-    return c.json({ error: "You've reached the domain limit" }, 409);
+  if (cap > 0 && existing.length >= cap) {
+    return c.json({ error: "You’ve reached the domain limit" }, 409);
   }
 
   let cfHostnameId: string | null = null;
@@ -133,6 +149,7 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
         })
         .returning()
     )[0];
+    await invalidateDomainHost(c.env.LINKS_KV, hostname);
     return c.json({ domain: toDTO(Boolean(saas), row) }, 201);
   } catch (e) {
     if (saas && cfHostnameId) await deleteCustomHostname(saas, cfHostnameId).catch(() => {});
@@ -183,12 +200,25 @@ route.post("/:id/check", async (c) => {
 route.delete("/:id", async (c) => {
   const row = await ownedDomain(c);
   if (!row) return c.json({ error: "Not found" }, 404);
+  const { domains } = c.var.schema;
+  // A domain can't be removed while links still point at it (FK). Surface that
+  // as a clear message instead of a 500.
+  try {
+    await c.var.db.delete(domains).where(eq(domains.id, row.id));
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return c.json(
+        { error: "Move or delete this domain’s links before removing it" },
+        409,
+      );
+    }
+    throw e;
+  }
   if (row.cfHostnameId) {
     const saas = await loadSaas(c);
     if (saas) await deleteCustomHostname(saas, row.cfHostnameId).catch(() => {});
   }
-  const { domains } = c.var.schema;
-  await c.var.db.delete(domains).where(eq(domains.id, row.id));
+  await invalidateDomainHost(c.env.LINKS_KV, row.hostname);
   return c.json({ ok: true });
 });
 

@@ -1,6 +1,8 @@
 // Unambiguous base-56 alphabet (no 0/O/1/l/I) for readable random slugs.
 const ALPHABET = "23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
-const DEFAULT_LENGTH = 7;
+// Fallback only — the actual length is the admin setting `slugLength`
+// (see slugLengthFrom), passed in by callers that have settings loaded.
+const DEFAULT_LENGTH = 6;
 
 // Slugs that must never be claimed — anything that collides with a route, leaks
 // authority, or invites phishing. Kept deliberately broad. Grouped for review.
@@ -38,7 +40,7 @@ const RESERVED_LIST = [
   "styles", "robots", "sitemap", "manifest", "sw", "service-worker", "ads",
   "humans", "well-known", ".well-known", "acme-challenge", "s", "www", "ftp",
   "mail", "email", "smtp", "imap", "pop", "ns", "mx", "dns", "ws", "wss", "ssh",
-  "graphql", "rest", "webhook", "webhooks", "v1", "v2", "v3", "api-docs", "swagger",
+  "graphql", "rest", "webhook", "webhooks", "v1", "v2", "v3", "api-docs", "swagger", "mcp",
   "openapi", "health", "healthz", "ping", "metrics", "debug", "test", "tests",
   "demo", "example", "examples", "sample", "default", "temp", "tmp",
   "favicon.ico", "robots.txt", "sitemap.xml", "ads.txt", "security.txt",
@@ -46,7 +48,7 @@ const RESERVED_LIST = [
 
   // --- Auth / security words ---
   "password", "passwd", "reset", "forgot", "verify", "verification", "confirm",
-  "activate", "token", "secret", "secrets", "key", "keys", "apikey", "api-key",
+  "activate", "token", "secret", "secrets", "key", "keys", "apikey", "apikeys", "api-key",
   "2fa", "mfa", "otp", "captcha", "session", "sessions",
 
   // --- High-risk impersonation brands (phishing) ---
@@ -82,9 +84,4 @@ export function generateSlug(length = DEFAULT_LENGTH): string {
 
 export function isValidCustomSlug(slug: string): boolean {
   return SLUG_RE.test(slug) && !RESERVED_SLUGS.has(slug.toLowerCase());
-}
-
-/** A request path that the Worker must serve from assets, not treat as a slug. */
-export function isReservedPath(path: string): boolean {
-  return RESERVED_SLUGS.has(path.toLowerCase()) || path.includes(".");
 }

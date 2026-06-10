@@ -1,0 +1,118 @@
+# Configuration reference
+
+Shortlink has **three** layers of configuration, from least to most flexible:
+
+1. **Deploy-time** (`wrangler.jsonc` vars + bindings) — needs a redeploy to change.
+2. **Secrets** (`.dev.vars` locally, `wrangler secret` in production) — sensitive values.
+3. **Admin settings** (in the `/admin` console) — **live, no redeploy** — the vast majority of knobs.
+
+> **Design rule:** nothing about behavior is hardcoded. Every limit, switch, and threshold is an
+> admin setting. The two `wrangler.jsonc` values below are the *only* things you set outside the app.
+
+---
+
+## 1. Deploy-time vars (`wrangler.jsonc`)
+
+| Field | Example | What it is |
+| --- | --- | --- |
+| `vars.APP_URL` | `https://go.yoursite.com` | **The** canonical origin — every displayed short URL, QR target, and API doc. Also the routing anchor for the default host. *(There is no separate "short domain" setting; this is the single source of truth.)* |
+| `vars.DB_DRIVER` | `postgres` or `d1` | Which database driver to use. |
+| `routes[].pattern` | `go.yoursite.com` | The hostname Cloudflare serves the Worker on. Must match `APP_URL`'s host. |
+
+Plus the resource **bindings** (ids are not secrets — commit them):
+
+| Binding | Created with | Purpose |
+| --- | --- | --- |
+| `LINKS_KV` | `wrangler kv namespace create LINKS_KV` | Redirect edge cache |
+| `LOGO_BUCKET` (R2 `shortlink-logos`) | `wrangler r2 bucket create shortlink-logos` | QR logos + uploaded OG images |
+| `HYPERDRIVE` | `wrangler hyperdrive create …` | **[Postgres]** pooled DB connection |
+| `DB` (D1) | `wrangler d1 create shortlink-db` | **[D1]** the database |
+| `RATE_LIMITER` (Durable Object) | declared in `wrangler.jsonc` | Exact rate limiter. Optional — the Worker falls back to a KV limiter if absent. |
+| `ASSETS` | automatic | Serves the built SPA assets |
+
+---
+
+## 2. Secrets
+
+Local development reads them from **`.dev.vars`** (gitignored). Production reads them from
+**`wrangler secret`**. Never commit them.
+
+| Secret | Required | Notes |
+| --- | --- | --- |
+| `SESSION_SECRET` | **Yes** | Signs cookies, peppers passwords, keys the human check. **Must be ≥ 32 bytes** — the app asserts this on startup and refuses to serve if it's weak/missing. Generate with `openssl rand -hex 32`. |
+| `SETUP_TOKEN` | **Yes** | Gates the one-time `/setup` installer. Generate with `openssl rand -hex 16`. |
+| `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` | Local **[Postgres]** only | Points local dev's Hyperdrive binding at your Postgres. Not needed in production (Hyperdrive holds the real credential) or on D1. |
+
+Set production secrets with:
+
+```bash
+npx wrangler secret put SESSION_SECRET
+npx wrangler secret put SETUP_TOKEN
+```
+
+> Cloudflare-for-SaaS custom-domain credentials are **not** env secrets — they live in admin
+> settings (so they can be rotated without a redeploy). See below.
+
+---
+
+## 3. Admin settings (`/admin → Settings`)
+
+All live, no redeploy. Stored in the key/value `settings` table.
+
+### Branding & SEO
+App name, brand color, logo, description, social-card (OG) template / font / label / title /
+tagline / accent, and a search-indexing toggle. Also the **brand-page copy** (404 / expired /
+password / interstitial pages) — every string is editable, with shipped defaults — and an optional
+**link-safety interstitial** ("you're leaving to …").
+
+### Registration
+Open or closed (closed by default).
+
+### Limits & safety
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| Blocked destination domains | — | Links can't point at these (enforced on create, update, import, MCP). |
+| Reserved slugs | — | Extra back-halves nobody can claim. |
+| Links per member | 10,000,000 | Per-user link quota (0 = unlimited). |
+| New links / hour / member | 60 | Link-creation rate limit. |
+| Login attempts / 15 min / IP | 10 | Auth rate limit. |
+| Domains per member | 10 | Custom-domain quota. |
+| Back-half changes per link | 5 | Edit cap (0 = unlimited). |
+| Random slug length | 6 | Length of auto-generated back-halves (3–32). |
+| Closed-account hold (days) | 30 | How long a soft-deleted account is kept before purge. |
+| Email re-signup block (days) | 180 | Extra window the email stays unregistrable after purge. |
+| **Click history retention (days)** | **0 (forever)** | Purge raw click rows older than this to bound the DB. Per-link totals are always kept. |
+
+### Public API & MCP
+On/off switches for the bearer-key API and the MCP server, plus the API rate limit and the
+API-keys-per-member quota.
+
+### Human check
+Mode (disabled / invisible / game-only / forced-game), which mini-games are in the pool, min/max
+games, proof-of-work difficulty, challenge + token TTLs, retry cap, risk thresholds, and the
+per-IP challenge/verify limits. See [human-check-v3.md](human-check-v3.md).
+
+### Custom domains (Cloudflare for SaaS)
+| Setting | Meaning |
+| --- | --- |
+| Cloudflare API token | Permission *SSL and Certificates → Edit*. Enables automatic custom-hostname provisioning. Leave blank for $0 DNS-verification mode. |
+| Zone ID | Your Cloudflare zone id. |
+| Fallback host | What members CNAME to (defaults to the app's own host). |
+| Auto-remove unverified domains (days) | 90 (0 = never). A daily cron deletes domains left unverified this long and frees their Cloudflare custom hostname. |
+
+---
+
+## Dev helper scripts
+
+For local development against the database in your `.dev.vars`:
+
+```bash
+# Mint an API key for an account (prints it once)
+npx tsx scripts/seed-api-key.ts <email> [name]
+
+# Add a verified custom domain to an account
+npx tsx scripts/seed-verified-domain.ts <email> <hostname>
+```
+
+> ⚠️ **Never run `npm run test:e2e` against your real/dev database** — it wipes all rows. Point it
+> only at a throwaway database (`DBURL=… npm run test:e2e`).

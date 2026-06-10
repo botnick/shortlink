@@ -21,9 +21,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { shortUrlFor } from "@/lib/utils";
-import { formatDate, formatNumber } from "@/lib/format";
-import type { LinkDTO, NameCount, StatsDTO } from "@shared/types";
+import { formatDate, formatNumber, timeAgo } from "@/lib/format";
+import type { ActivityDTO, ActivityItemDTO, LinkDTO, NameCount, StatsDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { BackLink } from "@/components/BackLink";
 import {
@@ -78,6 +77,7 @@ export function LinkStats() {
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [activity, setActivity] = useState<ActivityItemDTO[] | null>(null);
 
   useEffect(() => {
     api
@@ -94,6 +94,27 @@ export function LinkStats() {
       .catch(() => toast.error("Couldn't load analytics"))
       .finally(() => setLoading(false));
   }, [id, range]);
+
+  // Live activity feed: poll every 30s while the Overview tab is visible.
+  // (Kept off background tabs and at a 30s cadence so an open dashboard doesn't
+  // quietly burn the Worker request budget — see the redirect-scale notes.)
+  useEffect(() => {
+    if (tab !== "overview") return;
+    let active = true;
+    const load = () => {
+      if (document.hidden) return;
+      api
+        .get<ActivityDTO>(`/links/${id}/activity`)
+        .then((r) => active && setActivity(r.items))
+        .catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 30_000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
+  }, [id, tab]);
 
   if (notFound) {
     return (
@@ -113,7 +134,7 @@ export function LinkStats() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="display truncate text-2xl sm:text-3xl">
-            {link?.title || (link ? `/${link.slug}` : "Analytics")}
+            {link ? `/${link.slug}` : "Analytics"}
           </h1>
           {link && (
             <a
@@ -128,9 +149,15 @@ export function LinkStats() {
         </div>
         {link && (
           <div className="flex items-center gap-2">
-            <CopyButton value={shortUrlFor(link.slug)} label="Copy" variant="outline" />
+            <CopyButton value={link.shortUrl} label="Copy" variant="outline" />
             <Button asChild variant="outline" size="icon">
-              <a href={shortUrlFor(link.slug)} target="_blank" rel="noreferrer">
+              <a
+                href={link.shortUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open link"
+                title="Open link"
+              >
                 <ExternalLink />
               </a>
             </Button>
@@ -221,6 +248,8 @@ export function LinkStats() {
               )}
             </CardContent>
           </Card>
+
+          <RecentActivity items={activity} />
         </div>
       )}
 
@@ -308,6 +337,9 @@ function ClickCount({ stats }: { stats: StatsDTO }) {
           Created {formatDate(stats.createdAt)}
           {stats.bestDay
             ? ` · Best day ${formatDate(stats.bestDay.day)} (${formatNumber(stats.bestDay.count)})`
+            : ""}
+          {stats.botClicks > 0
+            ? ` · ${formatNumber(stats.botClicks)} bot click${stats.botClicks === 1 ? "" : "s"} filtered out`
             : ""}
         </p>
         <div className="divide-y rounded-lg border">
@@ -446,9 +478,71 @@ function BarList({
   );
 }
 
+/** Live feed of the latest human clicks (auto-refreshes every 10s). */
+function RecentActivity({ items }: { items: ActivityItemDTO[] | null }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          Recent activity
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60" />
+            <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {items === null ? (
+          <div className="space-y-1.5">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No clicks yet — share the link and watch them appear here.
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {items.map((a, i) => {
+              let refHost = "";
+              try {
+                refHost = a.referrer ? new URL(a.referrer).hostname.replace(/^www\./, "") : "";
+              } catch {
+                refHost = a.referrer ?? "";
+              }
+              return (
+                <li key={`${a.at}-${i}`} className="flex items-center gap-3 py-2 text-sm">
+                  {a.country ? (
+                    <Flag code={a.country} />
+                  ) : (
+                    <span className="inline-block h-[15px] w-5 rounded-[2px] bg-muted" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">
+                    {[a.browser, a.os].filter(Boolean).join(" · ") || "Unknown device"}
+                    {refHost && (
+                      <span className="text-muted-foreground"> · from {refHost}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs capitalize text-muted-foreground">
+                    {a.deviceType ?? ""}
+                  </span>
+                  <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">
+                    {timeAgo(a.at)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function Share({ link }: { link: LinkDTO }) {
-  const shortUrl = shortUrlFor(link.slug);
-  const text = link.title || link.slug;
+  const shortUrl = link.shortUrl;
+  const text = link.slug;
   const shares = [
     {
       label: "X",

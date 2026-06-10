@@ -10,13 +10,6 @@ export function formatDate(iso: string): string {
   );
 }
 
-export function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
-}
-
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const sec = Math.round(diff / 1000);

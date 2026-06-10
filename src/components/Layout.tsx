@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { ChevronDown, Globe, LayoutDashboard, LogOut, Shield, User } from "lucide-react";
+import { ChevronDown, Globe, KeyRound, LayoutDashboard, LogOut, Shield, User } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useConfig } from "@/lib/config";
@@ -75,6 +75,18 @@ export function Layout() {
                     <Link to="/domains">
                       <Globe />
                       Domains
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/apikeys">
+                      <KeyRound />
+                      API keys
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/account">
+                      <User />
+                      Account
                     </Link>
                   </DropdownMenuItem>
                   {user.role === "admin" && (

@@ -28,6 +28,18 @@ export async function hashIp(
   return bytesToHex(new Uint8Array(digest)).slice(0, 32);
 }
 
+// Automation/bot fingerprints: HTTP libraries, CLI tools, crawlers, headless
+// browsers and uptime monitors. Tokens are chosen to never appear in real
+// browser UAs (which all start "Mozilla/5.0" and name a real engine).
+const BOT_RE =
+  /bot\b|bot\/|crawl|spider|slurp|preview\b|curl\/|wget\/|python|php\/|java\/|ruby\b|perl\b|okhttp|go-http|node-fetch|node\/|axios\/|got \(|httpx|aiohttp|libwww|httpclient|http_request|headless|phantomjs|electron\b|selenium|playwright|puppeteer|scrapy|pingdom|uptime|statuscake|monitor(ing)?\b|checkly|newrelic|datadog|facebookexternalhit|whatsapp|telegram|discord|slack|twitterbot|linkedin|skypeuripreview|vkshare|embedly|quora link preview|outbrain|nuzzel|bitlybot|qwantify|bufferbot|xing-contenttabreceiver|chrome-lighthouse|google-inspectiontool/i;
+
+/** True when the UA is clearly automated traffic (or missing entirely). */
+export function isBotUA(ua: string | null): boolean {
+  if (!ua || ua.trim().length < 12) return true;
+  return BOT_RE.test(ua);
+}
+
 export interface UAInfo {
   browser: string | null;
   os: string | null;

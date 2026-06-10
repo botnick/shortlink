@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/lib/config";
 import { api } from "@/lib/api";
+import { compressImage } from "@/lib/image";
 import { extractPalette } from "@/lib/palette";
 import { schemesFor, type ColorScheme } from "@/lib/colorSchemes";
 import {
@@ -272,7 +273,7 @@ export function QrStudio({
   const brand = project?.color || config.brandColor;
   const [cfg, setCfg] = useState<QrCfg>(() => {
     const base = makeDefault(brand);
-    const withLogo = project?.logo ? { ...base, logoSrc: project.logo, logo: true } : base;
+    const withLogo = project?.logo ? { ...base, logoSrc: project.logo } : base;
     return initialConfig ? { ...withLogo, ...(initialConfig as Partial<QrCfg>) } : withLogo;
   });
   const [savingLink, setSavingLink] = useState(false);
@@ -373,15 +374,22 @@ export function QrStudio({
     reader.readAsDataURL(file);
   }
 
-  function onUpload(file: File | undefined) {
+  async function onUpload(file: File | undefined) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      setCfg((c) => ({ ...c, logoSrc: dataUrl, logo: true }));
-      api.post<{ asset: AssetDTO }>("/assets", { name: file.name, dataUrl }).then((r) => setAssets((a) => [r.asset, ...a])).catch(() => {});
-    };
-    reader.readAsDataURL(file);
+    // Downscale + re-encode in the browser (WebP keeps logo transparency) before
+    // it ever hits R2 — small uploads, no server-side image processing ($0).
+    let dataUrl: string;
+    try {
+      dataUrl = await compressImage(file, 512, 0.9);
+    } catch {
+      toast.error("Couldn't read that image");
+      return;
+    }
+    setCfg((c) => ({ ...c, logoSrc: dataUrl, logo: true }));
+    api
+      .post<{ asset: AssetDTO }>("/assets", { name: file.name, dataUrl })
+      .then((r) => setAssets((a) => [r.asset, ...a]))
+      .catch(() => {});
   }
 
   function pickAsset(a: AssetDTO) {
