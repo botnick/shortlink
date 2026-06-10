@@ -695,6 +695,16 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
     }
   }
 
+  // Enforce the destination blocklist on update too — create + import already
+  // do, but the PATCH path skipped it, letting a link be re-pointed at a blocked
+  // domain after creation (dashboard, /api/v1, and MCP all reach this handler).
+  if (input.destination !== undefined) {
+    settings ??= await getAllSettings(db, schema);
+    if (isBlockedDestination(input.destination, blockedDomainsFrom(settings))) {
+      return c.json({ error: "That destination domain isn’t allowed" }, 400);
+    }
+  }
+
   const patch: Partial<typeof links.$inferInsert> = { updatedAt: new Date() };
   if (input.destination !== undefined) patch.destination = input.destination;
   if (input.iosUrl !== undefined) patch.iosUrl = input.iosUrl;

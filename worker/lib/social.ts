@@ -81,7 +81,12 @@ export function previewHtml(
     m.push(`<meta name="twitter:card" content="summary">`);
   }
   const dest = esc(destination);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${m.join("")}<meta http-equiv="refresh" content="0;url=${dest}"></head><body><a href="${dest}">Continue</a><script>location.replace(${JSON.stringify(destination)})</script></body></html>`;
+  // The destination is stored as-entered (the validator checks it's http(s) but
+  // doesn't percent-encode), so a path like `…/</script><script>…` would break
+  // out of the inline script. Escape `<`/`>` in the JS string literal (CSP also
+  // blocks inline-script execution in prod, but this stops the markup breakout).
+  const destJs = JSON.stringify(destination).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${m.join("")}<meta http-equiv="refresh" content="0;url=${dest}"></head><body><a href="${dest}">Continue</a><script>location.replace(${destJs})</script></body></html>`;
 }
 
 // Common named HTML entities found in <title>/<meta> text. Numeric ones
