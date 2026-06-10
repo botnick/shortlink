@@ -27,3 +27,6 @@ _og-preview.png
 
 # Brand page preview artifacts (dev)
 _brand-pages/
+
+# Captcha / theme / misc preview PNGs emitted by scripts (dev)
+scripts/*-preview.png
