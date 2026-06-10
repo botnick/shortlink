@@ -174,6 +174,10 @@ export function brandCopyFrom(map: Record<string, unknown>): BrandCopy {
   const v = map[SETTING_KEYS.brandCopy];
   const o = (typeof v === "object" && v !== null && !Array.isArray(v) ? v : {}) as Record<string, unknown>;
   const d = DEFAULT_BRAND_COPY;
+  // Blank / whitespace-only → use the default, so clearing a field in the admin
+  // form and saving reverts it to the default instead of rendering empty.
+  const pick = (x: unknown, fb: string): string =>
+    typeof x === "string" && x.trim() !== "" ? x : fb;
   const sub = (k: string): Record<string, unknown> => {
     const x = o[k];
     return typeof x === "object" && x !== null ? (x as Record<string, unknown>) : {};
@@ -181,7 +185,7 @@ export function brandCopyFrom(map: Record<string, unknown>): BrandCopy {
   const errIn = sub("errors");
   const oneErr = (k: keyof BrandCopy["errors"]) => {
     const e = typeof errIn[k] === "object" && errIn[k] !== null ? (errIn[k] as Record<string, unknown>) : {};
-    return { heading: asString(e.heading, d.errors[k].heading), sub: asString(e.sub, d.errors[k].sub) };
+    return { heading: pick(e.heading, d.errors[k].heading), sub: pick(e.sub, d.errors[k].sub) };
   };
   const pw = sub("password");
   const it = sub("interstitial");
@@ -195,19 +199,20 @@ export function brandCopyFrom(map: Record<string, unknown>): BrandCopy {
       error: oneErr("error"),
     },
     password: {
-      heading: asString(pw.heading, d.password.heading),
-      sub: asString(pw.sub, d.password.sub),
-      label: asString(pw.label, d.password.label),
-      button: asString(pw.button, d.password.button),
+      heading: pick(pw.heading, d.password.heading),
+      sub: pick(pw.sub, d.password.sub),
+      label: pick(pw.label, d.password.label),
+      button: pick(pw.button, d.password.button),
     },
     interstitial: {
-      heading: asString(it.heading, d.interstitial.heading),
-      sub: asString(it.sub, d.interstitial.sub),
-      leaving: asString(it.leaving, d.interstitial.leaving),
-      continue: asString(it.continue, d.interstitial.continue),
+      heading: pick(it.heading, d.interstitial.heading),
+      sub: pick(it.sub, d.interstitial.sub),
+      leaving: pick(it.leaving, d.interstitial.leaving),
+      continue: pick(it.continue, d.interstitial.continue),
     },
-    homeCta: asString(o.homeCta, d.homeCta),
-    support: { label: asString(sp.label, d.support.label), url: asString(sp.url, d.support.url) },
+    homeCta: pick(o.homeCta, d.homeCta),
+    // Support is hidden by default (blank), so a blank here correctly stays blank.
+    support: { label: pick(sp.label, d.support.label), url: pick(sp.url, d.support.url) },
   };
 }
 
