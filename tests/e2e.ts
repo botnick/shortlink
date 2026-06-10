@@ -182,7 +182,6 @@ async function main() {
       body: {
         token: "correct-setup-token",
         appName: "Test App",
-        shortDomain: "links.example.com",
         email: "admin@example.test",
         password: "adminpassword123",
         registrationEnabled: false,
