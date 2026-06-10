@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import { useConfig } from "@/lib/config";
+import { useConfig, useShortHost } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { OG_TEMPLATES, renderOg } from "@/lib/ogTemplates";
 import { OG_FONTS, loadOgFont } from "@/lib/ogFonts";
@@ -145,13 +145,13 @@ function ImagePicker({
 
 export function AdminSettings() {
   const { refresh: refreshConfig } = useConfig();
+  const shortHost = useShortHost();
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingReg, setSavingReg] = useState(false);
   const [savingApp, setSavingApp] = useState(false);
 
   const [appName, setAppName] = useState("");
-  const [shortDomain, setShortDomain] = useState("");
   const [brandColor, setBrandColor] = useState(DEFAULT_BRAND_COLOR);
   const [logoUrl, setLogoUrl] = useState("");
   const [description, setDescription] = useState("");
@@ -223,7 +223,6 @@ export function AdminSettings() {
       .then((s) => {
         setSettings(s);
         setAppName(s.appName);
-        setShortDomain(s.shortDomain);
         setBrandColor(s.brandColor);
         setLogoUrl(s.logoUrl);
         setDescription(s.description);
@@ -305,7 +304,7 @@ export function AdminSettings() {
     e.preventDefault();
     setSavingApp(true);
     try {
-      await patch({ appName, shortDomain, brandColor, logoUrl, description, ogImageUrl, indexable });
+      await patch({ appName, brandColor, logoUrl, description, ogImageUrl, indexable });
       toast.success("Branding saved");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
@@ -443,7 +442,7 @@ export function AdminSettings() {
   const cardTitle = ogTitle.trim() || appName || DEFAULT_APP_NAME;
   const cardTagline = ogTagline.trim() || description;
   const cardAccent = /^#[0-9a-fA-F]{6}$/.test(ogAccent) ? ogAccent : brandColor;
-  const cardUrl = shortDomain.trim() || window.location.host;
+  const cardUrl = shortHost;
 
   return (
     <div className="space-y-6">
@@ -482,10 +481,6 @@ export function AdminSettings() {
               <div className="space-y-2">
                 <Label htmlFor="appName">App name</Label>
                 <Input id="appName" required maxLength={40} value={appName} onChange={(e) => setAppName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="shortDomain">Short domain</Label>
-                <Input id="shortDomain" placeholder="links.example.com" value={shortDomain} onChange={(e) => setShortDomain(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="brandColor">Brand color</Label>

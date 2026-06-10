@@ -27,7 +27,6 @@ export function Setup() {
 
   const [token, setToken] = useState("");
   const [appName, setAppName] = useState(DEFAULT_APP_NAME);
-  const [shortDomain, setShortDomain] = useState("");
   const [brandColor, setBrandColor] = useState(DEFAULT_BRAND_COLOR);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,7 +45,6 @@ export function Setup() {
       await api.post<{ user: UserDTO }>("/setup", {
         token,
         appName,
-        shortDomain,
         brandColor,
         email,
         password,
@@ -105,20 +103,6 @@ export function Setup() {
                   required
                   value={appName}
                   onChange={(e) => setAppName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="shortDomain">
-                  Short domain{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (optional)
-                  </span>
-                </Label>
-                <Input
-                  id="shortDomain"
-                  placeholder="links.example.com"
-                  value={shortDomain}
-                  onChange={(e) => setShortDomain(e.target.value)}
                 />
               </div>
               <div className="space-y-2">

@@ -62,7 +62,6 @@ setup.post("/", zValidator("json", setupSchema), async (c) => {
 
     const initial: [string, unknown][] = [
       [SETTING_KEYS.appName, input.appName],
-      [SETTING_KEYS.shortDomain, input.shortDomain],
       [SETTING_KEYS.brandColor, input.brandColor],
       [SETTING_KEYS.registration, input.registrationEnabled],
     ];

@@ -74,7 +74,6 @@ import {
   saasConfigFrom,
   safetyInterstitialFrom,
   setSetting,
-  shortDomainFrom,
 } from "../lib/settings";
 import { getCustomHostname } from "../lib/cloudflare";
 import { checkTxtVerification } from "../lib/dns";
@@ -113,7 +112,6 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
   return {
     registrationEnabled: map[SETTING_KEYS.registration] === true,
     appName: appNameFrom(map),
-    shortDomain: shortDomainFrom(map),
     brandColor: brandColorFrom(map),
     logoUrl: logoFrom(map),
     description: descriptionFrom(map),
@@ -217,9 +215,6 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.appName !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.appName, input.appName);
-  }
-  if (input.shortDomain !== undefined) {
-    await setSetting(db, schema, SETTING_KEYS.shortDomain, input.shortDomain);
   }
   if (input.brandColor !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.brandColor, input.brandColor);

@@ -17,7 +17,6 @@ import {
 export const SETTING_KEYS = {
   registration: "registration_enabled",
   appName: "app_name",
-  shortDomain: "short_domain",
   brandColor: "brand_color",
   logo: "logo_url",
   description: "description",
@@ -131,10 +130,6 @@ function asString(value: unknown, fallback: string): string {
 
 export function appNameFrom(map: Record<string, unknown>): string {
   return asString(map[SETTING_KEYS.appName], DEFAULT_APP_NAME);
-}
-
-export function shortDomainFrom(map: Record<string, unknown>): string {
-  return asString(map[SETTING_KEYS.shortDomain], "");
 }
 
 export function brandColorFrom(map: Record<string, unknown>): string {
@@ -623,16 +618,10 @@ export async function getPublicConfig(
     needsSetup = Number(row?.c ?? 0) === 0;
   }
 
-  // The canonical public origin for display and docs. The admin's Short domain
-  // is the source of truth (every connected host serves this same Worker);
-  // APP_URL is only the fallback before it's configured. Never a dev host.
-  const configuredHost = shortDomainFrom(map)
-    .trim()
-    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
-    .replace(/\/.*$/, "");
-  const appOrigin = configuredHost
-    ? `https://${configuredHost}`
-    : appUrl.replace(/\/+$/, "");
+  // The canonical public origin for display and docs comes from APP_URL — the
+  // single source of truth, set at deploy alongside the Worker route. (Never a
+  // dev host; the client only ever displays this server-provided origin.)
+  const appOrigin = appUrl.replace(/\/+$/, "");
   let appHost = "";
   try {
     appHost = new URL(appOrigin).host;
@@ -644,7 +633,7 @@ export async function getPublicConfig(
     needsSetup,
     appName: appNameFrom(map),
     // Display host for short links: the admin setting, else the app's own host.
-    shortDomain: configuredHost || appHost,
+    shortDomain: appHost,
     appOrigin,
     brandColor: brandColorFrom(map),
     logoUrl: logoFrom(map),

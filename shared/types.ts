@@ -241,7 +241,6 @@ export interface BrandCopy {
 export interface SettingsDTO {
   registrationEnabled: boolean;
   appName: string;
-  shortDomain: string;
   brandColor: string;
   logoUrl: string;
   description: string;

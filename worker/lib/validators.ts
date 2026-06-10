@@ -28,7 +28,6 @@ const isoDate = z
 const emailField = z.string().trim().toLowerCase().email().max(254);
 const passwordField = z.string().min(8, "Use at least 8 characters").max(200);
 const appName = z.string().trim().min(1).max(40);
-const shortDomain = z.string().trim().max(120);
 const brandColor = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex color");
@@ -64,7 +63,6 @@ export const loginSchema = z.object({
 export const setupSchema = z.object({
   token: z.string().min(1).max(500),
   appName,
-  shortDomain: shortDomain.optional().default(""),
   brandColor: brandColor.optional().default(DEFAULT_BRAND_COLOR),
   email: emailField,
   password: passwordField,
@@ -103,7 +101,6 @@ export const settingsSchema = z
   .object({
     registrationEnabled: z.boolean().optional(),
     appName: appName.optional(),
-    shortDomain: shortDomain.optional(),
     brandColor: brandColor.optional(),
     logoUrl: longText.optional(),
     description: description.optional(),

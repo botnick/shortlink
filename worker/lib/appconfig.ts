@@ -3,7 +3,7 @@ import type { AppBindings } from "../env";
 import { getPublicConfig } from "./settings";
 import type { AppConfigDTO } from "@shared/types";
 
-const KEY = "config:v8"; // v8: added brandCopy + safetyInterstitial
+const KEY = "config:v9"; // v9: shortDomain now derives from APP_URL (setting removed)
 
 // In-isolate memo so hot paths (e.g. building 20 short URLs in one list
 // response) don't pay a KV read each time. Tiny TTL keeps edits near-instant.
