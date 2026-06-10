@@ -43,6 +43,7 @@ import {
 import { isValidCustomSlug } from "./lib/slug";
 import { destinationPreview, isCrawler, previewHtml } from "./lib/social";
 import { verifyPassword } from "./lib/password";
+import { assertSessionSecret } from "./lib/secret";
 import { qrSvg } from "./lib/qrsvg";
 import {
   getClientIp,
@@ -54,6 +55,13 @@ import {
 } from "./lib/geo";
 
 const app = new Hono<AppEnv>();
+
+// Refuse to serve with a weak/missing SESSION_SECRET (memoised: once per isolate).
+// Runs before anything that signs cookies or hashes with it.
+app.use("*", async (c, next) => {
+  assertSessionSecret(c.env.SESSION_SECRET);
+  await next();
+});
 
 // Security headers on every response (incl. the SPA and redirects).
 app.use("*", securityHeaders);
