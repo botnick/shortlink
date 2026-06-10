@@ -423,7 +423,3 @@ export interface SessionDTO {
 export interface SessionListDTO {
   sessions: SessionDTO[];
 }
-
-export interface ApiError {
-  error: string;
-}

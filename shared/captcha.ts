@@ -142,34 +142,6 @@ export type GamePublicPayload =
   | PathTracePayload
   | KeyCountPayload;
 
-// --- Answers the client submits (validated server-side against secret state) --
-
-export interface DragTargetAnswer {
-  objectId: string;
-}
-export interface SlideAnswer {
-  pos: number;
-}
-export interface TapMatchAnswer {
-  objectId: string;
-}
-export interface RotateAnswer {
-  angle: number; // final arrow angle, degrees
-}
-export interface ConnectAnswer {
-  a: string;
-  b: string;
-}
-export interface SortAnswer {
-  order: string[];
-}
-export interface PathTraceAnswer {
-  order: string[];
-}
-export interface KeyCountAnswer {
-  pressed: number;
-}
-
 // --- Interaction evidence ------------------------------------------------------
 
 export type CaptchaEventType =

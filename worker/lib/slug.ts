@@ -85,8 +85,3 @@ export function generateSlug(length = DEFAULT_LENGTH): string {
 export function isValidCustomSlug(slug: string): boolean {
   return SLUG_RE.test(slug) && !RESERVED_SLUGS.has(slug.toLowerCase());
 }
-
-/** A request path that the Worker must serve from assets, not treat as a slug. */
-export function isReservedPath(path: string): boolean {
-  return RESERVED_SLUGS.has(path.toLowerCase()) || path.includes(".");
-}

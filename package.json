@@ -20,7 +20,6 @@
     "test:password": "tsx tests/password.ts"
   },
   "dependencies": {
-    "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource/ibm-plex-sans-thai": "^5.2.8",
     "@fontsource/press-start-2p": "^5.2.7",
     "@hono/zod-validator": "^0.8.0",

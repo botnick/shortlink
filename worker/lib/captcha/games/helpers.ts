@@ -351,12 +351,6 @@ export function countMoves(events: CaptchaEvent[]): number {
   return n;
 }
 
-/** True when the gesture was performed with the keyboard (key-down evidence
- *  present) — path-requiring games accept this branch and skip move counting. */
-export function hasKeyboardEvidence(events: CaptchaEvent[]): boolean {
-  return events.some((e) => e.t === "key-down");
-}
-
 /** Key-down target ids, in order (for keyboard alternates of path-style games). */
 export function keyTargetSequence(events: CaptchaEvent[]): string[] {
   return events

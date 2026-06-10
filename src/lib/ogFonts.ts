@@ -28,11 +28,6 @@ function resolve(id: string): OgFont {
   return byId.get(id) ?? DEFAULT_FONT;
 }
 
-/** Canvas font-family for an id (use after `loadOgFont` so glyphs are ready). */
-export function ogFontFamily(id: string): string {
-  return resolve(id).family;
-}
-
 /**
  * Load a font's 400 + 700 weights into `document.fonts`. Idempotent and cached,
  * so re-rendering the card or switching back to a font is instant. Returns the

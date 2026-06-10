@@ -65,8 +65,3 @@ export function getDbHandle(env: AppBindings): DbHandle {
     close: () => db.$client.end({ timeout: 5 }),
   };
 }
-
-/** Convenience for one-off scripts/helpers that just need a Postgres-style db. */
-export function getDb(env: AppBindings): DB {
-  return getDbHandle(env).db;
-}

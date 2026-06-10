@@ -1,4 +1,4 @@
-import { count, eq } from "drizzle-orm";
+import { count } from "drizzle-orm";
 import type { DB, DbSchema } from "../db";
 import type { AppConfigDTO, BrandCopy } from "@shared/types";
 import {
@@ -109,19 +109,6 @@ export async function setSetting(
     .values({ key, value })
     .onConflictDoUpdate({ target: settings.key, set: { value } });
   resetSettingsCache(); // never serve the just-overwritten value from the memo
-}
-
-export async function getRegistrationEnabled(
-  db: DB,
-  schema: DbSchema,
-): Promise<boolean> {
-  const { settings } = schema;
-  const rows = await db
-    .select({ value: settings.value })
-    .from(settings)
-    .where(eq(settings.key, SETTING_KEYS.registration))
-    .limit(1);
-  return rows[0]?.value === true;
 }
 
 function asString(value: unknown, fallback: string): string {
@@ -369,8 +356,6 @@ export function powDifficultyFrom(map: Record<string, unknown>): number {
   const n = typeof v === "number" ? Math.floor(v) : 16;
   return Math.min(26, Math.max(0, n));
 }
-
-export type ChallengeMode = VerificationMode;
 
 /** Human check on sign-in AND sign-up. v3 modes, with the v2 values that may
  *  still sit in the settings table mapped onto them (off→disabled,

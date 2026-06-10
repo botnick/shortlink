@@ -308,8 +308,6 @@ const THEMES: { name: string; draw: Draw }[] = [
   { name: "aurora", draw: aurora },
 ];
 
-export const THEME_COUNT = THEMES.length;
-
 /** Bright piece palettes that pop on each theme's dark backdrop — same order as
  *  THEMES. Recoloring the game pieces from these makes them feel part of the
  *  scene. Color is purely decorative (no rule ever depends on it), so this can
