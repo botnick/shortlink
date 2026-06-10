@@ -307,11 +307,17 @@ export async function submitChallenge(
 
   // --- Invisible mode: background confidence check --------------------------------
   if (row.gamesTotal === 0) {
-    const ageMs = Date.now() - row.issuedAt.getTime();
     const abuse = await escalationFor(c.env, ip);
-    // Low confidence → escalate to ONE EASY game (never silently fail, never
-    // a hard game out of nowhere). High confidence → token immediately.
-    if (abuse > 0 || ageMs < 400) {
+    // Escalate to ONE EASY game only when we're genuinely UNSURE: the IP has a
+    // recent failure, OR the request-environment signals (datacenter ASN, header
+    // incoherence, automation markers — all server-side, no interaction needed)
+    // cross the medium-risk line. High confidence → token immediately.
+    //
+    // NOTE: a fast silent submit is NOT suspicious — the proof-of-work is solved
+    // in tens of ms now, so the old "submitted < 400 ms → escalate" heuristic
+    // fired on every legitimate user (and a bot can trivially wait anyway).
+    const reqScore = scoreRequest(requestEnvFromContext(c)).score;
+    if (abuse > 0 || reqScore >= cfg.riskMedium) {
       const game = generateGame(cfg.games, "easy");
       const won = await claimChallengeStep(db, schema, row.id, row.version, {
         gamesTotal: 1,
