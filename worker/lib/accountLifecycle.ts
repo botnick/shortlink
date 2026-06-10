@@ -96,10 +96,13 @@ export async function purgeDeletedAccounts(env: AppBindings): Promise<void> {
     const blockMs = emailBlockDaysFrom(settings) * DAY_MS;
     const { users, links, projects, deletedAccounts } = schema;
 
+    // Bound work per run (each doomed user fans out R2 lists + deletes). The
+    // query is idempotent, so the next nightly run drains any remainder.
     const doomed = await db
       .select({ id: users.id })
       .from(users)
-      .where(and(isNotNull(users.deletedAt), lt(users.deletedAt, new Date(Date.now() - holdMs))));
+      .where(and(isNotNull(users.deletedAt), lt(users.deletedAt, new Date(Date.now() - holdMs))))
+      .limit(200);
 
     if (doomed.length > 0) {
       const ids = doomed.map((u) => u.id);

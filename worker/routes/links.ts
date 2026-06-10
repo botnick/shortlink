@@ -477,7 +477,10 @@ route.post("/import", zValidator("json", bulkImportSchema), async (c) => {
           })
           .returning()
       )[0];
-      await putCachedLink(c.env.LINKS_KV, row.domainId, row.slug, cachePayload(row));
+      // Don't warm the KV cache here: a 500-row import would burn up to 500 of
+      // the 1k/day KV write budget in one request. The redirect hot path lazy-
+      // fills on first click (waitUntil), so imported-but-never-clicked links
+      // cost zero writes and clicked ones pay exactly one, spread over real use.
       created.push(toLinkDTO(base, row, dom.hostname));
       total++;
     } catch (e) {
