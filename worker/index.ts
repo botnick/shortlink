@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, lt, notInArray, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "./env";
 import { getDbHandle } from "./db";
 import { isRateLimited } from "./lib/ratelimit";
@@ -550,7 +550,15 @@ async function cleanupUnverifiedDomains(env: AppBindings): Promise<void> {
     const stale = await db
       .select({ id: domains.id, cfHostnameId: domains.cfHostnameId })
       .from(domains)
-      .where(and(eq(domains.status, "pending"), lt(domains.createdAt, cutoff)));
+      .where(
+        and(
+          // Anything that never reached a done state (active = SaaS, verified =
+          // DNS). Catches every stuck Cloudflare status — pending_validation,
+          // pending_deployment, blocked, … — not just the literal "pending".
+          notInArray(domains.status, ["active", "verified"]),
+          lt(domains.createdAt, cutoff),
+        ),
+      );
     if (stale.length === 0) return;
     const saas = saasConfigFrom(settings, env.APP_URL);
     if (saas) {
@@ -562,7 +570,15 @@ async function cleanupUnverifiedDomains(env: AppBindings): Promise<void> {
     }
     await db
       .delete(domains)
-      .where(and(eq(domains.status, "pending"), lt(domains.createdAt, cutoff)));
+      .where(
+        and(
+          // Anything that never reached a done state (active = SaaS, verified =
+          // DNS). Catches every stuck Cloudflare status — pending_validation,
+          // pending_deployment, blocked, … — not just the literal "pending".
+          notInArray(domains.status, ["active", "verified"]),
+          lt(domains.createdAt, cutoff),
+        ),
+      );
   } finally {
     await close();
   }
