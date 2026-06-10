@@ -213,6 +213,9 @@ route.delete("/:id", async (c) => {
   }
 
   await db.delete(projects).where(eq(projects.id, proj.id));
+  // Legacy project logos lived in R2 (projlogo/<id>); new ones are inline data
+  // URLs. Drop any R2 object on delete so nothing lingers (no-op if absent).
+  c.executionCtx.waitUntil(c.env.LOGO_BUCKET.delete(`projlogo/${proj.id}`).catch(() => {}));
   return c.json({ ok: true });
 });
 

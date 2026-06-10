@@ -94,7 +94,7 @@ export async function purgeDeletedAccounts(env: AppBindings): Promise<void> {
     const settings = await getAllSettings(db, schema);
     const holdMs = accountHoldDaysFrom(settings) * DAY_MS;
     const blockMs = emailBlockDaysFrom(settings) * DAY_MS;
-    const { users, links, deletedAccounts } = schema;
+    const { users, links, projects, deletedAccounts } = schema;
 
     const doomed = await db
       .select({ id: users.id })
@@ -110,6 +110,23 @@ export async function purgeDeletedAccounts(env: AppBindings): Promise<void> {
         .where(and(inArray(links.userId, ids), eq(links.ogImage, "r2")));
       await Promise.all(
         ogRows.map((l) => env.LOGO_BUCKET.delete(`og/${l.id}`).catch(() => {})),
+      );
+      // Also free each user's saved-logo library (≤30 objects, keyed by user id).
+      await Promise.all(
+        ids.map(async (uid) => {
+          const logos = await env.LOGO_BUCKET.list({ prefix: `logos/${uid}/` });
+          await Promise.all(
+            logos.objects.map((o) => env.LOGO_BUCKET.delete(o.key).catch(() => {})),
+          );
+        }),
+      );
+      // …and any legacy R2 project logos (projlogo/<id>); new ones are inline.
+      const projRows = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(inArray(projects.userId, ids), eq(projects.logo, "r2")));
+      await Promise.all(
+        projRows.map((p) => env.LOGO_BUCKET.delete(`projlogo/${p.id}`).catch(() => {})),
       );
       await db.delete(users).where(inArray(users.id, ids));
     }

@@ -419,6 +419,10 @@ async function serveSocialPreview(
     const expired = l.expiresAt ? l.expiresAt.getTime() <= Date.now() : false;
     if (!l.isActive || expired || l.previewMode === "off") return null;
 
+    // Crawlers need an ABSOLUTE og:image on the real short domain — never the
+    // APP_URL placeholder. /ogimg/:id is served on the canonical short origin.
+    const ogOrigin = await shortOrigin(c.env);
+
     let preview;
     if (l.previewMode === "destination") {
       preview = await destinationPreview(c.env, l.id, l.destination);
@@ -428,7 +432,7 @@ async function serveSocialPreview(
       if (!preview.image && l.ogImage) {
         preview.image = l.ogImage.startsWith("http")
           ? l.ogImage
-          : `${c.env.APP_URL}/ogimg/${l.id}`;
+          : `${ogOrigin}/ogimg/${l.id}`;
       }
     } else {
       // og:image must be a public URL (social ignores data: URLs). A custom
@@ -436,7 +440,7 @@ async function serveSocialPreview(
       const image = l.ogImage
         ? l.ogImage.startsWith("http")
           ? l.ogImage
-          : `${c.env.APP_URL}/ogimg/${l.id}`
+          : `${ogOrigin}/ogimg/${l.id}`
         : "";
       preview = {
         title: l.ogTitle ?? "",

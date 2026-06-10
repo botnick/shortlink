@@ -36,8 +36,15 @@ async function resolveOgImage(
     return "";
   }
   // Our own pointer URL (edit without changing the image) → keep the R2 object.
-  if (value === `${env.APP_URL}/ogimg/${linkId}`) return "r2";
-  if (value.startsWith("http")) return value;
+  // Origin-agnostic: the DTO ships a relative `/ogimg/<id>`, but older rows may
+  // hold an absolute pointer — match either so an unchanged edit never drops it.
+  if (value.endsWith(`/ogimg/${linkId}`)) return "r2";
+  // Switched to an external image URL → drop any R2 blob we were holding so it
+  // doesn't linger orphaned (delete on a missing key is a harmless no-op).
+  if (value.startsWith("http")) {
+    await env.LOGO_BUCKET.delete(key).catch(() => {});
+    return value;
+  }
   const m = /^data:([^;]+);base64,(.+)$/.exec(value);
   if (!m) return "";
   try {
@@ -72,7 +79,6 @@ const PAGE_SIZE = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function toLinkDTO(
-  env: AppBindings,
   base: string,
   row: LinkRow,
   domainHost: string | null,
@@ -91,10 +97,10 @@ function toLinkDTO(
     previewMode: (row.previewMode as LinkDTO["previewMode"]) ?? "off",
     ogTitle: row.ogTitle,
     ogDescription: row.ogDescription,
+    // Relative so the editor <img> loads from the current origin (dev → the dev
+    // Worker/R2; prod → the live host) instead of a placeholder APP_URL.
     ogImage:
-      row.ogImage === "r2"
-        ? `${env.APP_URL}/ogimg/${row.id}`
-        : row.ogImage || null,
+      row.ogImage === "r2" ? `/ogimg/${row.id}` : row.ogImage || null,
     projectId: row.projectId,
     domainId: row.domainId,
     domain: domainHost,
@@ -277,7 +283,7 @@ route.get("/", async (c) => {
   ]);
   const body: LinkListDTO = {
     links: page.map((r) =>
-      toLinkDTO(c.env, base, r, r.domainId ? hosts.get(r.domainId) ?? null : null),
+      toLinkDTO(base, r, r.domainId ? hosts.get(r.domainId) ?? null : null),
     ),
     nextCursor: hasMore ? page[page.length - 1].createdAt.toISOString() : null,
   };
@@ -372,7 +378,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     }
     try {
       const row = await insertOne(input.slug);
-      return c.json({ link: toLinkDTO(c.env, base, row, domainHost) }, 201);
+      return c.json({ link: toLinkDTO(base, row, domainHost) }, 201);
     } catch (e) {
       if (isUniqueViolation(e)) {
         return c.json({ error: "That custom alias is already taken" }, 409);
@@ -387,7 +393,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
     if (await slugTaken(db, schema, domainId, slug)) continue;
     try {
       const row = await insertOne(slug);
-      return c.json({ link: toLinkDTO(c.env, base, row, domainHost) }, 201);
+      return c.json({ link: toLinkDTO(base, row, domainHost) }, 201);
     } catch (e) {
       if (isUniqueViolation(e)) continue;
       throw e;
@@ -472,7 +478,7 @@ route.post("/import", zValidator("json", bulkImportSchema), async (c) => {
           .returning()
       )[0];
       await putCachedLink(c.env.LINKS_KV, row.domainId, row.slug, cachePayload(row));
-      created.push(toLinkDTO(c.env, base, row, dom.hostname));
+      created.push(toLinkDTO(base, row, dom.hostname));
       total++;
     } catch (e) {
       fail(i, r.destination, isUniqueViolation(e) ? "That alias is already taken" : "Failed to create");
@@ -525,7 +531,7 @@ route.get("/:id", async (c) => {
     hostFor(c.var.db, c.var.schema, row.domainId),
     shortOrigin(c.env),
   ]);
-  return c.json({ link: toLinkDTO(c.env, base, row, host) });
+  return c.json({ link: toLinkDTO(base, row, host) });
 });
 
 // History: a link's retired back-halves (still redirecting), newest first.
@@ -770,7 +776,7 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
     hostFor(db, schema, row.domainId),
     shortOrigin(c.env),
   ]);
-  return c.json({ link: toLinkDTO(c.env, base, row, host) });
+  return c.json({ link: toLinkDTO(base, row, host) });
 });
 
 // DELETE
