@@ -116,6 +116,8 @@ export interface StatsWindows {
 
 export interface StatsDTO {
   range: string;
+  /** Time-series bucket size: hourly for the 24h view, daily otherwise. */
+  granularity: "hour" | "day";
   createdAt: string;
   totalClicks: number;
   uniqueVisitors: number;
@@ -185,6 +187,7 @@ export interface AdminDomainListDTO {
 
 export interface AdminAnalyticsDTO {
   range: string;
+  granularity: "hour" | "day";
   totalClicks: number;
   uniqueVisitors: number;
   timeseries: TimePoint[];
@@ -246,6 +249,8 @@ export interface SettingsDTO {
   description: string;
   ogImageUrl: string;
   indexable: boolean;
+  /** X/Twitter handle for the `twitter:site` card tag ("@handle" or ""). */
+  twitterHandle: string;
   blockedDomains: string[];
   extraReserved: string[];
   maxLinksPerUser: number;
@@ -299,6 +304,8 @@ export interface SettingsDTO {
   domainUnverifiedDays: number;
   /** Days of raw click rows to keep (0 = forever); a cron purges older ones. */
   clicksRetentionDays: number;
+  /** Max rows one analytics CSV export returns (0 = export off). */
+  exportMaxRows: number;
   /** Editable copy for the worker-served branded pages. */
   brandCopy: BrandCopy;
   /** Show a "you're leaving to …" interstitial before redirecting. */

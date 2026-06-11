@@ -157,6 +157,7 @@ export function AdminSettings() {
   const [description, setDescription] = useState("");
   const [ogImageUrl, setOgImageUrl] = useState("");
   const [indexable, setIndexable] = useState(true);
+  const [twitterHandle, setTwitterHandle] = useState("");
 
   // Branded no-JS pages: every string is editable; blank falls back to defaults.
   const [savingBrand, setSavingBrand] = useState(false);
@@ -187,6 +188,7 @@ export function AdminSettings() {
   const [accountHoldDays, setAccountHoldDays] = useState(180);
   const [emailBlockDays, setEmailBlockDays] = useState(180);
   const [clicksRetentionDays, setClicksRetentionDays] = useState(0);
+  const [exportMaxRows, setExportMaxRows] = useState(10000);
   const [savingLimits, setSavingLimits] = useState(false);
 
   // Human check (own card — every knob of the game CAPTCHA is a setting).
@@ -228,6 +230,7 @@ export function AdminSettings() {
         setDescription(s.description);
         setOgImageUrl(s.ogImageUrl);
         setIndexable(s.indexable);
+        setTwitterHandle(s.twitterHandle);
         setBrandCopy(s.brandCopy);
         setSafetyInterstitial(s.safetyInterstitial);
         setOgTemplate(s.ogTemplate);
@@ -252,6 +255,7 @@ export function AdminSettings() {
         setAccountHoldDays(s.accountHoldDays ?? 180);
         setEmailBlockDays(s.emailBlockDays ?? 180);
         setClicksRetentionDays(s.clicksRetentionDays ?? 0);
+        setExportMaxRows(s.exportMaxRows ?? 10000);
         setPowDifficulty(s.powDifficulty ?? 16);
         setChallengeMode(s.challengeMode ?? "game-only");
         setCaptchaGames(s.captchaGames?.length ? s.captchaGames : [...POOL_GAME_TYPES]);
@@ -304,7 +308,7 @@ export function AdminSettings() {
     e.preventDefault();
     setSavingApp(true);
     try {
-      await patch({ appName, brandColor, logoUrl, description, ogImageUrl, indexable });
+      await patch({ appName, brandColor, logoUrl, description, ogImageUrl, indexable, twitterHandle });
       toast.success("Branding saved");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Update failed");
@@ -363,6 +367,7 @@ export function AdminSettings() {
         accountHoldDays: Math.max(0, Math.floor(accountHoldDays) || 0),
         emailBlockDays: Math.max(0, Math.floor(emailBlockDays) || 0),
         clicksRetentionDays: Math.max(0, Math.floor(clicksRetentionDays) || 0),
+        exportMaxRows: Math.max(0, Math.floor(exportMaxRows) || 0),
       });
       toast.success("Limits saved");
     } catch (err) {
@@ -507,6 +512,18 @@ export function AdminSettings() {
               <div className="space-y-2">
                 <Label>Social share image <span className="font-normal text-muted-foreground">(optional)</span></Label>
                 <ImagePicker value={ogImageUrl} onChange={setOgImageUrl} className="h-11 w-20 rounded-lg border object-cover" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="twitterHandle">
+                  X / Twitter handle <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="twitterHandle"
+                  maxLength={16}
+                  value={twitterHandle}
+                  onChange={(e) => setTwitterHandle(e.target.value)}
+                  placeholder="@acme"
+                />
               </div>
               <label className="flex cursor-pointer items-center justify-between gap-4">
                 <span className="text-sm">Allow search engines to index</span>
@@ -924,6 +941,21 @@ export function AdminSettings() {
                     <p className="text-[11px] text-muted-foreground">
                       Purge raw click rows older than this (0 = keep forever). Per-link
                       totals are kept regardless; only old breakdowns/timeline are trimmed.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="exportMaxRows">Analytics export row cap</Label>
+                    <Input
+                      id="exportMaxRows"
+                      type="number"
+                      min={0}
+                      max={1000000}
+                      value={exportMaxRows}
+                      onChange={(e) => setExportMaxRows(Number(e.target.value))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Max rows one CSV export returns (0 = disable export). The 10,000
+                      default fits the Workers free CPU budget; raise it only on a paid plan.
                     </p>
                   </div>
                 </div>

@@ -12,7 +12,7 @@ import {
 } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { DB, DbSchema, Dialect } from "../db";
-import { dayBucket } from "../lib/query";
+import { dayBucket, timeBucket } from "../lib/query";
 import type { AdminAnalyticsDTO, NameCount, StatsDTO } from "@shared/types";
 
 export type Range = "24h" | "7d" | "30d" | "90d" | "all";
@@ -23,7 +23,7 @@ export function parseRange(value: string | undefined): Range {
   return RANGES.includes(value as Range) ? (value as Range) : "7d";
 }
 
-function rangeStart(range: Range): Date | null {
+export function rangeStart(range: Range): Date | null {
   const now = Date.now();
   switch (range) {
     case "24h":
@@ -80,12 +80,15 @@ export async function computeStats(
     ...(start ? [gte(clicks.createdAt, start)] : []),
   ) as SQL;
 
-  // Day bucket is the only dialect-specific bit. Comparisons use the query
+  // Time buckets are the only dialect-specific bit. Comparisons use the query
   // builder (gte/isNull) so Drizzle serialises Dates correctly per driver.
-  const dayExpr =
-    dialect === "sqlite"
-      ? sql<string>`strftime('%Y-%m-%d', ${clicks.createdAt}, 'unixepoch')`
-      : sql<string>`to_char(date_trunc('day', ${clicks.createdAt}), 'YYYY-MM-DD')`;
+  // The series buckets adapt to the range (hourly for 24h); bestDay stays daily.
+  const { expr: seriesExpr, granularity } = timeBucket(
+    dialect,
+    sql`${clicks.createdAt}`,
+    range,
+  );
+  const dayExpr = dayBucket(dialect, sql`${clicks.createdAt}`);
 
   const windowCount = (ms: number) =>
     db
@@ -116,11 +119,11 @@ export async function computeStats(
       .from(clicks)
       .where(base),
     db
-      .select({ day: dayExpr, value: count() })
+      .select({ day: seriesExpr, value: count() })
       .from(clicks)
       .where(base)
-      .groupBy(dayExpr)
-      .orderBy(dayExpr),
+      .groupBy(seriesExpr)
+      .orderBy(seriesExpr),
     topList(db, clicks, base, clicks.country),
     topList(db, clicks, base, clicks.referrer),
     topList(db, clicks, base, clicks.deviceType),
@@ -158,6 +161,7 @@ export async function computeStats(
 
   return {
     range,
+    granularity,
     createdAt: createdAt.toISOString(),
     totalClicks: Number(totals[0]?.total ?? 0),
     uniqueVisitors: Number(totals[0]?.unique ?? 0),
@@ -190,7 +194,7 @@ export async function computeGlobalStats(
   const start = rangeStart(range);
   const human = sql`${clicks.isBot} is not true`;
   const base: SQL = start ? (and(gte(clicks.createdAt, start), human) as SQL) : human;
-  const dayExpr = dayBucket(dialect, sql`${clicks.createdAt}`);
+  const { expr: dayExpr, granularity } = timeBucket(dialect, sql`${clicks.createdAt}`, range);
 
   const [totals, series, countries, referrers, devices, browsers, oss, top] =
     await Promise.all([
@@ -223,6 +227,7 @@ export async function computeGlobalStats(
 
   return {
     range,
+    granularity,
     totalClicks: Number(totals[0]?.total ?? 0),
     uniqueVisitors: Number(totals[0]?.unique ?? 0),
     timeseries: series.map((r) => ({ day: r.day, count: Number(r.value) })),

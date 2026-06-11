@@ -56,6 +56,7 @@ export const SETTING_KEYS = {
   cfFallbackHost: "cf_fallback_host",
   domainUnverifiedDays: "domain_unverified_days",
   clicksRetentionDays: "clicks_retention_days",
+  exportMaxRows: "export_max_rows",
   ogTemplate: "og_template",
   ogFont: "og_font",
   ogLabel: "og_label",
@@ -64,6 +65,7 @@ export const SETTING_KEYS = {
   ogAccent: "og_accent",
   brandCopy: "brand_copy",
   safetyInterstitial: "safety_interstitial",
+  twitterHandle: "twitter_handle",
   setupCompleted: "setup_completed",
 } as const;
 
@@ -144,6 +146,16 @@ export function indexableFrom(map: Record<string, unknown>): boolean {
 
 export function safetyInterstitialFrom(map: Record<string, unknown>): boolean {
   return map[SETTING_KEYS.safetyInterstitial] === true; // default: off
+}
+
+/** The brand's X/Twitter handle for `twitter:site` (e.g. "@acme"). Stored
+ *  loosely (with or without a leading @); always returned normalised to "@handle"
+ *  or "" when unset, so the meta tag is only emitted when there's a real value. */
+export function twitterHandleFrom(map: Record<string, unknown>): string {
+  const v = map[SETTING_KEYS.twitterHandle];
+  if (typeof v !== "string") return "";
+  const h = v.trim().replace(/^@+/, "");
+  return h ? `@${h}` : "";
 }
 
 /**
@@ -305,6 +317,13 @@ export function maxDomainsPerUserFrom(map: Record<string, unknown>): number {
  *  All-time totals survive purges via the denormalized links.click_count. */
 export function clicksRetentionDaysFrom(map: Record<string, unknown>): number {
   return asCount(map[SETTING_KEYS.clicksRetentionDays], 0);
+}
+
+/** Max rows a single analytics CSV export may return (0 = export disabled). The
+ *  default fits the Workers FREE 10ms-CPU budget; raising it well past ~10k is
+ *  only safe on Workers Paid (more CPU to format the rows). */
+export function exportMaxRowsFrom(map: Record<string, unknown>): number {
+  return asCount(map[SETTING_KEYS.exportMaxRows], 10_000);
 }
 
 /** How many times a link's back-half may be changed (each change retires the old

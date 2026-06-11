@@ -20,7 +20,8 @@ import { softDeleteUser } from "../lib/accountLifecycle";
 import { purgeLinkCache, refreshLinkCache } from "../lib/linkCache";
 import { dayBucket, searchCondition } from "../lib/query";
 import { hashPassword, pbkdf2Iterations } from "../lib/password";
-import { computeGlobalStats, parseRange } from "./stats";
+import { computeGlobalStats, parseRange, rangeStart } from "./stats";
+import { toCsv } from "../lib/csv";
 import {
   SETTING_KEYS,
   accountHoldDaysFrom,
@@ -58,6 +59,7 @@ import {
   descriptionFrom,
   domainUnverifiedDaysFrom,
   clicksRetentionDaysFrom,
+  exportMaxRowsFrom,
   extraReservedFrom,
   getAllSettings,
   indexableFrom,
@@ -73,6 +75,7 @@ import {
   brandCopyFrom,
   saasConfigFrom,
   safetyInterstitialFrom,
+  twitterHandleFrom,
   setSetting,
 } from "../lib/settings";
 import { getCustomHostname } from "../lib/cloudflare";
@@ -103,11 +106,6 @@ const UUID_RE =
 const PAGE = 25;
 const DAY_MS = 86_400_000;
 
-/** Escape a value for CSV (quote if it contains a comma, quote, or newline). */
-function csvCell(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
 function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
   return {
     registrationEnabled: map[SETTING_KEYS.registration] === true,
@@ -117,6 +115,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     description: descriptionFrom(map),
     ogImageUrl: ogImageFrom(map),
     indexable: indexableFrom(map),
+    twitterHandle: twitterHandleFrom(map),
     blockedDomains: blockedDomainsFrom(map),
     extraReserved: extraReservedFrom(map),
     maxLinksPerUser: maxLinksPerUserFrom(map),
@@ -151,6 +150,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     cfConfigured: cfConfiguredFrom(map),
     domainUnverifiedDays: domainUnverifiedDaysFrom(map),
     clicksRetentionDays: clicksRetentionDaysFrom(map),
+    exportMaxRows: exportMaxRowsFrom(map),
     ogTemplate: ogTemplateFrom(map),
     ogFont: ogFontFrom(map),
     ogLabel: ogLabelRawFrom(map),
@@ -230,6 +230,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.indexable !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.indexable, input.indexable);
+  }
+  if (input.twitterHandle !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.twitterHandle, input.twitterHandle);
   }
   if (input.blockedDomains !== undefined) {
     const clean = input.blockedDomains
@@ -340,6 +343,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.clicksRetentionDays !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.clicksRetentionDays, input.clicksRetentionDays);
+  }
+  if (input.exportMaxRows !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.exportMaxRows, input.exportMaxRows);
   }
   if (input.ogTemplate !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.ogTemplate, input.ogTemplate);
@@ -745,7 +751,7 @@ admin.get("/analytics", async (c) => {
   return c.json(stats);
 });
 
-// CSV export of every link.
+// CSV export of every link (the catalog: one row per link, all-time counts).
 admin.get("/export/links.csv", async (c) => {
   const { links, users } = c.var.schema;
   const rows = await c.var.db
@@ -761,29 +767,67 @@ admin.get("/export/links.csv", async (c) => {
     .innerJoin(users, eq(links.userId, users.id))
     .orderBy(desc(links.createdAt));
 
-  const head = "slug,destination,clicks,active,owner,created\n";
-  const csv =
-    head +
-    rows
-      .map((r) =>
-        [
-          r.slug,
-          r.destination,
-          String(r.clicks),
-          String(r.active),
-          r.owner,
-          r.created.toISOString(),
-        ]
-          .map(csvCell)
-          .join(","),
-      )
-      .join("\n");
+  const csv = toCsv(
+    ["slug", "destination", "clicks", "active", "owner", "created"],
+    rows.map((r) => [
+      r.slug,
+      r.destination,
+      r.clicks,
+      r.active,
+      r.owner,
+      r.created.toISOString(),
+    ]),
+  );
+  return c.body(csv, 200, {
+    "content-type": "text/csv; charset=utf-8",
+    "content-disposition": 'attachment; filename="links.csv"',
+    "cache-control": "no-store",
+  });
+});
 
-  return new Response(csv, {
-    headers: {
-      "content-type": "text/csv; charset=utf-8",
-      "content-disposition": 'attachment; filename="links.csv"',
-    },
+// CSV export of raw clicks across EVERY link (newest first), scoped to the range
+// and capped by the admin `exportMaxRows` setting to stay within the CPU budget.
+admin.get("/export/clicks.csv", async (c) => {
+  const cap = exportMaxRowsFrom(await getAllSettings(c.var.db, c.var.schema));
+  if (cap <= 0) return c.json({ error: "Export is disabled" }, 403);
+
+  const { clicks, links } = c.var.schema;
+  const range = parseRange(c.req.query("range"));
+  const start = rangeStart(range);
+  const rows = await c.var.db
+    .select({
+      at: clicks.createdAt,
+      slug: links.slug,
+      country: clicks.country,
+      referrer: clicks.referrer,
+      device: clicks.deviceType,
+      os: clicks.os,
+      browser: clicks.browser,
+      bot: clicks.isBot,
+    })
+    .from(clicks)
+    .innerJoin(links, eq(clicks.linkId, links.id))
+    .where(start ? gte(clicks.createdAt, start) : undefined)
+    .orderBy(desc(clicks.createdAt))
+    .limit(cap);
+
+  const csv = toCsv(
+    ["time", "slug", "country", "referrer", "device", "os", "browser", "bot"],
+    rows.map((r) => [
+      r.at.toISOString(),
+      r.slug,
+      r.country,
+      r.referrer,
+      r.device,
+      r.os,
+      r.browser,
+      r.bot ? "1" : "0",
+    ]),
+  );
+  return c.body(csv, 200, {
+    "content-type": "text/csv; charset=utf-8",
+    "content-disposition": `attachment; filename="clicks-${range}.csv"`,
+    "cache-control": "no-store",
   });
 });
 

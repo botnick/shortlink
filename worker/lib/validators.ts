@@ -106,6 +106,12 @@ export const settingsSchema = z
     description: description.optional(),
     ogImageUrl: longText.optional(),
     indexable: z.boolean().optional(),
+    // X/Twitter handle for the `twitter:site` card tag; empty clears it.
+    twitterHandle: z
+      .string()
+      .trim()
+      .regex(/^(@?\w{1,15})?$/, "Use a handle like @acme")
+      .optional(),
     blockedDomains: z.array(z.string().trim().max(253)).max(1000).optional(),
     extraReserved: z.array(z.string().trim().max(64)).max(1000).optional(),
     maxLinksPerUser: z.number().int().min(0).max(10_000_000).optional(),
@@ -152,6 +158,7 @@ export const settingsSchema = z
     cfFallbackHost: z.string().trim().max(253).optional(),
     domainUnverifiedDays: z.number().int().min(0).max(3650).optional(),
     clicksRetentionDays: z.number().int().min(0).max(3650).optional(),
+    exportMaxRows: z.number().int().min(0).max(1_000_000).optional(),
     ogTemplate: z
       .enum([
         "minimal",
