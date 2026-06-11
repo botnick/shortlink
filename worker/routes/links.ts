@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { type SQL, and, count, desc, eq, lt, ne, sql } from "drizzle-orm";
+import { type SQL, and, count, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
 import type { AppContext, AppEnv, AppBindings } from "../env";
 import type { DB, DbSchema } from "../db";
 import type { LinkRow } from "../db/schema";
@@ -60,6 +60,7 @@ async function resolveOgImage(
 import {
   blockedDomainsFrom,
   createRateLimitFrom,
+  exportMaxRowsFrom,
   extraReservedFrom,
   getAllSettings,
   isBlockedDestination,
@@ -67,9 +68,10 @@ import {
   maxLinksPerUserFrom,
   slugLengthFrom,
 } from "../lib/settings";
+import { toCsv } from "../lib/csv";
 import { isRateLimited } from "../lib/ratelimit";
 import { requireAuth } from "../middleware/auth";
-import { computeStats, parseRange } from "./stats";
+import { computeStats, parseRange, rangeStart } from "./stats";
 import type { LinkDTO, LinkListDTO } from "@shared/types";
 
 const route = new Hono<AppEnv>();
@@ -621,6 +623,55 @@ route.get("/:id/activity", async (c) => {
     .limit(20);
   return c.json({
     items: rows.map((r) => ({ ...r, at: r.at.toISOString() })),
+  });
+});
+
+// EXPORT — the link's raw clicks (human + bot) as CSV, newest first, scoped to
+// the range and capped by the admin `exportMaxRows` setting (which keeps the
+// per-request CPU within budget). Owner-only, like the activity feed.
+route.get("/:id/clicks.csv", async (c) => {
+  const link = await getOwnedLink(c);
+  if (!link) return c.json({ error: "Not found" }, 404);
+  const cap = exportMaxRowsFrom(await getAllSettings(c.var.db, c.var.schema));
+  if (cap <= 0) return c.json({ error: "Export is disabled" }, 403);
+
+  const { clicks } = c.var.schema;
+  const range = parseRange(c.req.query("range"));
+  const start = rangeStart(range);
+  const where = start
+    ? (and(eq(clicks.linkId, link.id), gte(clicks.createdAt, start)) as SQL)
+    : eq(clicks.linkId, link.id);
+  const rows = await c.var.db
+    .select({
+      at: clicks.createdAt,
+      country: clicks.country,
+      referrer: clicks.referrer,
+      device: clicks.deviceType,
+      os: clicks.os,
+      browser: clicks.browser,
+      bot: clicks.isBot,
+    })
+    .from(clicks)
+    .where(where)
+    .orderBy(desc(clicks.createdAt))
+    .limit(cap);
+
+  const csv = toCsv(
+    ["time", "country", "referrer", "device", "os", "browser", "bot"],
+    rows.map((r) => [
+      r.at.toISOString(),
+      r.country,
+      r.referrer,
+      r.device,
+      r.os,
+      r.browser,
+      r.bot ? "1" : "0",
+    ]),
+  );
+  return c.body(csv, 200, {
+    "content-type": "text/csv; charset=utf-8",
+    "content-disposition": `attachment; filename="clicks-${link.slug}-${range}.csv"`,
+    "cache-control": "no-store",
   });
 });
 

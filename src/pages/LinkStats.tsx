@@ -13,12 +13,21 @@ import {
   YAxis,
 } from "recharts";
 import {
+  Download,
   ExternalLink,
+  FileJson,
   MousePointerClick,
   QrCode,
   Share2,
+  Sheet,
   Users,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatDate, formatNumber, timeAgo } from "@/lib/format";
@@ -116,6 +125,21 @@ export function LinkStats() {
     };
   }, [id, tab]);
 
+  // Summary export is built client-side from the stats already in memory — no
+  // extra request. (Raw clicks go through the capped CSV endpoint instead.)
+  function downloadSummary() {
+    if (!stats || !link) return;
+    const blob = new Blob([JSON.stringify(stats, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stats-${link.slug}-${range}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (notFound) {
     return (
       <div className="py-16 text-center">
@@ -161,6 +185,23 @@ export function LinkStats() {
                 <ExternalLink />
               </a>
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label="Export" title="Export">
+                  <Download />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <a href={`/api/links/${id}/clicks.csv?range=${range}`} download>
+                    <Sheet /> Clicks (CSV)
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={downloadSummary}>
+                  <FileJson /> Summary (JSON)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>
@@ -236,9 +277,9 @@ export function LinkStats() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                      <XAxis dataKey="day" tickFormatter={(d: string) => d.slice(5)} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} tickLine={false} axisLine={false} />
+                      <XAxis dataKey="day" tickFormatter={(d: string) => (stats.granularity === "hour" ? d.slice(11, 16) : d.slice(5, 10))} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} tickLine={false} axisLine={false} />
                       <YAxis allowDecimals={false} width={36} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} tickLine={false} axisLine={false} />
-                      <Tooltip cursor={{ stroke: "var(--border)" }} contentStyle={tooltipStyle} />
+                      <Tooltip cursor={{ stroke: "var(--border)" }} contentStyle={tooltipStyle} labelFormatter={(d) => (stats.granularity === "hour" ? String(d).replace("T", " ") : String(d))} />
                       <Area type="monotone" dataKey="count" name="Clicks" stroke={BRAND} strokeWidth={2} fill="url(#clicksFill)" />
                     </AreaChart>
                   </ResponsiveContainer>

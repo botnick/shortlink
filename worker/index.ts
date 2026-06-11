@@ -40,6 +40,7 @@ import {
   injectSeo,
   robotsTxt,
   serveBrandImage,
+  sitemapXml,
 } from "./lib/seo";
 import { isValidCustomSlug } from "./lib/slug";
 import { destinationPreview, isCrawler, previewHtml } from "./lib/social";
@@ -219,6 +220,12 @@ app.all("/mcp", (c) =>
 // --- Dynamic branding / SEO endpoints ---------------------------------------
 app.get("/robots.txt", async (c) =>
   c.text(await robotsTxt(c.env), 200, { "cache-control": "public, max-age=3600" }),
+);
+app.get("/sitemap.xml", async (c) =>
+  c.body(await sitemapXml(c.env), 200, {
+    "content-type": "application/xml; charset=utf-8",
+    "cache-control": "public, max-age=3600",
+  }),
 );
 app.get("/icon", (c) => serveBrandImage(c.env, "icon"));
 app.get("/og", (c) => serveBrandImage(c.env, "og"));
@@ -405,8 +412,9 @@ async function serveAssets(c: AppContext): Promise<Response> {
     headers: res.headers,
   });
   // Inject branding + SEO meta into the SPA shell for crawlers & social unfurls.
+  // The pathname drives the per-route canonical / og:url.
   if (out.headers.get("content-type")?.includes("text/html")) {
-    return injectSeo(out, await getSeoBundle(c.env));
+    return injectSeo(out, await getSeoBundle(c.env), c.req.path);
   }
   return out;
 }
