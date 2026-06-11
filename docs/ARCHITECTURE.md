@@ -47,7 +47,10 @@ Route registration order in `worker/index.ts` matters:
    dispatches back through `/api/v1/*` via `app.fetch`, inheriting all validation, auth, and
    limits. 12 tools; link refs accept an id, a slug, or a full short URL.
 6. **`GET /:slug`** — the redirect (below).
-7. **SPA fallback** with server-injected SEO/branding via HTMLRewriter.
+7. **Dynamic SEO / brand endpoints** (`/sitemap.xml`, `/robots.txt`, `/og`, `/icon`, `/ogimg/:id`),
+   then the **SPA fallback** — HTMLRewriter injects a per-route canonical, OG / Twitter cards, and
+   WebSite + Organization JSON-LD from the KV-cached SEO bundle. The `indexable` admin setting flips
+   all of it to `noindex` + a disallow-all `robots.txt` and an empty sitemap.
 8. **`app.onError`** preserves `HTTPException` statuses (a 403 stays a 403, not a masked 500)
    and renders a branded error page for non-API requests.
 
@@ -98,8 +101,8 @@ Drizzle ORM over **two interchangeable drivers**, chosen by the `DB_DRIVER` var:
 - **Cloudflare D1** (SQLite).
 
 The query layer is typed against the Postgres schema; the SQLite schema (`schema.sqlite.ts`)
-mirrors it. A handful of spots branch on `c.var.dialect` for dialect-specific SQL (day buckets,
-JSON containment for tag filters). **Both schema files and both migration sets are always kept in
+mirrors it. A handful of spots branch on `c.var.dialect` for dialect-specific SQL (the analytics
+time buckets, JSON containment for tag filters). **Both schema files and both migration sets are always kept in
 lockstep** — a schema change touches `schema.ts` *and* `schema.sqlite.ts`, and generates both
 migrations.
 
@@ -113,6 +116,17 @@ the admin-set **`clicksRetentionDays`** window (0 = keep forever). All-time per-
 **not** lost — they live in the denormalized `links.click_count`; only the old per-click detail
 (timeline, breakdowns) is trimmed. The delete is batched and uses a bounded `id IN (SELECT … LIMIT n)`
 subquery so it works on both dialects and stays under D1's bound-parameter limit.
+
+### Analytics & export
+
+Stats (per link and admin-wide) are pure `GROUP BY` aggregates over `clicks`, bot-filtered, served
+from the `(link_id, created_at)` / `created_at` indexes — no extra writes. The time series uses an
+**adaptive bucket**: hourly for the 24h range (so the chart isn't a single point), daily otherwise;
+a `granularity` field tells the client how to format the axis. Raw clicks export as **CSV** — per
+link (`/api/links/:id/clicks.csv`, owner-only) or across everything for admins
+(`/api/admin/export/clicks.csv`) — both range-scoped and capped by the admin **`exportMaxRows`**
+setting (default 10 k, so building the file stays within the free CPU budget; 0 disables it). The
+stats page also offers a client-side JSON summary download (no request).
 
 ## Auth & account lifecycle
 

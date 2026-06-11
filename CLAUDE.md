@@ -74,9 +74,13 @@ Route registration order matters:
 3. `POST /mcp` — hand-rolled stateless MCP (Streamable HTTP JSON-RPC, no SDK to avoid a zod 3/4
    conflict). Tools dispatch back through `/api/v1/*` via `app.fetch`, inheriting validation,
    per-key rate limits and admin switches. 12 tools; link refs accept id | slug | full short URL.
-4. `GET /:slug` — the redirect hot path (below).
-5. SPA fallback with server-injected SEO/branding (HTMLRewriter).
-6. `app.onError` preserves `HTTPException` statuses (don't mask 403s as 500s).
+4. Dynamic branding/SEO endpoints (`/robots.txt`, `/sitemap.xml`, `/icon`, `/og`, `/ogimg/:id`,
+   `/qr/:file`) — registered between MCP and the redirect.
+5. `GET /:slug` — the redirect hot path (below).
+6. SPA fallback with server-injected SEO/branding (HTMLRewriter): per-route canonical + OG/Twitter
+   cards + WebSite/Organization JSON-LD + optional `twitter:site`, all from the KV-cached SEO bundle
+   (`worker/lib/seo.ts`); the `indexable` setting flips it to `noindex` + a disallow-all robots file.
+7. `app.onError` preserves `HTTPException` statuses (don't mask 403s as 500s).
 
 ### Redirect hot path + per-domain back-halves
 

@@ -191,12 +191,16 @@ You're signed in as admin. Registration is **closed by default** — open it any
 
 All of these are live settings — **no redeploy**:
 
-- **Branding & SEO** — logo, description, OG social card, indexing toggle.
+- **Branding & SEO** — logo, description, OG social card, X/Twitter handle, indexing toggle. The
+  Worker auto-builds the page `<head>` (canonical, OG/Twitter cards, JSON-LD) and serves
+  `/sitemap.xml` + `/robots.txt` from these.
 - **Limits & safety** — blocked destination domains, reserved slugs, link/domain/key quotas,
   rate limits (login, link creation, API), random-slug length, human-check mode & difficulty.
 - **Click history retention** — purge raw click rows older than N days to bound the database
   (0 = keep forever). Per-link totals are always preserved. See
   [CONFIGURATION.md → Admin settings](CONFIGURATION.md).
+- **Analytics export row cap** — max rows one CSV export returns (default 10,000; 0 disables).
+  Owners export a link's clicks; admins export across all links. See CONFIGURATION.md.
 - **Custom domains for members** — see below.
 
 ### Letting members use their own domains

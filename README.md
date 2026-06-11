@@ -19,8 +19,12 @@ Cloudflare Workers · Hono · React 19 + Vite + Tailwind v4 · Drizzle ORM · Po
 - **Per-domain back-halves** — slugs are unique *per domain*, so each member can run links on their
   own custom domain. Editing a back-half keeps the old one redirecting (Bitly-style retired aliases).
 - **QR studio** — frames, shapes, colors, gradients, logo library, saved presets, PNG/SVG/JPEG.
-- **Analytics** — totals, uniques, daily chart, countries, referrers, device/browser/OS, live activity
-  feed. Bot traffic is detected and excluded from every number.
+- **Analytics** — totals, uniques, an adaptive time chart (hourly for 24h, daily otherwise), countries,
+  referrers, device/browser/OS, live activity feed. Bot traffic is detected and excluded from every
+  number. Export raw clicks as **CSV** (per link or, for admins, across everything) or the summary as JSON.
+- **SEO, server-rendered** — canonical, Open Graph / Twitter cards, and WebSite/Organization JSON-LD
+  injected into the page `<head>`, plus `/sitemap.xml` and `/robots.txt` — all driven by the admin
+  branding settings, with a one-switch indexing toggle.
 - **Accounts** — email + password, server-side sessions, active-session list, soft-delete account
   closure. A **self-hosted human check** (invisible proof-of-work + optional mini-games — no third party)
   guards sign-in / sign-up.

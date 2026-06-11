@@ -61,9 +61,13 @@ All live, no redeploy. Stored in the key/value `settings` table.
 
 ### Branding & SEO
 App name, brand color, logo, description, social-card (OG) template / font / label / title /
-tagline / accent, and a search-indexing toggle. Also the **brand-page copy** (404 / expired /
-password / interstitial pages) — every string is editable, with shipped defaults — and an optional
-**link-safety interstitial** ("you're leaving to …").
+tagline / accent, an optional **X / Twitter handle** (for the `twitter:site` card tag), and a
+search-indexing toggle. From these the Worker auto-builds the SPA `<head>` (canonical, Open
+Graph / Twitter cards, WebSite + Organization JSON-LD), serves `/sitemap.xml`, and references it
+from `/robots.txt` — turning the indexing toggle off flips all of that to `noindex` + a
+disallow-all robots file. Also the **brand-page copy** (404 / expired / password / interstitial
+pages) — every string is editable, with shipped defaults — and an optional **link-safety
+interstitial** ("you're leaving to …").
 
 ### Registration
 Open or closed (closed by default).
@@ -82,6 +86,13 @@ Open or closed (closed by default).
 | Closed-account hold (days) | 30 | How long a soft-deleted account is kept before purge. |
 | Email re-signup block (days) | 180 | Extra window the email stays unregistrable after purge. |
 | **Click history retention (days)** | **0 (forever)** | Purge raw click rows older than this to bound the DB. Per-link totals are always kept. |
+| **Analytics export row cap** | **10,000** | Max rows one CSV export returns (0 = disable export). The default fits the Workers free 10 ms-CPU budget; raise it only on a paid plan. |
+
+### Analytics & export
+Per-link and admin-wide click analytics, bot-filtered, with adaptive time buckets (hourly for the
+24h range, daily otherwise). Export raw clicks as CSV — per link (`/api/links/:id/clicks.csv`) or
+across every link for admins (`/api/admin/export/clicks.csv`), both range-scoped and bounded by the
+**Analytics export row cap** above. The stats page can also download its summary as JSON.
 
 ### Public API & MCP
 On/off switches for the bearer-key API and the MCP server, plus the API rate limit and the
