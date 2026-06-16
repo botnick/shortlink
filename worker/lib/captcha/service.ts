@@ -55,7 +55,7 @@ import {
 } from "./crypto";
 import { planChallenge } from "./plan";
 import { GAME_PLUGINS, generateGame, type GameInstance } from "./games";
-import { assessBehavior, hardFailure } from "./risk";
+import { assessBehavior, assessPassive, hardFailure, isCompleteProbe } from "./risk";
 import { requestEnvFromContext, scoreRequest } from "./requestSignals";
 import {
   claimChallengeStep,
@@ -308,22 +308,47 @@ export async function submitChallenge(
   // --- Invisible mode: background confidence check --------------------------------
   if (row.gamesTotal === 0) {
     const abuse = await escalationFor(c.env, ip);
-    // Escalate to ONE EASY game only when we're genuinely UNSURE: the IP has a
-    // recent failure, OR the request-environment signals (datacenter ASN, header
-    // incoherence, automation markers — all server-side, no interaction needed)
-    // cross the medium-risk line. High confidence → token immediately.
-    //
-    // NOTE: a fast silent submit is NOT suspicious — the proof-of-work is solved
-    // in tens of ms now, so the old "submitted < 400 ms → escalate" heuristic
-    // fired on every legitimate user (and a bot can trivially wait anyway).
+    // Score who connected (server-side: datacenter ASN, header incoherence) AND
+    // the client's passive automation probe (webdriver, headless, automation
+    // globals, synthetic events) that the widget always sends now. A protocol
+    // violation in the probe is a hard tell; a submit with NO probe is itself a
+    // sign of a script that skipped the widget, so it never silently passes.
     const reqScore = scoreRequest(requestEnvFromContext(c)).score;
-    if (abuse > 0 || reqScore >= cfg.riskMedium) {
-      const game = generateGame(cfg.games, "easy");
+    const evidence = input.evidence;
+    if (evidence) {
+      if (evidence.events.length > cfg.maxEvents) return fail(true, "event-flood", row.id);
+      const hard = hardFailure(evidence);
+      if (hard) {
+        await claimChallengeStep(db, schema, row.id, row.version, { status: "locked", powDone });
+        return fail(true, hard, row.id);
+      }
+    }
+    // A real widget always attaches the FULL probe (collectProbe). Missing
+    // evidence — OR a partial/forged stub like {signals:{pageDwellMs:1}} that
+    // isn't a complete probe — is a script that skipped the widget: never
+    // silent-pass it (escalate, don't block).
+    const hasProbe = isCompleteProbe(evidence?.signals);
+    const passive = hasProbe
+      ? assessPassive(evidence!)
+      : { score: cfg.riskMedium, reasons: ["no-probe"] };
+    const combined = reqScore + passive.score;
+    if (combined >= cfg.riskMedium) {
+      console.warn("humancheck invisible escalate:", combined, passive.reasons.join(","), row.id.slice(0, 8));
+    }
+
+    // Escalate when we're genuinely UNSURE: repeat abuse, or the combined passive
+    // + request risk crosses the medium line. High confidence → token at once.
+    // Tier it: clearly risky / repeat abuse gets a normal game, borderline an easy
+    // one. (A fast silent submit is NOT suspicious — PoW is solved in tens of ms.)
+    if (abuse > 0 || combined >= cfg.riskMedium) {
+      const difficulty = combined >= cfg.riskHigh || abuse >= 2 ? "normal" : "easy";
+      const game = generateGame(cfg.games, difficulty);
       const won = await claimChallengeStep(db, schema, row.id, row.version, {
         gamesTotal: 1,
         game,
         playedTypes: [game.type],
         powDone,
+        riskScore: row.riskScore + combined,
       });
       if (!won) return fail(false, "step-conflict", row.id);
       return {
@@ -338,7 +363,7 @@ export async function submitChallenge(
         },
       };
     }
-    return issueToken(c, cfg, row, powDone, 0);
+    return issueToken(c, cfg, row, powDone, combined);
   }
 
   // --- Game step -------------------------------------------------------------------

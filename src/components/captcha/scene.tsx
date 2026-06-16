@@ -33,10 +33,16 @@ export function usePieceColor(id: string, serverColor: string): string {
 }
 
 
-/** One game piece, painted as a crisp pixel-art sprite. The server still sends
- *  geometry as a jittered vertex polygon with NO shape name — we just rasterize
- *  it to a pixel grid client-side for looks, so the bot/human asymmetry is
- *  preserved (a person sees a star, a script sees an anonymous vertex list). */
+/** One game piece. The server sends a jittered vertex polygon with NO shape name;
+ *  we rasterise THAT polygon straight into a faceted pixel-art gem. Nothing names
+ *  the shape — not a field, not an asset URL — so a script still has to visually
+ *  classify the geometry to know which piece the prompt means. The silhouette a
+ *  person reads is the exact geometry the server validated.
+ *
+ *  SECURITY: do NOT classify the polygon into a named sprite (e.g. a
+ *  `/captcha-gems/star.webp` <image>). That would leak the answer in the DOM —
+ *  a bot could match the asset name to the prompt word without any perception.
+ *  Always render procedurally from `obj.poly`. */
 export function ShapeGlyph({
   obj,
   pos,
@@ -50,37 +56,11 @@ export function ShapeGlyph({
   highlight?: boolean;
 }) {
   const p = pos ?? obj.pos;
-  const color = usePieceColor(obj.id, obj.color);
-  const edgeColor = useMemo(() => darken(color, 0.45), [color]);
-  const topColor = useMemo(() => lighten(color, 0.34), [color]);
-
-  // Per-piece raster recipe (random cell count + sub-cell offset) → the SAME
-  // shape rasterizes to a DIFFERENT bitmap each challenge, so a bot can't hash
-  // the rendered sprite once. Stable for the piece's lifetime.
-  const raster = useMemo(() => rasterFor(), [obj.id]);
-  const cells = useMemo(
-    () => pixelate(obj.poly, obj.round, raster.n, raster.ox, raster.oy),
-    [obj.poly, obj.round, raster],
-  );
-  // Merge the filled cells into THREE <path>s (base / edge / top-bevel) instead
-  // of ~150 <rect>s per piece — same look, far fewer DOM nodes on mobile.
-  const paths = useMemo(() => {
-    const px = (obj.size * 2) / raster.n;
-    const w = (px * 1.03).toFixed(2);
-    let base = "", edge = "", top = "";
-    for (const c of cells) {
-      const x = (-obj.size + c.gx * px).toFixed(2);
-      const y = (-obj.size + c.gy * px).toFixed(2);
-      const seg = `M${x} ${y}h${w}v${w}h-${w}z`;
-      if (c.topEdge) top += seg;
-      else if (c.edge) edge += seg;
-      else base += seg;
-    }
-    return { base, edge, top };
-  }, [cells, obj.size, raster.n]);
 
   return (
     <g transform={`translate(${p.x} ${p.y})`} opacity={faded ? 0.45 : 1}>
+      {/* Contact shadow — grounds the piece and stays put while it bobs above. */}
+      <ellipse cy={obj.size * 1.28} rx={obj.size * 0.92} ry={obj.size * 0.3} fill="#000" opacity={0.34} />
       {/* Idle bob (decorative; CSS-disabled under prefers-reduced-motion). */}
       <g
         className="hc-bob"
@@ -88,6 +68,7 @@ export function ShapeGlyph({
       >
         {highlight && (
           <circle
+            className="hc-pulse"
             r={obj.size * 1.5}
             fill="none"
             stroke="var(--primary)"
@@ -95,9 +76,7 @@ export function ShapeGlyph({
             strokeDasharray="2.6 2"
           />
         )}
-        {paths.base && <path d={paths.base} fill={color} shapeRendering="crispEdges" />}
-        {paths.edge && <path d={paths.edge} fill={edgeColor} shapeRendering="crispEdges" />}
-        {paths.top && <path d={paths.top} fill={topColor} shapeRendering="crispEdges" />}
+        <ProceduralGem obj={obj} />
         {obj.label && (
           <text
             textAnchor="middle"
@@ -112,6 +91,73 @@ export function ShapeGlyph({
         )}
       </g>
     </g>
+  );
+}
+
+/** Paints a piece as a crisp faceted pixel jewel rasterised straight from the
+ *  server's jittered vertices (hard outline + 5-step top-left facet ramp +
+ *  specular glint). Per-challenge raster jitter means the SAME shape renders a
+ *  different bitmap every time — a "hash the rendered sprite once" bot is defeated
+ *  while a human reads the same clean silhouette. No shape name anywhere. */
+function ProceduralGem({ obj }: { obj: SceneObject }) {
+  const color = usePieceColor(obj.id, obj.color);
+  const edgeColor = useMemo(() => darken(color, 0.64), [color]);
+  const ramp = useMemo(
+    () => [
+      lighten(color, 0.52),
+      lighten(color, 0.24),
+      color,
+      darken(color, 0.2),
+      darken(color, 0.42),
+    ],
+    [color],
+  );
+  const specColor = useMemo(() => lighten(color, 0.85), [color]);
+  const raster = useMemo(() => rasterFor(), [obj.id]);
+  const cells = useMemo(
+    () => pixelate(obj.poly, obj.round, raster.n, raster.ox, raster.oy),
+    [obj.poly, obj.round, raster],
+  );
+  const paths = useMemo(() => {
+    const px = (obj.size * 2) / raster.n;
+    const w = (px * 1.03).toFixed(2);
+    const xs = cells.map((c) => c.gx);
+    const ys = cells.map((c) => c.gy);
+    const minX = Math.min(...xs);
+    const spanX = Math.max(1, Math.max(...xs) - minX);
+    const minY = Math.min(...ys);
+    const spanY = Math.max(1, Math.max(...ys) - minY);
+    const sorted = [...cells].sort((a, b) => a.gx + a.gy - (b.gx + b.gy));
+    const spec = new Set(sorted.slice(0, cells.length > 80 ? 2 : 1).map((c) => `${c.gx},${c.gy}`));
+    const tiers = ["", "", "", "", ""];
+    let outline = "", glint = "";
+    for (const c of cells) {
+      const x = (-obj.size + c.gx * px).toFixed(2);
+      const y = (-obj.size + c.gy * px).toFixed(2);
+      const seg = `M${x} ${y}h${w}v${w}h-${w}z`;
+      const key = `${c.gx},${c.gy}`;
+      if (spec.has(key)) {
+        glint += seg;
+      } else if (c.edge && !c.topEdge) {
+        outline += seg;
+      } else {
+        const score = (1 - (c.gy - minY) / spanY) * 0.6 + (1 - (c.gx - minX) / spanX) * 0.4;
+        tiers[Math.min(4, Math.max(0, Math.round((1 - score) * 4)))] += seg;
+      }
+    }
+    return { outline, tiers, glint };
+  }, [cells, obj.size, raster.n]);
+
+  return (
+    <>
+      {paths.outline && <path d={paths.outline} fill={edgeColor} shapeRendering="crispEdges" />}
+      {paths.tiers.map((d, i) =>
+        d ? <path key={i} d={d} fill={ramp[i]} shapeRendering="crispEdges" /> : null,
+      )}
+      {paths.glint && (
+        <path d={paths.glint} className="hc-glint" fill={specColor} shapeRendering="crispEdges" />
+      )}
+    </>
   );
 }
 

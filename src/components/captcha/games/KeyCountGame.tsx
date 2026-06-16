@@ -44,31 +44,58 @@ const ARROW_CELLS = 13;
 function PixelArrow({ direction }: { direction: string }) {
   const palette = useContext(CaptchaPaletteContext);
   const color = palette?.[0] ?? "#ffd23d";
-  const edgeColor = useMemo(() => darken(color, 0.45), [color]);
-  const topColor = useMemo(() => lighten(color, 0.34), [color]);
+  const edgeColor = useMemo(() => darken(color, 0.6), [color]);
+  const ramp = useMemo(
+    () => [
+      lighten(color, 0.5),
+      lighten(color, 0.22),
+      color,
+      darken(color, 0.2),
+      darken(color, 0.4),
+    ],
+    [color],
+  );
+  const specColor = useMemo(() => lighten(color, 0.82), [color]);
 
   const paths = useMemo(() => {
     const poly = rotPoly(ARROW_POLY, DIR_TURNS[direction] ?? 0);
     const cells = pixelate(poly, false, ARROW_CELLS);
     const px = 2 / ARROW_CELLS;
     const w = (px * 1.03).toFixed(3);
-    let base = "", edge = "", top = "";
+    const xs = cells.map((c) => c.gx);
+    const ys = cells.map((c) => c.gy);
+    const minX = Math.min(...xs);
+    const spanX = Math.max(1, Math.max(...xs) - minX);
+    const minY = Math.min(...ys);
+    const spanY = Math.max(1, Math.max(...ys) - minY);
+    const sorted = [...cells].sort((a, b) => a.gx + a.gy - (b.gx + b.gy));
+    const spec = new Set(sorted.slice(0, 1).map((c) => `${c.gx},${c.gy}`));
+    const tiers = ["", "", "", "", ""];
+    let outline = "", glint = "";
     for (const c of cells) {
       const x = (-1 + c.gx * px).toFixed(3);
       const y = (-1 + c.gy * px).toFixed(3);
       const seg = `M${x} ${y}h${w}v${w}h-${w}z`;
-      if (c.topEdge) top += seg;
-      else if (c.edge) edge += seg;
-      else base += seg;
+      const key = `${c.gx},${c.gy}`;
+      if (spec.has(key)) glint += seg;
+      else if (c.edge && !c.topEdge) outline += seg;
+      else {
+        const s = (1 - (c.gy - minY) / spanY) * 0.6 + (1 - (c.gx - minX) / spanX) * 0.4;
+        tiers[Math.min(4, Math.max(0, Math.round((1 - s) * 4)))] += seg;
+      }
     }
-    return { base, edge, top };
+    return { outline, tiers, glint };
   }, [direction]);
 
   return (
     <svg viewBox="-1.1 -1.1 2.2 2.2" className="size-full" aria-hidden="true">
-      {paths.base && <path d={paths.base} fill={color} shapeRendering="crispEdges" />}
-      {paths.edge && <path d={paths.edge} fill={edgeColor} shapeRendering="crispEdges" />}
-      {paths.top && <path d={paths.top} fill={topColor} shapeRendering="crispEdges" />}
+      {paths.outline && <path d={paths.outline} fill={edgeColor} shapeRendering="crispEdges" />}
+      {paths.tiers.map((d, i) =>
+        d ? <path key={i} d={d} fill={ramp[i]} shapeRendering="crispEdges" /> : null,
+      )}
+      {paths.glint && (
+        <path d={paths.glint} className="hc-glint" fill={specColor} shapeRendering="crispEdges" />
+      )}
     </svg>
   );
 }
@@ -129,27 +156,38 @@ export function KeyCountGame({ game, rec, disabled, onAnswer }: GameProps) {
       {/* The keyboard game's content is centered, so a busy theme backdrop (sun,
           grid) fights it. Sit it on a calm translucent panel — the theme still
           shows around the card, but the pixel arrow + counter read cleanly. */}
-      <div className="relative flex flex-col items-center gap-3 rounded-xl bg-[#0a0e1c]/75 px-6 py-4 ring-1 ring-white/10 backdrop-blur-[2px]">
+      <div className="relative flex flex-col items-center gap-3 rounded-xl border-2 border-white/15 bg-[#0a0e1c]/80 px-6 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_6px_18px_rgba(0,0,0,0.45)] backdrop-blur-[2px]">
         {/* Keyed on the step so it re-pops on every correct press — the feedback
-            that the key registered and the next arrow is up. */}
-        <div key={index} className="hc-pop size-16" aria-hidden="true">
-          <PixelArrow direction={current} />
+            that the key registered and the next arrow is up. A soft accent glow
+            sits behind it. */}
+        <div key={index} className="hc-pop relative grid size-16 place-items-center" aria-hidden="true">
+          <div
+            className="absolute inset-0 rounded-full opacity-70 blur-md"
+            style={{ background: `radial-gradient(circle, ${accent}66, transparent 60%)` }}
+          />
+          <div className="relative size-full">
+            <PixelArrow direction={current} />
+          </div>
         </div>
-        {/* Progress dots: one square per step, filled in the theme accent as you
-            go, the current step ringed. */}
-        <div className="flex gap-1.5" aria-hidden="true">
+        {/* Progress pips: a little gem diamond per step — filled + glowing once
+            done, the current one pulsing. */}
+        <div className="flex gap-2" aria-hidden="true">
           {sequence.map((_, i) => (
             <span
               key={i}
-              className="size-1.5 transition-colors"
+              className={cn(
+                "size-2.5 rotate-45 rounded-[1px] border transition-all",
+                i === index && !done && "hc-pulse",
+              )}
               style={{
-                backgroundColor: i < index ? accent : "rgba(255,255,255,0.16)",
-                boxShadow: i === index ? `0 0 0 1.5px ${accent}66` : undefined,
+                backgroundColor: i < index ? accent : "transparent",
+                borderColor: i <= index ? accent : "rgba(255,255,255,0.28)",
+                boxShadow: i < index ? `0 0 5px ${accent}99` : undefined,
               }}
             />
           ))}
         </div>
-        <p className="hc-pixel text-[8px] leading-relaxed text-white/70" aria-hidden="true">
+        <p className="hc-pixel text-[8px] leading-relaxed text-white/80" aria-hidden="true">
           {done ? "Done!" : `Press the ${current} arrow`}
         </p>
         {/* Full progress for screen readers (the visible copy stays short). */}

@@ -10,7 +10,7 @@
  * (reduced-motion friendly), modest element counts (mobile friendly).
  */
 import { createContext } from "react";
-import { SCENE_H, SCENE_W } from "@shared/captcha";
+import { SCENE_H, SCENE_W, type GameType } from "@shared/captcha";
 
 /** mulberry32 — tiny deterministic RNG so a theme varies by seed but is stable. */
 function makeRng(seed: number): () => number {
@@ -326,8 +326,41 @@ const THEME_PALETTES: string[][] = [
   ["#3affa0", "#7a5cff", "#36e0ff", "#dbe4ff"], // aurora
 ];
 
-export function paletteForSeed(seed: number): string[] {
-  return THEME_PALETTES[Math.abs(seed) % THEME_PALETTES.length];
+const THEME_INDEX: Record<string, number> = Object.fromEntries(
+  THEMES.map((t, i) => [t.name, i]),
+);
+
+/**
+ * Each game type gets a POOL of scenes whose mood fits its mechanic — so the
+ * backdrop reinforces what you're doing (a rail for "slide", a docking ring for
+ * "drag-target", a calm field for "tap"/"sort") yet never looks the same twice.
+ * The seed picks one scene from the pool AND varies that scene's interior, so a
+ * CV model can't memorise a fixed layout. Cohesion + variety, no logic touched.
+ */
+const THEME_POOLS: Record<GameType, string[]> = {
+  slide: ["cyber", "synth"], // a horizontal rail / neon track
+  "drag-target": ["space", "desert"], // open field + a place to dock/land
+  "tap-match": ["forest", "ocean"], // calm, uncluttered — the match stands out
+  rotate: ["aurora", "space"], // a dial against the sky / orbit
+  connect: ["synth", "cyber"], // a grid/network the link rides along
+  "sort-3": ["dungeon", "lava"], // a shelf/ledge to line things up on
+  "path-trace": ["ocean", "forest"], // a trail through bubbles / a glade
+  "key-count": ["aurora", "forest"], // calm screens for the keyboard game
+};
+
+/** Resolve a game type + seed to a concrete theme index (pool pick by seed). */
+function themeIndexFor(gameType: GameType | undefined, seed: number): number {
+  const pool = gameType ? THEME_POOLS[gameType] : undefined;
+  if (pool && pool.length) {
+    const name = pool[Math.abs(seed) % pool.length];
+    return THEME_INDEX[name] ?? 0;
+  }
+  return Math.abs(seed) % THEMES.length;
+}
+
+/** Piece palette matching the scene a given game type + seed will show. */
+export function paletteForGame(gameType: GameType | undefined, seed: number): string[] {
+  return THEME_PALETTES[themeIndexFor(gameType, seed)];
 }
 
 /** Active piece palette for the current challenge (null = use the server color). */
@@ -339,14 +372,81 @@ function dataSaver(): boolean {
   return c?.saveData === true;
 }
 
-/** A decorative, non-interactive pixel-art backdrop. `seed` picks the theme +
- *  its variation; bump it to get a fresh scene. Skipped under Save-Data (a flat
- *  dark fill instead) to stay light on metered connections. */
-export function ThemeBackground({ seed }: { seed: number }) {
-  if (dataSaver()) {
-    return <div className="absolute inset-0 bg-[#0a0e1c]" aria-hidden="true" />;
-  }
-  const idx = Math.abs(seed) % THEMES.length;
+/** A decorative, non-interactive backdrop. The game type picks a fitting scene
+ *  (a painted 16-bit pixel-art screen); the seed chooses which of the pool and
+ *  mirrors it for variety. The hand-drawn SVG paints instantly underneath and
+ *  remains the fallback under Save-Data or if the art can't load. A contrast
+ *  scrim keeps the bright game pieces readable over the busy scene. */
+export function ThemeBackground({
+  seed,
+  gameType,
+}: {
+  seed: number;
+  gameType?: GameType;
+}) {
+  const idx = themeIndexFor(gameType, seed);
+  const saver = dataSaver();
+  const flip = (Math.abs(seed) & 1) === 1;
+  // A handful of seeded twinkles drifting over the upper scene — pure ambiance.
+  const sr = makeRng(seed * 40503 + 7);
+  const sparkles = Array.from({ length: 7 }, () => ({
+    x: 6 + sr() * 88,
+    y: 4 + sr() * 36,
+    r: 0.4 + sr() * 0.5,
+    d: sr() * 3,
+  }));
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      <ProceduralBackground idx={idx} seed={seed} />
+      {!saver && (
+        <img
+          src={`/captcha-scenes/${THEMES[idx].name}.webp`}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="absolute inset-0 size-full object-cover"
+          style={{
+            transform: flip ? "scaleX(-1)" : undefined,
+            // Dim + slightly soften the art so it reads as a backdrop and the
+            // bright foreground pieces / game guides clearly sit on top of it.
+            filter: "brightness(0.6) saturate(1.08) blur(0.4px)",
+          }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.opacity = "0";
+          }}
+        />
+      )}
+      {/* A flat darkening + an edge vignette: the scene becomes ambience, the
+          game (pieces, tracks, rings) stays the clear subject. */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(rgba(6,8,16,0.42), rgba(6,8,16,0.42)), radial-gradient(130% 105% at 50% 44%, rgba(0,0,0,0) 26%, rgba(0,0,0,0.5) 100%)",
+        }}
+      />
+      {!saver && (
+        <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 size-full" aria-hidden="true">
+          {sparkles.map((s, i) => (
+            <circle
+              key={i}
+              cx={s.x}
+              cy={s.y}
+              r={s.r}
+              fill="#fffbe6"
+              className="hc-twinkle"
+              style={{ animationDelay: `${s.d.toFixed(2)}s` }}
+            />
+          ))}
+        </svg>
+      )}
+    </div>
+  );
+}
+
+/** The original hand-drawn SVG scene — an instant first paint and the graceful
+ *  fallback whenever the painted art can't show. */
+function ProceduralBackground({ idx, seed }: { idx: number; seed: number }) {
   const r = makeRng(seed * 2654435761);
   const { bg, els } = THEMES[idx].draw(r);
   return (
