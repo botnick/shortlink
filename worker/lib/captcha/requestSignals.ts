@@ -43,7 +43,7 @@ export interface RequestEnv {
   asn?: number;
 }
 
-export interface RequestSignal {
+interface RequestSignal {
   score: number;
   reasons: string[];
 }

@@ -95,7 +95,7 @@ function toGameDTO(g: GameInstance): CaptchaGameDTO {
   };
 }
 
-export type CreateChallengeResult =
+type CreateChallengeResult =
   | { ok: true; dto: CaptchaChallengeDTO }
   | { ok: false; error: "rate-limited" | "disabled" };
 
@@ -197,7 +197,7 @@ export async function createChallenge(
  *  never sends, so no genuine user is ever delayed. */
 const HONEYPOT_TARPIT_MS = 1200;
 
-export interface VerifySubmission {
+interface VerifySubmission {
   ref: string;
   powSolution?: string;
   gameId?: string;
@@ -205,7 +205,7 @@ export interface VerifySubmission {
   evidence?: CaptchaEvidence;
 }
 
-export type VerifyOutcome =
+type VerifyOutcome =
   | { ok: true; body: CaptchaVerifyResponseDTO }
   | { ok: false; status: 403 | 429 };
 

@@ -42,7 +42,7 @@ export interface ChallengeRecord {
   expiresAt: Date;
 }
 
-export interface NewChallenge {
+interface NewChallenge {
   refHash: string;
   action: string;
   hostname: string;
@@ -113,7 +113,7 @@ export async function findChallengeByRefHash(
   };
 }
 
-export interface StepUpdate {
+interface StepUpdate {
   status?: ChallengeStatus;
   gameIndex?: number;
   gamesTotal?: number;
@@ -157,7 +157,7 @@ export async function claimChallengeStep(
   return rows.length === 1;
 }
 
-export interface NewVerification {
+interface NewVerification {
   tokenHash: string;
   challengeId: string;
   action: string;
@@ -175,7 +175,7 @@ export async function insertVerification(
   await db.insert(humanVerifications).values(data);
 }
 
-export interface ConsumedVerification {
+interface ConsumedVerification {
   challengeId: string;
   action: string;
   hostname: string;

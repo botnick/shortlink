@@ -4,7 +4,7 @@
 // initial SPA bundle. Each family ships a 400 + 700 weight, subset to
 // Latin + Thai + punctuation (~20–32KB per weight).
 
-export interface OgFont {
+interface OgFont {
   id: string;
   label: string;
   /** Canvas font-family name — namespaced so it can't clash with app fonts. */
@@ -19,7 +19,6 @@ export const OG_FONTS: OgFont[] = [
   { id: "sarabun", label: "Sarabun", family: "SarabunOG" },
 ];
 
-export const OG_FONT_IDS = OG_FONTS.map((f) => f.id);
 const DEFAULT_FONT = OG_FONTS[0];
 const byId = new Map(OG_FONTS.map((f) => [f.id, f]));
 const loaded = new Set<string>();

@@ -159,7 +159,7 @@ export function angDiff(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
 
-export interface AvoidZone {
+interface AvoidZone {
   pos: ScenePoint;
   size: number;
 }
@@ -211,7 +211,7 @@ export function placePoints(
   return placed;
 }
 
-export interface GlyphInput {
+interface GlyphInput {
   shape: ShapeKind;
   color: string;
   pos: ScenePoint;
@@ -255,7 +255,7 @@ export function asStringArray(v: unknown): string[] | null {
 // of the element acted on and (for movement) the piece's resulting coordinates,
 // so every geometric check below works for keyboard users too.
 
-export interface PathPoint {
+interface PathPoint {
   x: number;
   y: number;
   i: number; // index in the original event list (preserves ordering)

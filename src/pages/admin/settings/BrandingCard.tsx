@@ -13,7 +13,7 @@ import type { SettingsDTO } from "@shared/types";
 import type { SettingsPatch } from "./useSettingsData";
 
 /** Logo / social-image picker: upload (compressed client-side) or remove. */
-export function ImagePicker({
+function ImagePicker({
   value,
   onChange,
   className,

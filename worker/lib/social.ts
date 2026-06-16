@@ -35,7 +35,7 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export interface Preview {
+interface Preview {
   title: string;
   description: string;
   image: string;
@@ -212,7 +212,7 @@ export async function invalidateLinkPreview(env: AppBindings, linkId: string) {
   await env.LINKS_KV.delete(`linkog:v2:${linkId}`);
 }
 
-export interface UrlMeta {
+interface UrlMeta {
   title: string;
   description: string;
   image: string;

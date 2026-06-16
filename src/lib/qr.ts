@@ -85,7 +85,7 @@ export function makeDefault(brand: string): QrCfg {
 
 const QR_BASE = 1000;
 
-export function qrOptions(cfg: QrCfg, data: string): Partial<QrOptions> {
+function qrOptions(cfg: QrCfg, data: string): Partial<QrOptions> {
   return {
     width: QR_BASE,
     height: QR_BASE,
@@ -161,7 +161,7 @@ function scanIcon(cx: number, cy: number, s: number, color: string): string {
   );
 }
 
-export interface Composed {
+interface Composed {
   svg: string;
   width: number;
   height: number;

@@ -21,7 +21,7 @@ export const OG_TEMPLATES: { id: string; label: string }[] = [
   { id: "mono", label: "Mono" },
 ];
 
-export interface OgOptions {
+interface OgOptions {
   template: string;
   /** Canvas font-family, already loaded via `loadOgFont` (see ogFonts.ts). */
   font: string;

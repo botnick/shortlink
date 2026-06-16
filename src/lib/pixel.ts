@@ -9,7 +9,7 @@
  */
 import type { ScenePoint } from "@shared/captcha";
 
-export interface PixelCell {
+interface PixelCell {
   gx: number;
   gy: number;
   edge: boolean; // on the sprite's outline → painted a shade darker

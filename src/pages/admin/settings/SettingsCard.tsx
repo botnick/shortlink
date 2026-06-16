@@ -36,7 +36,7 @@ export function SettingsCard({
 }
 
 /** The default two-line loading placeholder used by most settings cards. */
-export function FormSkeleton() {
+function FormSkeleton() {
   return (
     <div className="space-y-3">
       <Skeleton className="h-9 w-full" />

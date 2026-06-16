@@ -54,18 +54,18 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   ];
 }
 
-export function adjustLightness(hex: string, delta: number): string {
+function adjustLightness(hex: string, delta: number): string {
   const [h, s, l] = rgbToHsl(...hexToRgb(hex));
   return rgbToHex(...hslToRgb(h, s, clamp(l + delta, 0, 1)));
 }
 
-export function rotateHue(hex: string, deg: number): string {
+function rotateHue(hex: string, deg: number): string {
   const [h, s, l] = rgbToHsl(...hexToRgb(hex));
   return rgbToHex(...hslToRgb((((h + deg / 360) % 1) + 1) % 1, s, l));
 }
 
 /** Nudge a color to be vivid + dark enough to scan on a white background. */
-export function ensureReadable(hex: string): string {
+function ensureReadable(hex: string): string {
   const [h, s, l] = rgbToHsl(...hexToRgb(hex));
   const s2 = s < 0.08 ? s : Math.max(s, 0.3); // keep grays gray
   return rgbToHex(...hslToRgb(h, s2, Math.min(l, 0.5)));

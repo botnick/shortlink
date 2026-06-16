@@ -96,7 +96,7 @@ export async function getCachedSettings(
 }
 
 /** Drop the memo (called after any write so reads don't serve a stale map). */
-export function resetSettingsCache(): void {
+function resetSettingsCache(): void {
   settingsMemo = null;
 }
 
@@ -258,16 +258,16 @@ export function ogTaglineRawFrom(map: Record<string, unknown>): string {
 export function ogAccentRawFrom(map: Record<string, unknown>): string {
   return asString(map[SETTING_KEYS.ogAccent], "");
 }
-export function ogLabelFrom(map: Record<string, unknown>): string {
+function ogLabelFrom(map: Record<string, unknown>): string {
   return ogLabelRawFrom(map) || appNameFrom(map);
 }
-export function ogTitleFrom(map: Record<string, unknown>): string {
+function ogTitleFrom(map: Record<string, unknown>): string {
   return ogTitleRawFrom(map) || appNameFrom(map);
 }
-export function ogTaglineFrom(map: Record<string, unknown>): string {
+function ogTaglineFrom(map: Record<string, unknown>): string {
   return ogTaglineRawFrom(map) || descriptionFrom(map);
 }
-export function ogAccentFrom(map: Record<string, unknown>): string {
+function ogAccentFrom(map: Record<string, unknown>): string {
   const v = ogAccentRawFrom(map);
   return /^#[0-9a-fA-F]{6}$/.test(v) ? v : brandColorFrom(map);
 }
@@ -462,7 +462,7 @@ export function captchaRiskHighFrom(map: Record<string, unknown>): number {
   return clampInt(map[SETTING_KEYS.captchaRiskHigh], 60, 1, 100);
 }
 
-export type CaptchaTolerance = "lenient" | "standard" | "strict";
+type CaptchaTolerance = "lenient" | "standard" | "strict";
 
 /** Geometry forgiveness for shaky hands / coarse touch. */
 export function captchaToleranceFrom(

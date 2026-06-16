@@ -32,7 +32,7 @@ function defaultBundle(env: AppBindings): SeoBundle {
   };
 }
 
-export interface SeoBundle {
+interface SeoBundle {
   appName: string;
   description: string;
   brandColor: string;

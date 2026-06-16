@@ -11,7 +11,7 @@ export interface BucketState {
   ts: number; // epoch ms of the last update
 }
 
-export interface TakeResult {
+interface TakeResult {
   allowed: boolean;
   state: BucketState;
 }

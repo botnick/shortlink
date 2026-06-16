@@ -136,7 +136,7 @@ const BYPASS_FIELDS = [
 
 /** Decoy verification-token prefixes. Distinct from the real `hv1_` so they can
  *  NEVER collide with a genuine token; presence is a forged-token signal. */
-export const DECOY_TOKEN_PREFIXES = [
+const DECOY_TOKEN_PREFIXES = [
   "ag_decoy_",
   "ag_debug_",
   "ag_client_verified_",

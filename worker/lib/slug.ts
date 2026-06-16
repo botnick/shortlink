@@ -69,7 +69,7 @@ const RESERVED_LIST = [
 
 /** Paths the Worker handles itself or that are too risky to hand out as a custom
  *  slug (route collisions, authority leaks, brand impersonation). */
-export const RESERVED_SLUGS = new Set(RESERVED_LIST.map((s) => s.toLowerCase()));
+const RESERVED_SLUGS = new Set(RESERVED_LIST.map((s) => s.toLowerCase()));
 
 const SLUG_RE = /^[a-zA-Z0-9_-]{3,32}$/;
 

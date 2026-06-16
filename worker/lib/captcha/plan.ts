@@ -9,7 +9,7 @@
  */
 import type { GameDifficulty, VerificationMode } from "@shared/captcha";
 
-export interface ChallengePlan {
+interface ChallengePlan {
   gamesTotal: number;
   difficulty: GameDifficulty;
 }
