@@ -51,14 +51,21 @@ export function ShapeGlyph({
 }) {
   const p = pos ?? obj.pos;
   const color = usePieceColor(obj.id, obj.color);
-  // Cut-gem shading: a dark outline, a top rim catching the light, a vertical
-  // light→dark ramp across the body, and 1–2 bright specular pixels — so the
-  // jittered polygon reads as a polished pixel-art jewel, not a flat blob.
-  const edgeColor = useMemo(() => darken(color, 0.58), [color]); // outline
-  const rimColor = useMemo(() => lighten(color, 0.46), [color]); // top rim light
-  const hiColor = useMemo(() => lighten(color, 0.18), [color]); // body, upper
-  const loColor = useMemo(() => darken(color, 0.28), [color]); // body, lower
-  const specColor = useMemo(() => lighten(color, 0.82), [color]); // glint
+  // Cut-gem shading: a hard dark outline + a 5-step facet ramp lit from the
+  // top-left + a sharp specular glint, so the jittered polygon reads as a crisp,
+  // glossy pixel jewel (no soft glow — that just made it look like a blob).
+  const edgeColor = useMemo(() => darken(color, 0.64), [color]); // hard outline
+  const ramp = useMemo(
+    () => [
+      lighten(color, 0.52), // brightest facet (top-left)
+      lighten(color, 0.24),
+      color,
+      darken(color, 0.2),
+      darken(color, 0.42), // deepest facet (bottom-right)
+    ],
+    [color],
+  );
+  const specColor = useMemo(() => lighten(color, 0.85), [color]); // glint
 
   // Per-piece raster recipe (random cell count + sub-cell offset) → the SAME
   // shape rasterizes to a DIFFERENT bitmap each challenge, so a bot can't hash
@@ -73,31 +80,33 @@ export function ShapeGlyph({
   const paths = useMemo(() => {
     const px = (obj.size * 2) / raster.n;
     const w = (px * 1.03).toFixed(2);
+    const xs = cells.map((c) => c.gx);
     const ys = cells.map((c) => c.gy);
+    const minX = Math.min(...xs);
+    const spanX = Math.max(1, Math.max(...xs) - minX);
     const minY = Math.min(...ys);
-    const span = Math.max(1, Math.max(...ys) - minY);
-    // The 1–2 top-edge cells nearest the top-left become a specular glint.
-    const tops = cells
-      .filter((c) => c.topEdge)
-      .sort((a, b) => a.gx + a.gy - (b.gx + b.gy));
-    const spec = new Set(tops.slice(0, tops.length > 6 ? 2 : 1).map((c) => `${c.gx},${c.gy}`));
-    let outline = "", rim = "", hi = "", mid = "", lo = "", glint = "";
+    const spanY = Math.max(1, Math.max(...ys) - minY);
+    // The 1–2 cells nearest the top-left become a specular glint.
+    const sorted = [...cells].sort((a, b) => a.gx + a.gy - (b.gx + b.gy));
+    const spec = new Set(sorted.slice(0, cells.length > 80 ? 2 : 1).map((c) => `${c.gx},${c.gy}`));
+    const tiers = ["", "", "", "", ""];
+    let outline = "", glint = "";
     for (const c of cells) {
       const x = (-obj.size + c.gx * px).toFixed(2);
       const y = (-obj.size + c.gy * px).toFixed(2);
       const seg = `M${x} ${y}h${w}v${w}h-${w}z`;
       const key = `${c.gx},${c.gy}`;
-      if (spec.has(key)) glint += seg;
-      else if (c.topEdge) rim += seg;
-      else if (c.edge) outline += seg;
-      else {
-        const t = (c.gy - minY) / span; // 0 = top of body, 1 = bottom
-        if (t < 0.34) hi += seg;
-        else if (t > 0.66) lo += seg;
-        else mid += seg;
+      if (spec.has(key)) {
+        glint += seg;
+      } else if (c.edge && !c.topEdge) {
+        outline += seg; // hard dark rim on the sides + bottom
+      } else {
+        // Brightness from the top-left: facet ramp index 0 (bright) … 4 (dark).
+        const score = (1 - (c.gy - minY) / spanY) * 0.6 + (1 - (c.gx - minX) / spanX) * 0.4;
+        tiers[Math.min(4, Math.max(0, Math.round((1 - score) * 4)))] += seg;
       }
     }
-    return { outline, rim, hi, mid, lo, glint };
+    return { outline, tiers, glint };
   }, [cells, obj.size, raster.n]);
 
   return (
@@ -109,8 +118,6 @@ export function ShapeGlyph({
         className="hc-bob"
         style={{ animationDelay: `${(-(obj.phase / (Math.PI * 2)) * 3.6).toFixed(2)}s` }}
       >
-        {/* Soft colour halo so the piece reads on any busy backdrop. */}
-        <circle r={obj.size * 1.32} fill={color} opacity={0.16} />
         {highlight && (
           <circle
             className="hc-pulse"
@@ -122,10 +129,9 @@ export function ShapeGlyph({
           />
         )}
         {paths.outline && <path d={paths.outline} fill={edgeColor} shapeRendering="crispEdges" />}
-        {paths.lo && <path d={paths.lo} fill={loColor} shapeRendering="crispEdges" />}
-        {paths.mid && <path d={paths.mid} fill={color} shapeRendering="crispEdges" />}
-        {paths.hi && <path d={paths.hi} fill={hiColor} shapeRendering="crispEdges" />}
-        {paths.rim && <path d={paths.rim} fill={rimColor} shapeRendering="crispEdges" />}
+        {paths.tiers.map((d, i) =>
+          d ? <path key={i} d={d} fill={ramp[i]} shapeRendering="crispEdges" /> : null,
+        )}
         {paths.glint && (
           <path d={paths.glint} className="hc-glint" fill={specColor} shapeRendering="crispEdges" />
         )}
