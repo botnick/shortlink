@@ -172,7 +172,7 @@ export function AdminAnalytics() {
               Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)
             ) : data && data.topLinks.length > 0 ? (
               data.topLinks.map((l) => (
-                <div key={l.slug} className="flex items-center justify-between gap-3 px-2 py-1.5 text-sm">
+                <div key={l.id} className="flex items-center justify-between gap-3 px-2 py-1.5 text-sm">
                   <div className="min-w-0">
                     <div className="truncate font-medium">/{l.slug}</div>
                     <div className="truncate text-xs text-muted-foreground">{l.ownerEmail}</div>
