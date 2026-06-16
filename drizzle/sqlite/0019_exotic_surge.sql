@@ -1,0 +1,1 @@
+CREATE INDEX `domains_status_created_idx` ON `domains` (`status`,`created_at`);

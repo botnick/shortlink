@@ -233,6 +233,9 @@ export const domains = pgTable(
   (t) => [
     uniqueIndex("domains_hostname_idx").on(t.hostname),
     index("domains_user_idx").on(t.userId, t.createdAt),
+    // Serves the daily cron's stale-domain purge (worker/index.ts): filters by
+    // status (NOT IN active/verified) bounded by created_at < cutoff.
+    index("domains_status_created_idx").on(t.status, t.createdAt),
   ],
 );
 

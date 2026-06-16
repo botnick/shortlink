@@ -148,6 +148,13 @@
       "when": 1781109261437,
       "tag": "0020_amazing_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1781650314574,
+      "tag": "0021_little_celestials",
+      "breakpoints": true
     }
   ]
 }
