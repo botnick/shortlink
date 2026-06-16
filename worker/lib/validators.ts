@@ -153,6 +153,7 @@ export const settingsSchema = z
     captchaCreateLimit: z.number().int().min(0).max(10_000).optional(),
     captchaVerifyLimit: z.number().int().min(0).max(10_000).optional(),
     captchaEnforce: z.boolean().optional(),
+    captchaTransportBind: z.boolean().optional(),
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),

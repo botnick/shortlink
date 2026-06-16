@@ -250,6 +250,20 @@ soft and capped below the block threshold, preserving "no single signal blocks":
 - **All env signals capped at 45** so no single real-user quirk (Linux, VM software-WebGL,
   privacy browser, keyboard-only, VPN) can ever block — behavioral evidence must
   corroborate. Ship new signals with `captcha_enforce=false` (shadow) first.
+- **Transport (TLS) cohort soft-bind** ✅ `worker/lib/captcha/transport.ts`. The
+  connection's TLS version + cipher (`request.cf.tlsVersion`/`tlsCipher`, free —
+  no paid Bot Management/JA3) are HMAC'd into an opaque 16-hex *cohort* captured
+  at challenge mint and re-checked at `/verify` and at token consume. A bot that
+  solves in a headless browser then redeems from a `requests`/`curl` loop shifts
+  cohort (`transport-shift`, +16); a Chromium UA on antique TLS is incoherent
+  (`legacy-tls-for-chromium`, +8). Both **soft and capped** (max +24, well under
+  the 60 block line) — a genuine reconnect can renegotiate a cipher mid-flow, so
+  this never hard-blocks: verify only scores it, consume only logs + escalates the
+  next PoW. Only the HMAC is stored/logged, never raw TLS; the cohort is `""`
+  (fully inert) without the Cloudflare edge, e.g. local dev. This is the signal
+  class — transport below the JS the attacker controls — that Turnstile/reCAPTCHA
+  lean on; we approximate it at $0 minus their network-scale reputation. Admin:
+  `captcha_transport_bind` (default on).
 
 **Anti-fixed-sprite (defeats "hash the rendered sprite once"):** pieces stay procedural —
 the server jitters the polygon (±5% + free/k·90° rotation, heart flip) so the vertex list

@@ -228,6 +228,8 @@ export const humanChallenges = sqliteTable(
     action: text().notNull(),
     hostname: text().notNull(),
     clientKey: text().notNull(),
+    // Soft TLS-cohort binding captured at mint (HMAC only, never raw TLS).
+    transport: text(),
     mode: text().notNull(),
     status: text().notNull().default("active"), // "active" | "done" | "locked"
     version: integer().notNull().default(0),
@@ -257,6 +259,8 @@ export const humanVerifications = sqliteTable(
     action: text().notNull(),
     hostname: text().notNull(),
     clientKey: text().notNull(),
+    // Soft TLS-cohort carried from the challenge; checked at consume (log only).
+    transport: text(),
     issuedAt: integer({ mode: "timestamp" }).notNull().$defaultFn(now),
     expiresAt: integer({ mode: "timestamp" }).notNull(),
     consumedAt: integer({ mode: "timestamp" }),
