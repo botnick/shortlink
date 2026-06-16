@@ -16,8 +16,10 @@
  *    nothing is written on the legitimate pass path.
  *  - Per-IP is the strong signal; per-ASN is a weak nudge, capped low — a shared
  *    carrier / VPN ASN with one bot on it must never punish everyone behind it.
- *  - Privacy: the per-IP key is the same hashed `powfail:<ip>` counter the
- *    escalator already keeps (short TTL); the ASN counter holds only a number.
+ *  - Privacy: this reads the SAME ephemeral `powfail:<ip>` counter the escalator
+ *    already keeps — keyed by the raw connecting IP but short-TTL, internal to
+ *    the rate-limit store, and never logged (logs use the HMAC `hashIp`). The
+ *    ASN counter holds only a number. No new long-term per-user state.
  */
 import type { AppBindings } from "../../env";
 import { counterBump, counterGet } from "../ratelimit";

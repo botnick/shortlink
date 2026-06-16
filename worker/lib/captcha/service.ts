@@ -614,16 +614,17 @@ export async function consumeHumanToken(
   }
   // Soft transport check (Phase D): a token minted on one TLS cohort redeemed
   // from another — same IP (clientKey matched) but a different client stack —
-  // is the "solve in a real browser, redeem from a script" pattern. Log +
-  // escalate the IP's next PoW, but NEVER fail the login on it (a genuine
-  // reconnect can renegotiate TLS). Inert when no cohort was captured, OR when
-  // an admin has switched transport binding off (the live setting is the kill
-  // switch even for tokens already issued with a cohort).
+  // is the "solve in a real browser, redeem from a script" pattern. This is the
+  // SUCCESS path (the login is allowed either way — a genuine reconnect can
+  // renegotiate TLS), so we only LOG it: it must not bump `powfail`, which now
+  // doubles as the reputation counter (Phase E) and would otherwise penalise a
+  // real reconnecting user's next PoW and risk score. The shift was already
+  // soft-scored at /verify where it belongs. Inert when no cohort was captured,
+  // or when an admin has switched transport binding off (live kill switch).
   if (row.transport && captchaConfigFrom(await getCachedSettings(c.var.db, c.var.schema)).transportBind) {
     const current = await transportCohort(c.env, transportEnvFromContext(c));
     if (current && current !== row.transport) {
       console.warn("humancheck consume transport-shift:", action, row.challengeId.slice(0, 8));
-      c.executionCtx.waitUntil(recordCheckFailure(c.env, getClientIp(c)).catch(() => {}));
     }
   }
   return ok;
