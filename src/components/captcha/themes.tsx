@@ -10,7 +10,7 @@
  * (reduced-motion friendly), modest element counts (mobile friendly).
  */
 import { createContext } from "react";
-import { SCENE_H, SCENE_W } from "@shared/captcha";
+import { SCENE_H, SCENE_W, type GameType } from "@shared/captcha";
 
 /** mulberry32 — tiny deterministic RNG so a theme varies by seed but is stable. */
 function makeRng(seed: number): () => number {
@@ -326,8 +326,41 @@ const THEME_PALETTES: string[][] = [
   ["#3affa0", "#7a5cff", "#36e0ff", "#dbe4ff"], // aurora
 ];
 
-export function paletteForSeed(seed: number): string[] {
-  return THEME_PALETTES[Math.abs(seed) % THEME_PALETTES.length];
+const THEME_INDEX: Record<string, number> = Object.fromEntries(
+  THEMES.map((t, i) => [t.name, i]),
+);
+
+/**
+ * Each game type gets a POOL of scenes whose mood fits its mechanic — so the
+ * backdrop reinforces what you're doing (a rail for "slide", a docking ring for
+ * "drag-target", a calm field for "tap"/"sort") yet never looks the same twice.
+ * The seed picks one scene from the pool AND varies that scene's interior, so a
+ * CV model can't memorise a fixed layout. Cohesion + variety, no logic touched.
+ */
+const THEME_POOLS: Record<GameType, string[]> = {
+  slide: ["cyber", "synth"], // a horizontal rail / neon track
+  "drag-target": ["space", "desert"], // open field + a place to dock/land
+  "tap-match": ["forest", "gameboy"], // calm, uncluttered — the match stands out
+  rotate: ["aurora", "space", "sunset"], // a dial against the sky / orbit
+  connect: ["synth", "cyber"], // a grid/network the link rides along
+  "sort-3": ["dungeon", "lava"], // a shelf/ledge to line things up on
+  "path-trace": ["ocean", "forest"], // a trail through bubbles / a glade
+  "key-count": ["gameboy", "aurora"], // calmest screens for the keyboard game
+};
+
+/** Resolve a game type + seed to a concrete theme index (pool pick by seed). */
+function themeIndexFor(gameType: GameType | undefined, seed: number): number {
+  const pool = gameType ? THEME_POOLS[gameType] : undefined;
+  if (pool && pool.length) {
+    const name = pool[Math.abs(seed) % pool.length];
+    return THEME_INDEX[name] ?? 0;
+  }
+  return Math.abs(seed) % THEMES.length;
+}
+
+/** Piece palette matching the scene a given game type + seed will show. */
+export function paletteForGame(gameType: GameType | undefined, seed: number): string[] {
+  return THEME_PALETTES[themeIndexFor(gameType, seed)];
 }
 
 /** Active piece palette for the current challenge (null = use the server color). */
@@ -339,14 +372,21 @@ function dataSaver(): boolean {
   return c?.saveData === true;
 }
 
-/** A decorative, non-interactive pixel-art backdrop. `seed` picks the theme +
- *  its variation; bump it to get a fresh scene. Skipped under Save-Data (a flat
- *  dark fill instead) to stay light on metered connections. */
-export function ThemeBackground({ seed }: { seed: number }) {
+/** A decorative, non-interactive pixel-art backdrop. The game type picks a
+ *  fitting scene pool; `seed` chooses one from it and varies its interior — bump
+ *  it for a fresh scene. Skipped under Save-Data (a flat dark fill instead) to
+ *  stay light on metered connections. */
+export function ThemeBackground({
+  seed,
+  gameType,
+}: {
+  seed: number;
+  gameType?: GameType;
+}) {
   if (dataSaver()) {
     return <div className="absolute inset-0 bg-[#0a0e1c]" aria-hidden="true" />;
   }
-  const idx = Math.abs(seed) % THEMES.length;
+  const idx = themeIndexFor(gameType, seed);
   const r = makeRng(seed * 2654435761);
   const { bg, els } = THEMES[idx].draw(r);
   return (

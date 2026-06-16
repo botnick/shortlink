@@ -12,7 +12,7 @@ import { solvePow } from "@/lib/pow";
 import { useConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { GAME_VIEWS } from "./captcha/games";
-import { CaptchaPaletteContext, ThemeBackground, paletteForSeed } from "./captcha/themes";
+import { CaptchaPaletteContext, ThemeBackground, paletteForGame } from "./captcha/themes";
 
 /** Everything the sign-in/sign-up form needs: the one-time token. */
 export interface HumanPayload {
@@ -233,12 +233,12 @@ export function HumanCheck({
             )}
           </div>
           <div className="relative mx-auto aspect-[100/66] w-full max-w-[300px] overflow-hidden rounded-lg border bg-[#0a0e1c]">
-            <ThemeBackground seed={themeSeed} />
+            <ThemeBackground seed={themeSeed} gameType={game.type} />
             {/* The game is wrapped in a positioned layer so it paints ABOVE the
                 absolutely-positioned backdrop (positioned siblings stack by DOM
                 order; a static child would be painted under the backdrop). */}
             <div className="absolute inset-0">
-              <CaptchaPaletteContext.Provider value={paletteForSeed(themeSeed)}>
+              <CaptchaPaletteContext.Provider value={paletteForGame(game.type, themeSeed)}>
                 <View
                   key={game.id}
                   game={game}
