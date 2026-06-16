@@ -129,17 +129,24 @@ function SocialForm({ initial, patch }: { initial: SettingsDTO; patch: SettingsP
 
   return (
     <form onSubmit={save} className="space-y-5">
-      <TemplateThumb
-        template={ogTemplate}
-        fontId={ogFont}
-        brandColor={cardAccent}
-        appName={cardLabel}
-        title={cardTitle}
-        description={cardTagline}
-        url={cardUrl}
-        selected
-        onSelect={() => {}}
-      />
+      <div className="space-y-1.5">
+        <Label>Preview</Label>
+        {/* Compact hero preview — the full-bleed version was overpowering the
+            card; the template grid below shows every option anyway. */}
+        <div className="max-w-sm">
+          <TemplateThumb
+            template={ogTemplate}
+            fontId={ogFont}
+            brandColor={cardAccent}
+            appName={cardLabel}
+            title={cardTitle}
+            description={cardTagline}
+            url={cardUrl}
+            selected
+            onSelect={() => {}}
+          />
+        </div>
+      </div>
 
       <div className="space-y-2">
         <Label>Template</Label>
