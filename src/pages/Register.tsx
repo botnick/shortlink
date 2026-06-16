@@ -178,7 +178,7 @@ export function Register() {
                         />
                       ))}
                     </div>
-                    <p className={cn("text-xs", strength.text)}>
+                    <p className={cn("text-xs", strength.text)} aria-live="polite">
                       {strength.label}
                       {!longEnough && " — at least 8 characters"}
                     </p>

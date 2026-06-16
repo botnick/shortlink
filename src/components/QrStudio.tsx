@@ -406,8 +406,14 @@ export function QrStudio({
   }
 
   function deleteAsset(id: string) {
+    const prev = assets;
     setAssets((a) => a.filter((x) => x.id !== id));
-    api.delete(`/assets/${id}`).catch(() => {});
+    // Roll the optimistic removal back if the server delete fails, so the UI
+    // doesn't silently desync from what's actually stored.
+    api.delete(`/assets/${id}`).catch(() => {
+      setAssets(prev);
+      toast.error("Couldn't delete that logo");
+    });
   }
 
   function savePreset() {
@@ -436,9 +442,16 @@ export function QrStudio({
   }
 
   function deletePreset(id: string) {
+    const prev = saved;
+    const prevActive = activePresetId;
     setSaved((s) => s.filter((p) => p.id !== id));
     if (id === activePresetId) setActivePresetId(null);
-    api.delete(`/qr-presets/${id}`).catch(() => {});
+    // Roll back the optimistic removal if the delete fails.
+    api.delete(`/qr-presets/${id}`).catch(() => {
+      setSaved(prev);
+      setActivePresetId(prevActive);
+      toast.error("Couldn't delete that preset");
+    });
   }
 
   function applyPreset(p: QrPresetDTO) {

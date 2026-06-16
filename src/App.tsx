@@ -4,6 +4,8 @@ import { ConfigProvider, useConfig } from "@/lib/config";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/components/theme";
 import { ConfirmProvider } from "@/components/ConfirmProvider";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { Layout } from "@/components/Layout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -48,8 +50,21 @@ const Account = lazy(() =>
 );
 
 function AppRoutes() {
-  const { config, loading } = useConfig();
+  const { config, loading, error, refresh } = useConfig();
   if (loading) return <PageLoader />;
+  // Config drives setup gating + branding; don't silently fall back to defaults
+  // (which would read needsSetup as false). Offer a retry instead.
+  if (error) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-4 text-center">
+        <h1 className="text-lg font-semibold">Couldn't reach the server</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          We couldn't load the app configuration. Check your connection and try again.
+        </p>
+        <Button onClick={() => void refresh()}>Retry</Button>
+      </div>
+    );
+  }
 
   return (
     <Suspense fallback={<PageLoader />}>
@@ -96,17 +111,19 @@ function AppRoutes() {
 
 export function App() {
   return (
-    <ThemeProvider>
-      <ConfigProvider>
-        <AuthProvider>
-          <ConfirmProvider>
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
-            <Toaster />
-          </ConfirmProvider>
-        </AuthProvider>
-      </ConfigProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ConfigProvider>
+          <AuthProvider>
+            <ConfirmProvider>
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
+              <Toaster />
+            </ConfirmProvider>
+          </AuthProvider>
+        </ConfigProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

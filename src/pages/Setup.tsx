@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, Rocket } from "lucide-react";
 import { toast } from "sonner";
@@ -33,13 +33,18 @@ export function Setup() {
   const [confirm, setConfirm] = useState("");
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous guard so a double-submit can't fire two setup POSTs (the second
+  // would hit the one-shot claim and surface a misleading "already completed").
+  const submittingRef = useRef(false);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submittingRef.current) return;
     if (password !== confirm) {
       toast.error("Passwords don't match");
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await api.post<{ user: UserDTO }>("/setup", {
@@ -56,6 +61,7 @@ export function Setup() {
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Setup failed");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }

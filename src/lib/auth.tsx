@@ -3,11 +3,12 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
 import type { UserDTO } from "@shared/types";
-import { api } from "./api";
+import { api, setUnauthorizedHandler } from "./api";
 
 interface AuthState {
   user: UserDTO | null;
@@ -47,6 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  // Clear auth on a 401 from any authenticated request (expired/revoked session)
+  // so ProtectedRoute redirects to login instead of holding stale user state.
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null));
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
   const login = useCallback(
     async (email: string, password: string, extra?: Record<string, unknown>) => {
       const { user } = await api.post<{ user: UserDTO }>("/auth/login", {
@@ -72,17 +80,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await api.post("/auth/logout");
-    setUser(null);
+    // Always clear local auth, even if the server call fails (network error or
+    // an already-expired session) — the UI must never stay "signed in".
+    try {
+      await api.post("/auth/logout");
+    } finally {
+      setUser(null);
+    }
   }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{ user, loading, login, register, logout, refresh }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ user, loading, login, register, logout, refresh }),
+    [user, loading, login, register, logout, refresh],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

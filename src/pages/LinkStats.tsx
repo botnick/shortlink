@@ -89,19 +89,32 @@ export function LinkStats() {
   const [activity, setActivity] = useState<ActivityItemDTO[] | null>(null);
 
   useEffect(() => {
+    let active = true;
+    setNotFound(false);
     api
       .get<{ link: LinkDTO }>(`/links/${id}`)
-      .then((r) => setLink(r.link))
-      .catch(() => setNotFound(true));
+      .then((r) => active && setLink(r.link))
+      .catch(() => active && setNotFound(true));
+    // Drop a stale response if `id` changed before it resolved.
+    return () => {
+      active = false;
+    };
   }, [id]);
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
     api
       .get<StatsDTO>(`/links/${id}/stats?range=${range}`)
-      .then(setStats)
-      .catch(() => toast.error("Couldn't load analytics"))
-      .finally(() => setLoading(false));
+      .then((s) => active && setStats(s))
+      .catch(() => active && toast.error("Couldn't load analytics"))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    // Guard against out-of-order resolution on fast id/range switches.
+    return () => {
+      active = false;
+    };
   }, [id, range]);
 
   // Live activity feed: poll every 30s while the Overview tab is visible.

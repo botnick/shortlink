@@ -327,6 +327,9 @@ export function LinkEditor() {
   const [ogSource, setOgSource] = useState<"generate" | "upload">("generate");
   const [genDataUrl, setGenDataUrl] = useState(""); // live snapshot of the generated card
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous re-entry guard: the `submitting` state disables the button a
+  // render late, so an Enter-key repeat or double-click could fire two saves.
+  const submittingRef = useRef(false);
   const [showAdvanced, setShowAdvanced] = useState(isEdit); // create starts simple
   const [slugStrategy, setSlugStrategy] = useState(""); // last "Optimize" label used
   const [slugStatus, setSlugStatus] = useState<
@@ -697,6 +700,7 @@ export function LinkEditor() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submittingRef.current) return; // a save is already in flight
     if (!destValid) {
       toast.error("Enter a valid http(s) destination URL");
       return;
@@ -728,10 +732,16 @@ export function LinkEditor() {
       toast.error("That back-half isn’t available — try another");
       return;
     }
+    // Don't save against an unresolved availability check.
+    if (slugStatus === "checking") {
+      toast.error("Hold on — still checking that back-half");
+      return;
+    }
     // Fold a typed-but-not-committed tag into the set being saved.
     const effectiveTags = tagInput.trim()
       ? Array.from(new Set([...tags, tagInput.trim().slice(0, 40)])).slice(0, 20)
       : tags;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       if (isEdit && link) {
@@ -785,6 +795,7 @@ export function LinkEditor() {
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -1215,6 +1226,7 @@ export function LinkEditor() {
                     value={p.value}
                     onChange={(e) => p.set(e.target.value)}
                     className="h-9"
+                    aria-label={`${p.label} deep link URL`}
                     aria-invalid={Boolean(p.value.trim() && !isHttpUrl(p.value))}
                   />
                   {p.value.trim() && !isHttpUrl(p.value) && (

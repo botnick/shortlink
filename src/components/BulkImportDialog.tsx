@@ -188,6 +188,7 @@ export function BulkImportDialog({
               onChange={(e) => setText(e.target.value)}
               rows={8}
               placeholder={"example.com/page,promo,marketing q1\nhttps://blog.site/post"}
+              aria-label="CSV link data"
               className="w-full rounded-lg border bg-background p-3 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <div className="flex items-center justify-between gap-3">
