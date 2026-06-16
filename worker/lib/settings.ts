@@ -52,6 +52,7 @@ export const SETTING_KEYS = {
   captchaCreateLimit: "captcha_create_limit",
   captchaVerifyLimit: "captcha_verify_limit",
   captchaEnforce: "captcha_enforce",
+  captchaTransportBind: "captcha_transport_bind",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
@@ -500,6 +501,13 @@ export function captchaEnforceFrom(map: Record<string, unknown>): boolean {
   return map[SETTING_KEYS.captchaEnforce] !== false;
 }
 
+/** Soft TLS-cohort transport binding (Phase D). Default on. When on, a shift in
+ *  the connection's TLS fingerprint between mint and verify/consume adds a small
+ *  capped risk signal — it never hard-blocks. Off makes the layer fully inert. */
+export function captchaTransportBindFrom(map: Record<string, unknown>): boolean {
+  return map[SETTING_KEYS.captchaTransportBind] !== false;
+}
+
 /** Everything the challenge engine needs, resolved in one place. */
 export interface CaptchaConfig {
   mode: VerificationMode;
@@ -516,6 +524,7 @@ export interface CaptchaConfig {
   createLimit: number;
   verifyLimit: number;
   enforce: boolean;
+  transportBind: boolean;
 }
 
 export function captchaConfigFrom(map: Record<string, unknown>): CaptchaConfig {
@@ -537,6 +546,7 @@ export function captchaConfigFrom(map: Record<string, unknown>): CaptchaConfig {
     createLimit: captchaCreateLimitFrom(map),
     verifyLimit: captchaVerifyLimitFrom(map),
     enforce: captchaEnforceFrom(map),
+    transportBind: captchaTransportBindFrom(map),
   };
 }
 

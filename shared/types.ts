@@ -289,6 +289,8 @@ export interface SettingsDTO {
   captchaVerifyLimit: number;
   /** Enforce the risk block, or run in shadow mode (log-only) to tune. */
   captchaEnforce: boolean;
+  /** Soft TLS-cohort transport binding (request.cf). Off makes it fully inert. */
+  captchaTransportBind: boolean;
   /** Cloudflare for SaaS — configured via /admin. The token is never returned;
    *  `cfConfigured` reflects whether a token + zone id are set. */
   cfZoneId: string;

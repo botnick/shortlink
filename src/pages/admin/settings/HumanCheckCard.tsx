@@ -72,6 +72,9 @@ function HumanCheckForm({ initial, patch }: { initial: SettingsDTO; patch: Setti
   const [captchaCreateLimit, setCaptchaCreateLimit] = useState(initial.captchaCreateLimit ?? 10);
   const [captchaVerifyLimit, setCaptchaVerifyLimit] = useState(initial.captchaVerifyLimit ?? 30);
   const [captchaEnforce, setCaptchaEnforce] = useState(initial.captchaEnforce ?? true);
+  const [captchaTransportBind, setCaptchaTransportBind] = useState(
+    initial.captchaTransportBind ?? true,
+  );
   const [saving, setSaving] = useState(false);
   const [captchaStats, setCaptchaStats] = useState<Record<string, unknown> | null>(null);
 
@@ -104,6 +107,7 @@ function HumanCheckForm({ initial, patch }: { initial: SettingsDTO; patch: Setti
         captchaCreateLimit: Math.max(0, Math.floor(captchaCreateLimit) || 0),
         captchaVerifyLimit: Math.max(0, Math.floor(captchaVerifyLimit) || 0),
         captchaEnforce,
+        captchaTransportBind,
       });
       toast.success("Human check saved");
     } catch (err) {
@@ -127,6 +131,23 @@ function HumanCheckForm({ initial, patch }: { initial: SettingsDTO; patch: Setti
           checked={captchaEnforce}
           onCheckedChange={setCaptchaEnforce}
           aria-label="Enforce risk blocking"
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+        <div>
+          <p className="text-sm font-medium">TLS transport binding</p>
+          <p className="text-xs text-muted-foreground">
+            Adds a small, capped risk signal when the connection's TLS
+            fingerprint (from Cloudflare's edge) shifts between challenge and
+            redemption, or a browser UA rides an antique TLS version. Soft only —
+            never blocks a real reconnect. Inert without Cloudflare in front.
+          </p>
+        </div>
+        <Switch
+          checked={captchaTransportBind}
+          onCheckedChange={setCaptchaTransportBind}
+          aria-label="TLS transport binding"
         />
       </div>
 

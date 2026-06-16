@@ -44,6 +44,7 @@ import {
   captchaTokenTtlFrom,
   captchaVerifyLimitFrom,
   captchaEnforceFrom,
+  captchaTransportBindFrom,
   challengeModeFrom,
   createRateLimitFrom,
   emailBlockDaysFrom,
@@ -146,6 +147,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     captchaCreateLimit: captchaCreateLimitFrom(map),
     captchaVerifyLimit: captchaVerifyLimitFrom(map),
     captchaEnforce: captchaEnforceFrom(map),
+    captchaTransportBind: captchaTransportBindFrom(map),
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
@@ -327,6 +329,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.captchaEnforce !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.captchaEnforce, input.captchaEnforce);
+  }
+  if (input.captchaTransportBind !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.captchaTransportBind, input.captchaTransportBind);
   }
   // Custom-domain (Cloudflare for SaaS) config — set via the web, no env vars.
   // An empty token clears it; a blank token is ignored so it isn't wiped on save.

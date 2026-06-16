@@ -155,6 +155,13 @@
       "when": 1781650314574,
       "tag": "0021_little_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1781650960563,
+      "tag": "0022_fair_sheva_callister",
+      "breakpoints": true
     }
   ]
 }

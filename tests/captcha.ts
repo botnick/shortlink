@@ -20,6 +20,7 @@ import {
 } from "../worker/lib/captcha/crypto";
 import { assessBehavior, hardFailure, isCompleteProbe } from "../worker/lib/captcha/risk";
 import { scoreRequest, type RequestEnv } from "../worker/lib/captcha/requestSignals";
+import { scoreTransport, transportCohort } from "../worker/lib/captcha/transport";
 import { takeToken } from "../worker/lib/captcha/tokenBucket";
 import {
   detectDeception,
@@ -375,6 +376,37 @@ async function main() {
     // Python/curl wearing a Chrome UA: missing all browser headers → high.
     const fakeChrome: RequestEnv = { ua: CHROME, acceptLanguage: null, secFetchSite: null, secChUa: null, httpProtocol: "HTTP/1.1", asn: 14061 };
     check("UA-spoofing scripted client scores high", scoreRequest(fakeChrome).score >= 40, scoreRequest(fakeChrome));
+  }
+
+  // ---------------------------------------------------------------------------
+  console.log("\n[3bb] Transport (TLS) cohort soft-bind — soft, never blocks a real reconnect");
+  {
+    const CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+    const FIREFOX = "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0";
+
+    // No stored cohort yet (first request / dev) → nothing to compare → 0.
+    check("no stored cohort → no transport signal", scoreTransport("", "abc123", { ua: CHROME, tlsVersion: "TLSv1.3" }).score === 0);
+    check("no current cohort (no cf) → no transport signal", scoreTransport("abc123", "", { ua: CHROME, tlsVersion: "" }).score === 0);
+    // Same cohort across mint→verify → clean.
+    check("matching cohort → no signal", scoreTransport("abc123", "abc123", { ua: CHROME, tlsVersion: "TLSv1.3" }).score === 0);
+    // Mint-in-browser, redeem-from-elsewhere → soft shift, but capped well under block.
+    const shift = scoreTransport("abc123", "def456", { ua: CHROME, tlsVersion: "TLSv1.3" });
+    check("cohort shift flagged soft and < medium (30)", shift.reasons.includes("transport-shift") && shift.score < 30, shift);
+    // A modern Chrome UA on antique TLS = scripted client wearing a costume.
+    const legacy = scoreTransport("", "", { ua: CHROME, tlsVersion: "TLSv1" });
+    check("chromium on legacy TLS flagged", legacy.reasons.includes("legacy-tls-for-chromium") && legacy.score === 8, legacy);
+    // Real browsers must never be punished by the coherence check.
+    check("chromium on TLS1.3 clean", scoreTransport("", "", { ua: CHROME, tlsVersion: "TLSv1.3" }).score === 0);
+    check("firefox on TLS1.2 clean (coherence is chromium-only)", scoreTransport("", "", { ua: FIREFOX, tlsVersion: "TLSv1.2" }).score === 0);
+
+    // Cohort hashing: deterministic, secret-keyed, 16-hex, and inert without TLS.
+    const t = { tlsVersion: "TLSv1.3", tlsCipher: "AEAD-AES128-GCM-SHA256", ua: CHROME };
+    const a = await transportCohort(ENV, t);
+    const b = await transportCohort(ENV, t);
+    check("cohort deterministic + 16 hex", a === b && /^[0-9a-f]{16}$/.test(a), a);
+    check("different cipher → different cohort", (await transportCohort(ENV, { ...t, tlsCipher: "ECDHE-RSA-AES256" })) !== a);
+    check("missing TLS → inert empty cohort", (await transportCohort(ENV, { tlsVersion: "", tlsCipher: "", ua: CHROME })) === "");
+    check("partial TLS (cipher only) → inert empty cohort", (await transportCohort(ENV, { tlsVersion: "", tlsCipher: "x", ua: CHROME })) === "");
   }
 
   // ---------------------------------------------------------------------------

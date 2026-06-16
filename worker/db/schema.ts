@@ -275,6 +275,9 @@ export const humanChallenges = pgTable(
     action: text().notNull(),
     hostname: text().notNull(),
     clientKey: text().notNull(),
+    // Soft TLS-cohort binding captured at mint (HMAC only, never raw TLS). A
+    // shift at verify/consume is a small risk signal, never a hard block.
+    transport: text(),
     mode: text().notNull(),
     status: text().notNull().default("active"), // "active" | "done" | "locked"
     // Optimistic-concurrency guard: every state transition must match the
@@ -308,6 +311,8 @@ export const humanVerifications = pgTable(
     action: text().notNull(),
     hostname: text().notNull(),
     clientKey: text().notNull(),
+    // Soft TLS-cohort carried from the challenge; checked at consume (log only).
+    transport: text(),
     issuedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp({ withTimezone: true }).notNull(),
     // Set exactly once by the atomic consume — single-use enforcement.

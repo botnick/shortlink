@@ -56,6 +56,7 @@ import {
 import { planChallenge } from "./plan";
 import { GAME_PLUGINS, generateGame, type GameInstance } from "./games";
 import { assessBehavior, assessPassive, hardFailure, isCompleteProbe } from "./risk";
+import { scoreTransport, transportCohort, transportEnvFromContext } from "./transport";
 import { requestEnvFromContext, scoreRequest } from "./requestSignals";
 import {
   claimChallengeStep,
@@ -166,6 +167,11 @@ export async function createChallenge(
     action,
     hostname: c.req.header("host") ?? "",
     clientKey: await clientKeyFor(c.env, ip),
+    // Capture the connection's TLS cohort at mint (HMAC only). Inert ("" → null)
+    // without the CF edge or when transport binding is switched off.
+    transport: cfg.transportBind
+      ? (await transportCohort(c.env, transportEnvFromContext(c))) || null
+      : null,
     mode: cfg.mode,
     gamesTotal,
     powDifficulty,
@@ -294,6 +300,15 @@ export async function submitChallenge(
     return fail(false, "hostname-binding", row.id);
   }
 
+  // Soft TLS-cohort signal (Phase D): a shift between the cohort captured at mint
+  // and this request's, or a modern-browser UA on antique TLS. Small + capped —
+  // it corroborates, never blocks alone, and is fully inert without the CF edge
+  // (local dev) or when the admin switches transport binding off.
+  const transportEnv = transportEnvFromContext(c);
+  const transportRisk = cfg.transportBind
+    ? scoreTransport(row.transport, await transportCohort(c.env, transportEnv), transportEnv)
+    : { score: 0, reasons: [] as string[] };
+
   // Proof-of-work gate: solved once per challenge, on the first submit. A bad
   // solution locks the challenge — a genuine client never submits unsolved work.
   let powDone = row.powDone;
@@ -331,9 +346,14 @@ export async function submitChallenge(
     const passive = hasProbe
       ? assessPassive(evidence!)
       : { score: cfg.riskMedium, reasons: ["no-probe"] };
-    const combined = reqScore + passive.score;
+    const combined = reqScore + passive.score + transportRisk.score;
     if (combined >= cfg.riskMedium) {
-      console.warn("humancheck invisible escalate:", combined, passive.reasons.join(","), row.id.slice(0, 8));
+      console.warn(
+        "humancheck invisible escalate:",
+        combined,
+        [...passive.reasons, ...transportRisk.reasons].join(","),
+        row.id.slice(0, 8),
+      );
     }
 
     // Escalate when we're genuinely UNSURE: repeat abuse, or the combined passive
@@ -395,8 +415,8 @@ export async function submitChallenge(
   });
   const reqSig = scoreRequest(requestEnvFromContext(c));
   const risk = {
-    score: behavior.score + reqSig.score,
-    reasons: [...behavior.reasons, ...reqSig.reasons],
+    score: behavior.score + reqSig.score + transportRisk.score,
+    reasons: [...behavior.reasons, ...reqSig.reasons, ...transportRisk.reasons],
   };
   if (risk.score >= cfg.riskMedium) {
     console.warn(
@@ -527,6 +547,8 @@ async function issueToken(
     action: row.action,
     hostname: row.hostname,
     clientKey: row.clientKey,
+    // Carry the mint cohort so consume can soft-check the redeemer's transport.
+    transport: row.transport,
     expiresAt,
   });
   return {
@@ -572,6 +594,19 @@ export async function consumeHumanToken(
     row.clientKey === (await clientKeyFor(c.env, getClientIp(c)));
   if (!ok) {
     console.warn("humancheck consume rejected:", action, row.challengeId.slice(0, 8));
+    return ok;
+  }
+  // Soft transport check (Phase D): a token minted on one TLS cohort redeemed
+  // from another — same IP (clientKey matched) but a different client stack —
+  // is the "solve in a real browser, redeem from a script" pattern. Log +
+  // escalate the IP's next PoW, but NEVER fail the login on it (a genuine
+  // reconnect can renegotiate TLS). Inert when no cohort was captured.
+  if (row.transport) {
+    const current = await transportCohort(c.env, transportEnvFromContext(c));
+    if (current && current !== row.transport) {
+      console.warn("humancheck consume transport-shift:", action, row.challengeId.slice(0, 8));
+      c.executionCtx.waitUntil(recordCheckFailure(c.env, getClientIp(c)).catch(() => {}));
+    }
   }
   return ok;
 }

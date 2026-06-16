@@ -27,6 +27,7 @@ export interface ChallengeRecord {
   action: string;
   hostname: string;
   clientKey: string;
+  transport: string | null;
   mode: string;
   status: ChallengeStatus;
   version: number;
@@ -47,6 +48,7 @@ interface NewChallenge {
   action: string;
   hostname: string;
   clientKey: string;
+  transport: string | null;
   mode: string;
   gamesTotal: number;
   powDifficulty: number;
@@ -68,6 +70,7 @@ export async function insertChallenge(
       action: data.action,
       hostname: data.hostname,
       clientKey: data.clientKey,
+      transport: data.transport,
       mode: data.mode,
       gamesTotal: data.gamesTotal,
       powDifficulty: data.powDifficulty,
@@ -97,6 +100,7 @@ export async function findChallengeByRefHash(
     action: r.action,
     hostname: r.hostname,
     clientKey: r.clientKey,
+    transport: (r.transport as string | null) ?? null,
     mode: r.mode,
     status: r.status as ChallengeStatus,
     version: r.version,
@@ -163,6 +167,7 @@ interface NewVerification {
   action: string;
   hostname: string;
   clientKey: string;
+  transport: string | null;
   expiresAt: Date;
 }
 
@@ -180,6 +185,7 @@ interface ConsumedVerification {
   action: string;
   hostname: string;
   clientKey: string;
+  transport: string | null;
   expiresAt: Date;
 }
 
@@ -208,6 +214,7 @@ export async function consumeVerification(
       action: humanVerifications.action,
       hostname: humanVerifications.hostname,
       clientKey: humanVerifications.clientKey,
+      transport: humanVerifications.transport,
       expiresAt: humanVerifications.expiresAt,
     });
   return rows[0] ?? null;
