@@ -283,23 +283,34 @@ export function Dashboard() {
               </div>
 
               {/* Copy is the primary action — labelled and prominent so it's the
-                  obvious, large tap target. */}
-              <CopyButton value={link.shortUrl} label="Copy" variant="secondary" />
+                  obvious, large tap target (≥44px). */}
+              <CopyButton
+                value={link.shortUrl}
+                label="Copy"
+                variant="secondary"
+                className="min-h-11"
+              />
 
               <Hint label="Edit">
                 <Button
                   variant="ghost"
-                  size="icon"
                   aria-label="Edit link"
+                  className="min-h-11"
                   onClick={() => navigate(`/dashboard/links/${link.id}/edit`)}
                 >
-                  <Pencil />
+                  <Pencil /> <span className="hidden sm:inline">Edit</span>
                 </Button>
               </Hint>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Link actions" title="More actions">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-11"
+                    aria-label="Link actions"
+                    title="More actions"
+                  >
                     <MoreHorizontal />
                   </Button>
                 </DropdownMenuTrigger>

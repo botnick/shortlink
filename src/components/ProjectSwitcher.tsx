@@ -2,6 +2,7 @@ import { Check, ChevronsUpDown, FolderPlus, Settings2 } from "lucide-react";
 import type { ProjectDTO } from "@shared/types";
 import { useConfig } from "@/lib/config";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,33 @@ export function ProjectSwitcher({
   const { config } = useConfig();
   const brand = config.brandColor;
   if (!selected) return null;
+
+  // With a single project there's nothing to switch between, so the dropdown is
+  // just noise. Show a plain label (tap it for settings) and keep New project
+  // visible as its own quiet button.
+  if (projects.length <= 1) {
+    return (
+      <div className="flex items-center gap-1">
+        <Hint label="Project settings">
+          <button
+            type="button"
+            onClick={onManage}
+            className="flex items-center gap-2 rounded-md px-1.5 py-1.5 hover:bg-accent"
+          >
+            <Mark project={selected} brand={brand} />
+            <span className="max-w-[42vw] truncate font-semibold sm:max-w-[16rem]">
+              {selected.name}
+            </span>
+          </button>
+        </Hint>
+        <Hint label="New project">
+          <Button variant="ghost" size="icon" onClick={onNew} aria-label="New project">
+            <FolderPlus />
+          </Button>
+        </Hint>
+      </div>
+    );
+  }
 
   return (
     <DropdownMenu>

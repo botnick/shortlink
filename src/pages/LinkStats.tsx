@@ -186,8 +186,8 @@ export function LinkStats() {
         </div>
         {link && (
           <div className="flex items-center gap-2">
-            <CopyButton value={link.shortUrl} label="Copy" variant="outline" />
-            <Button asChild variant="outline" size="icon">
+            <CopyButton value={link.shortUrl} label="Copy" variant="outline" className="min-h-11" />
+            <Button asChild variant="outline" size="icon" className="size-11">
               <a
                 href={link.shortUrl}
                 target="_blank"
@@ -200,8 +200,8 @@ export function LinkStats() {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="Export" title="Export">
-                  <Download />
+                <Button variant="outline" className="min-h-11" title="Export">
+                  <Download /> <span className="hidden sm:inline">Export</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -228,8 +228,8 @@ export function LinkStats() {
             onClick={() => setTab(t.value)}
             className={
               tab === t.value
-                ? "flex-1 whitespace-nowrap rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-foreground"
-                : "flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+                ? "flex min-h-11 flex-1 items-center justify-center whitespace-nowrap rounded-md bg-muted px-3 py-2.5 text-sm font-medium text-foreground"
+                : "flex min-h-11 flex-1 items-center justify-center whitespace-nowrap rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
             }
           >
             {t.label}
@@ -243,9 +243,9 @@ export function LinkStats() {
           {RANGES.map((r) => (
             <Button
               key={r.value}
-              size="sm"
               variant={range === r.value ? "default" : "outline"}
               onClick={() => setRange(r.value)}
+              className="min-h-11 min-w-12"
             >
               {r.label}
             </Button>
