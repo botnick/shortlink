@@ -17,9 +17,10 @@ export function CopyRow({ value, label }: { value: string; label: string }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         }}
-        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {copied ? <Check className="size-4 text-emerald-600" /> : <Copy className="size-4" />}
+        <span>{copied ? "Copied" : "Copy"}</span>
       </button>
     </div>
   );
