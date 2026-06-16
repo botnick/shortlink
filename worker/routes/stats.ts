@@ -15,7 +15,7 @@ import type { DB, DbSchema, Dialect } from "../db";
 import { dayBucket, timeBucket } from "../lib/query";
 import type { AdminAnalyticsDTO, NameCount, StatsDTO } from "@shared/types";
 
-export type Range = "24h" | "7d" | "30d" | "90d" | "all";
+type Range = "24h" | "7d" | "30d" | "90d" | "all";
 const RANGES: Range[] = ["24h", "7d", "30d", "90d", "all"];
 const DAY_MS = 86_400_000;
 

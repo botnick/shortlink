@@ -9,7 +9,7 @@ import type { DB, DbSchema } from "../db";
 import type { LinkRow } from "../db/schema";
 import { getDbHandle } from "../db";
 
-export interface DomainScope {
+interface DomainScope {
   /** Matched custom-domain id, or null for the default short-host bucket. */
   domainId: string | null;
   /** Hostname to build this link's short URL on. */
@@ -17,7 +17,7 @@ export interface DomainScope {
 }
 
 /** The canonical default short host, derived from APP_URL. */
-export function appHost(env: AppBindings): string {
+function appHost(env: AppBindings): string {
   try {
     return new URL(env.APP_URL).host;
   } catch {

@@ -7,12 +7,12 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days absolute
 const SESSION_RENEW_MS = 1000 * 60 * 60 * 24 * 15; // sliding renew when < 15 days left
 const ACTIVITY_TOUCH_MS = 1000 * 60 * 5; // stamp last_active at most every 5 min
 
-export function generateSessionId(): string {
+function generateSessionId(): string {
   return randomHex(32);
 }
 
 /** Device snapshot recorded at sign-in, shown on the account's session list. */
-export interface SessionMeta {
+interface SessionMeta {
   browser?: string | null;
   os?: string | null;
   deviceType?: string | null;
@@ -40,7 +40,7 @@ export async function createSession(
   return { id, expiresAt };
 }
 
-export interface ValidatedSession {
+interface ValidatedSession {
   user: SessionUser;
   expiresAt: Date;
   renewed: boolean;

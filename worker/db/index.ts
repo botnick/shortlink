@@ -12,7 +12,7 @@ export type Dialect = "postgres" | "sqlite";
 export type DbSchema = typeof pgSchema;
 export type DB = ReturnType<typeof pgClient>;
 
-export interface DbHandle {
+interface DbHandle {
   db: DB;
   schema: DbSchema;
   dialect: Dialect;
@@ -31,7 +31,7 @@ function pgClient(env: AppBindings) {
 
 /** Which driver to use is fixed at deploy time via the `DB_DRIVER` var
  *  ("postgres" | "d1"), defaulting to Postgres for backwards compatibility. */
-export function resolveDialect(env: AppBindings): Dialect {
+function resolveDialect(env: AppBindings): Dialect {
   return (env.DB_DRIVER as string | undefined) === "d1" ? "sqlite" : "postgres";
 }
 

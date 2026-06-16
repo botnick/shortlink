@@ -10,8 +10,6 @@ import { SortGame } from "./SortGame";
 import { PathTraceGame } from "./PathTraceGame";
 import { KeyCountGame } from "./KeyCountGame";
 
-export type { GameProps } from "./types";
-
 export const GAME_VIEWS: Record<GameType, ComponentType<GameProps>> = {
   slide: SlideGame,
   "drag-target": DragTargetGame,

@@ -25,7 +25,7 @@ const DIRS: readonly ArrowDirection[] = ["left", "right", "up", "down"];
 const LEN = { easy: [3, 4], normal: [4, 5], hard: [5, 6] } as const;
 
 /** Recorder targetId for a directional key press (see client KeyCountGame). */
-export const keyId = (dir: string) => `key-${dir}`;
+const keyId = (dir: string) => `key-${dir}`;
 
 export const keyCount: GamePlugin = {
   type: "key-count",

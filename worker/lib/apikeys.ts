@@ -10,7 +10,7 @@ import { getDbHandle, type DB, type DbSchema } from "../db";
 import { bytesToHex, randomHex } from "./encoding";
 import { counterBump, counterGet } from "./ratelimit";
 
-export const KEY_RE = /^sk_[0-9a-f]{48}$/;
+const KEY_RE = /^sk_[0-9a-f]{48}$/;
 const CACHE_TTL = 300; // seconds; revocation deletes the entry explicitly
 
 export function generateApiKey(): { key: string; prefix: string } {

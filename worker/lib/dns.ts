@@ -1,7 +1,7 @@
 import { randomHex } from "./encoding";
 
-export const VERIFY_PREFIX = "_shortlink-verify";
-export const VERIFY_TAG = "shortlink-verify";
+const VERIFY_PREFIX = "_shortlink-verify";
+const VERIFY_TAG = "shortlink-verify";
 
 export function newVerifyToken(): string {
   return randomHex(16);

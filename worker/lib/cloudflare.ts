@@ -3,7 +3,7 @@ import type { DomainDnsRecord } from "@shared/types";
 
 const API = "https://api.cloudflare.com/client/v4";
 
-export interface HostnameResult {
+interface HostnameResult {
   cfId: string;
   status: string; // "active" | "pending" | ...
   records: DomainDnsRecord[];

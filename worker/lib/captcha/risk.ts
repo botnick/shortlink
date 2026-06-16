@@ -15,7 +15,7 @@
  */
 import type { CaptchaEvidence } from "@shared/captcha";
 
-export interface RiskAssessment {
+interface RiskAssessment {
   score: number;
   /** Internal reason codes — server logs only, never sent to the client. */
   reasons: string[];

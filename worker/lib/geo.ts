@@ -40,7 +40,7 @@ export function isBotUA(ua: string | null): boolean {
   return BOT_RE.test(ua);
 }
 
-export interface UAInfo {
+interface UAInfo {
   browser: string | null;
   os: string | null;
   deviceType: string | null;
