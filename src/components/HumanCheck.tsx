@@ -194,7 +194,7 @@ export function HumanCheck({
     >
       {phase === "done" ? (
         <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-600" aria-live="polite">
-          <Check className="size-3.5" /> Verified — you're human
+          <Check className="hc-pop size-3.5" /> Verified — you're human
         </p>
       ) : phase === "error" ? (
         <div className="flex items-center justify-between gap-2 text-xs" aria-live="polite">

@@ -340,12 +340,12 @@ const THEME_INDEX: Record<string, number> = Object.fromEntries(
 const THEME_POOLS: Record<GameType, string[]> = {
   slide: ["cyber", "synth"], // a horizontal rail / neon track
   "drag-target": ["space", "desert"], // open field + a place to dock/land
-  "tap-match": ["forest", "gameboy"], // calm, uncluttered — the match stands out
-  rotate: ["aurora", "space", "sunset"], // a dial against the sky / orbit
+  "tap-match": ["forest", "ocean"], // calm, uncluttered — the match stands out
+  rotate: ["aurora", "space"], // a dial against the sky / orbit
   connect: ["synth", "cyber"], // a grid/network the link rides along
   "sort-3": ["dungeon", "lava"], // a shelf/ledge to line things up on
   "path-trace": ["ocean", "forest"], // a trail through bubbles / a glade
-  "key-count": ["gameboy", "aurora"], // calmest screens for the keyboard game
+  "key-count": ["aurora", "forest"], // calm screens for the keyboard game
 };
 
 /** Resolve a game type + seed to a concrete theme index (pool pick by seed). */
@@ -372,10 +372,11 @@ function dataSaver(): boolean {
   return c?.saveData === true;
 }
 
-/** A decorative, non-interactive pixel-art backdrop. The game type picks a
- *  fitting scene pool; `seed` chooses one from it and varies its interior — bump
- *  it for a fresh scene. Skipped under Save-Data (a flat dark fill instead) to
- *  stay light on metered connections. */
+/** A decorative, non-interactive backdrop. The game type picks a fitting scene
+ *  (a painted 16-bit pixel-art screen); the seed chooses which of the pool and
+ *  mirrors it for variety. The hand-drawn SVG paints instantly underneath and
+ *  remains the fallback under Save-Data or if the art can't load. A contrast
+ *  scrim keeps the bright game pieces readable over the busy scene. */
 export function ThemeBackground({
   seed,
   gameType,
@@ -383,10 +384,69 @@ export function ThemeBackground({
   seed: number;
   gameType?: GameType;
 }) {
-  if (dataSaver()) {
-    return <div className="absolute inset-0 bg-[#0a0e1c]" aria-hidden="true" />;
-  }
   const idx = themeIndexFor(gameType, seed);
+  const saver = dataSaver();
+  const flip = (Math.abs(seed) & 1) === 1;
+  // A handful of seeded twinkles drifting over the upper scene — pure ambiance.
+  const sr = makeRng(seed * 40503 + 7);
+  const sparkles = Array.from({ length: 7 }, () => ({
+    x: 6 + sr() * 88,
+    y: 4 + sr() * 36,
+    r: 0.4 + sr() * 0.5,
+    d: sr() * 3,
+  }));
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      <ProceduralBackground idx={idx} seed={seed} />
+      {!saver && (
+        <img
+          src={`/captcha-scenes/${THEMES[idx].name}.webp`}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="absolute inset-0 size-full object-cover"
+          style={{
+            transform: flip ? "scaleX(-1)" : undefined,
+            // Dim + slightly soften the art so it reads as a backdrop and the
+            // bright foreground pieces / game guides clearly sit on top of it.
+            filter: "brightness(0.6) saturate(1.08) blur(0.4px)",
+          }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.opacity = "0";
+          }}
+        />
+      )}
+      {/* A flat darkening + an edge vignette: the scene becomes ambience, the
+          game (pieces, tracks, rings) stays the clear subject. */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(rgba(6,8,16,0.42), rgba(6,8,16,0.42)), radial-gradient(130% 105% at 50% 44%, rgba(0,0,0,0) 26%, rgba(0,0,0,0.5) 100%)",
+        }}
+      />
+      {!saver && (
+        <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 size-full" aria-hidden="true">
+          {sparkles.map((s, i) => (
+            <circle
+              key={i}
+              cx={s.x}
+              cy={s.y}
+              r={s.r}
+              fill="#fffbe6"
+              className="hc-twinkle"
+              style={{ animationDelay: `${s.d.toFixed(2)}s` }}
+            />
+          ))}
+        </svg>
+      )}
+    </div>
+  );
+}
+
+/** The original hand-drawn SVG scene — an instant first paint and the graceful
+ *  fallback whenever the painted art can't show. */
+function ProceduralBackground({ idx, seed }: { idx: number; seed: number }) {
   const r = makeRng(seed * 2654435761);
   const { bg, els } = THEMES[idx].draw(r);
   return (

@@ -51,11 +51,14 @@ export function ShapeGlyph({
 }) {
   const p = pos ?? obj.pos;
   const color = usePieceColor(obj.id, obj.color);
-  // Key light from the top-left: a darker edge, a lit top bevel, and 1–2 bright
-  // specular pixels give the flat shape a chunky "pixel gem" read.
-  const edgeColor = useMemo(() => darken(color, 0.5), [color]);
-  const topColor = useMemo(() => lighten(color, 0.42), [color]);
-  const specColor = useMemo(() => lighten(color, 0.72), [color]);
+  // Cut-gem shading: a dark outline, a top rim catching the light, a vertical
+  // light→dark ramp across the body, and 1–2 bright specular pixels — so the
+  // jittered polygon reads as a polished pixel-art jewel, not a flat blob.
+  const edgeColor = useMemo(() => darken(color, 0.58), [color]); // outline
+  const rimColor = useMemo(() => lighten(color, 0.46), [color]); // top rim light
+  const hiColor = useMemo(() => lighten(color, 0.18), [color]); // body, upper
+  const loColor = useMemo(() => darken(color, 0.28), [color]); // body, lower
+  const specColor = useMemo(() => lighten(color, 0.82), [color]); // glint
 
   // Per-piece raster recipe (random cell count + sub-cell offset) → the SAME
   // shape rasterizes to a DIFFERENT bitmap each challenge, so a bot can't hash
@@ -70,22 +73,31 @@ export function ShapeGlyph({
   const paths = useMemo(() => {
     const px = (obj.size * 2) / raster.n;
     const w = (px * 1.03).toFixed(2);
+    const ys = cells.map((c) => c.gy);
+    const minY = Math.min(...ys);
+    const span = Math.max(1, Math.max(...ys) - minY);
     // The 1–2 top-edge cells nearest the top-left become a specular glint.
     const tops = cells
       .filter((c) => c.topEdge)
       .sort((a, b) => a.gx + a.gy - (b.gx + b.gy));
     const spec = new Set(tops.slice(0, tops.length > 6 ? 2 : 1).map((c) => `${c.gx},${c.gy}`));
-    let base = "", edge = "", top = "", glint = "";
+    let outline = "", rim = "", hi = "", mid = "", lo = "", glint = "";
     for (const c of cells) {
       const x = (-obj.size + c.gx * px).toFixed(2);
       const y = (-obj.size + c.gy * px).toFixed(2);
       const seg = `M${x} ${y}h${w}v${w}h-${w}z`;
-      if (spec.has(`${c.gx},${c.gy}`)) glint += seg;
-      else if (c.topEdge) top += seg;
-      else if (c.edge) edge += seg;
-      else base += seg;
+      const key = `${c.gx},${c.gy}`;
+      if (spec.has(key)) glint += seg;
+      else if (c.topEdge) rim += seg;
+      else if (c.edge) outline += seg;
+      else {
+        const t = (c.gy - minY) / span; // 0 = top of body, 1 = bottom
+        if (t < 0.34) hi += seg;
+        else if (t > 0.66) lo += seg;
+        else mid += seg;
+      }
     }
-    return { base, edge, top, glint };
+    return { outline, rim, hi, mid, lo, glint };
   }, [cells, obj.size, raster.n]);
 
   return (
@@ -101,6 +113,7 @@ export function ShapeGlyph({
         <circle r={obj.size * 1.32} fill={color} opacity={0.16} />
         {highlight && (
           <circle
+            className="hc-pulse"
             r={obj.size * 1.5}
             fill="none"
             stroke="var(--primary)"
@@ -108,10 +121,14 @@ export function ShapeGlyph({
             strokeDasharray="2.6 2"
           />
         )}
-        {paths.base && <path d={paths.base} fill={color} shapeRendering="crispEdges" />}
-        {paths.edge && <path d={paths.edge} fill={edgeColor} shapeRendering="crispEdges" />}
-        {paths.top && <path d={paths.top} fill={topColor} shapeRendering="crispEdges" />}
-        {paths.glint && <path d={paths.glint} fill={specColor} shapeRendering="crispEdges" />}
+        {paths.outline && <path d={paths.outline} fill={edgeColor} shapeRendering="crispEdges" />}
+        {paths.lo && <path d={paths.lo} fill={loColor} shapeRendering="crispEdges" />}
+        {paths.mid && <path d={paths.mid} fill={color} shapeRendering="crispEdges" />}
+        {paths.hi && <path d={paths.hi} fill={hiColor} shapeRendering="crispEdges" />}
+        {paths.rim && <path d={paths.rim} fill={rimColor} shapeRendering="crispEdges" />}
+        {paths.glint && (
+          <path d={paths.glint} className="hc-glint" fill={specColor} shapeRendering="crispEdges" />
+        )}
         {obj.label && (
           <text
             textAnchor="middle"
