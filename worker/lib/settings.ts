@@ -385,7 +385,10 @@ export function challengeModeFrom(map: Record<string, unknown>): VerificationMod
   if (v === "off") return "disabled"; // legacy v2 value
   if (v === "game" || v === "forced-game") return "game-only"; // legacy values
   if (v === "disabled" || v === "invisible" || v === "game-only") return v;
-  return "game-only";
+  // Default to invisible-first (Turnstile-style): now that the no-game path
+  // scores the passive automation probe, most humans pass with zero UI and only
+  // risky sessions ever see a game. Admins can still pick game-only/disabled.
+  return "invisible";
 }
 
 // --- Human check v3 (interactive game CAPTCHA) --------------------------------
@@ -516,6 +519,7 @@ export interface CaptchaConfig {
 }
 
 export function captchaConfigFrom(map: Record<string, unknown>): CaptchaConfig {
+  const riskMedium = captchaRiskMediumFrom(map);
   return {
     mode: challengeModeFrom(map),
     games: captchaGamesFrom(map),
@@ -525,8 +529,10 @@ export function captchaConfigFrom(map: Record<string, unknown>): CaptchaConfig {
     tokenTtlSec: captchaTokenTtlFrom(map),
     maxRetries: captchaMaxRetriesFrom(map),
     maxEvents: captchaMaxEventsFrom(map),
-    riskMedium: captchaRiskMediumFrom(map),
-    riskHigh: captchaRiskHighFrom(map),
+    riskMedium,
+    // High must sit at or above medium whatever the admin typed, or the tiers
+    // (≥medium → a game, ≥high → block) would be incoherent.
+    riskHigh: Math.max(captchaRiskHighFrom(map), riskMedium),
     toleranceMult: TOLERANCE_MULT[captchaToleranceFrom(map)],
     createLimit: captchaCreateLimitFrom(map),
     verifyLimit: captchaVerifyLimitFrom(map),
