@@ -161,6 +161,24 @@ export function assessBehavior(
   return { score, reasons };
 }
 
+/**
+ * Passive confidence check for INVISIBLE mode (no game played). Scores ONLY the
+ * environment/automation probe — webdriver, headless hints, automation-driver
+ * globals, synthetic events, a no-interaction+instant arrival — and NEVER the
+ * pointer-physics or the blanket "no-interaction" penalty, which both assume a
+ * game was actually played and would punish every legitimate silent user. An
+ * honest browser scores ~0 and passes with zero UI; lazy/default automation tips
+ * over the medium-risk line and is handed one easy game.
+ */
+export function assessPassive(evidence: CaptchaEvidence): RiskAssessment {
+  const reasons: string[] = [];
+  // Skip the "no-page-interaction" penalty here: on the invisible auto-check the
+  // probe runs BEFORE the user touches the form, so it would fire for every
+  // genuine user too (a false-positive). Only the automation tells count.
+  const score = scoreEnv(evidence.signals, reasons, { skipInteraction: true });
+  return { score, reasons };
+}
+
 // --- Phase B/C: environment + session signals --------------------------------
 /** All client-reported and trivially spoofable, so individually weak and, as a
  *  group, capped well below the block threshold — they can never block a real
@@ -169,7 +187,11 @@ export function assessBehavior(
  *  lazy default automation that doesn't bother faking them. Applied to EVERY
  *  input mode (the keyboard game included), since they key on automation, not
  *  on how the user pointed. Returns the (capped) contribution; pushes reasons. */
-function scoreEnv(sig: CaptchaEvidence["signals"], reasons: string[]): number {
+function scoreEnv(
+  sig: CaptchaEvidence["signals"],
+  reasons: string[],
+  opts: { skipInteraction?: boolean } = {},
+): number {
   if (!sig) return 0;
   let envScore = 0;
   const envAdd = (n: number, why: string) => {
@@ -191,7 +213,12 @@ function scoreEnv(sig: CaptchaEvidence["signals"], reasons: string[]): number {
   if (sig.untrusted === true) envAdd(18, "synthetic-events");
   // Submitted almost instantly AND never touched the page first → scripted
   // arrival. Requires BOTH so a fast genuine user (who DID interact) is safe.
-  if (sig.interactedBefore === false && typeof sig.pageDwellMs === "number" && sig.pageDwellMs < 800) {
+  if (
+    !opts.skipInteraction &&
+    sig.interactedBefore === false &&
+    typeof sig.pageDwellMs === "number" &&
+    sig.pageDwellMs < 800
+  ) {
     envAdd(12, "no-page-interaction");
   }
   // Cap the whole environment/session contribution so it can never reach the

@@ -89,12 +89,14 @@ export function HumanCheck({
         setProgress({ total: ch.gamesTotal, index: ch.gameIndex });
         setPhase("playing");
       } else {
-        // Invisible mode: hand in the background work; the server may answer
-        // with a token — or escalate to one easy game.
+        // Invisible mode: hand in the background work AND the passive automation
+        // probe (webdriver / headless / automation globals / synthetic events).
+        // The server scores it and either issues a token or escalates to one
+        // easy game — a genuine browser passes silently.
         setPhase("submitting");
         const powSolution = await powRef.current;
         if (ctl.signal.aborted) return;
-        await verify({ powSolution }, ctl);
+        await verify({ powSolution, evidence: recRef.current?.evidence() }, ctl);
       }
     } catch {
       if (!ctl.signal.aborted) setPhase("error");
