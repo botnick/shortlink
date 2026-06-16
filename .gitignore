@@ -30,3 +30,7 @@ _brand-pages/
 
 # Captcha / theme / misc preview PNGs emitted by scripts (dev)
 scripts/*-preview.png
+
+# Local-only dev tooling and session notes — never commit
+.summary/
+scripts/dev-preview-admin.ts
