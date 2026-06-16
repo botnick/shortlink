@@ -714,14 +714,19 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
       })
       .from(links)
       .where(inArray(links.id, ids));
+    // Purge every cache entry point (live back-half + retired aliases) BEFORE the
+    // delete. purgeLinkCache reads link_aliases, which the delete cascades away —
+    // so running it afterwards (as this did) leaves the retired-alias keys in KV
+    // and deleted links keep redirecting via them until the TTL lapses. This
+    // mirrors the single-link DELETE and the documented invariant.
+    await Promise.all(targets.map((r) => purgeLinkCache(c.env, db, c.var.schema, r)));
     await db.delete(links).where(inArray(links.id, ids));
     c.executionCtx.waitUntil(
-      Promise.all([
-        ...targets.map((r) => purgeLinkCache(c.env, db, c.var.schema, r)),
-        ...targets
+      Promise.all(
+        targets
           .filter((r) => r.ogImage === "r2")
           .map((r) => c.env.LOGO_BUCKET.delete(`og/${r.id}`).catch(() => {})),
-      ]).then(() => {}),
+      ).then(() => {}),
     );
     return c.json({ ok: true, count: targets.length });
   }

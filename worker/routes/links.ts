@@ -160,7 +160,14 @@ async function resolveLinkDomain(
     .limit(1);
   const d = r[0];
   if (!d || d.userId !== userId) return { error: "That domain isn’t available" };
-  if (d.status === "pending") return { error: "Verify that domain before using it" };
+  // Allowlist the two "ready" states (active = Cloudflare-for-SaaS, verified =
+  // DNS) instead of only rejecting the literal "pending". Every other Cloudflare
+  // status (pending_validation, pending_deployment, blocked, moved, …) means the
+  // host isn't actually routing yet, so a link created on it would dead-end. This
+  // matches the cleanup cron, which treats only active/verified as done.
+  if (d.status !== "verified" && d.status !== "active") {
+    return { error: "Verify that domain before using it" };
+  }
   return { hostname: d.hostname };
 }
 
