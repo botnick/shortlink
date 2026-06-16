@@ -196,7 +196,7 @@ export interface AdminAnalyticsDTO {
   devices: NameCount[];
   browsers: NameCount[];
   os: NameCount[];
-  topLinks: { slug: string; clickCount: number; ownerEmail: string }[];
+  topLinks: { id: string; slug: string; clickCount: number; ownerEmail: string }[];
 }
 
 export interface AdminOverviewDTO {
@@ -208,7 +208,7 @@ export interface AdminOverviewDTO {
   };
   clicks7d: number;
   newLinks7d: number;
-  topLinks: { slug: string; clickCount: number; ownerEmail: string }[];
+  topLinks: { id: string; slug: string; clickCount: number; ownerEmail: string }[];
   timeseries: TimePoint[];
   dbDriver: "postgres" | "sqlite";
 }

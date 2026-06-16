@@ -215,6 +215,7 @@ export async function computeGlobalStats(
       topList(db, clicks, base, clicks.os),
       db
         .select({
+          id: links.id,
           slug: links.slug,
           clickCount: links.clickCount,
           ownerEmail: users.email,
@@ -237,6 +238,7 @@ export async function computeGlobalStats(
     browsers,
     os: oss,
     topLinks: top.map((t) => ({
+      id: t.id,
       slug: t.slug,
       clickCount: t.clickCount,
       ownerEmail: t.ownerEmail,

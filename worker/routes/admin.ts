@@ -490,6 +490,7 @@ admin.get("/overview", async (c) => {
         .then((r) => Number(r[0]?.v ?? 0)),
       db
         .select({
+          id: links.id,
           slug: links.slug,
           clickCount: links.clickCount,
           ownerEmail: users.email,
@@ -516,6 +517,7 @@ admin.get("/overview", async (c) => {
     clicks7d: clicks7,
     newLinks7d: newLinks7,
     topLinks: top.map((t) => ({
+      id: t.id,
       slug: t.slug,
       clickCount: t.clickCount,
       ownerEmail: t.ownerEmail,
