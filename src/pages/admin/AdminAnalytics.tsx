@@ -73,12 +73,19 @@ export function AdminAnalytics() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
     api
       .get<AdminAnalyticsDTO>(`/admin/analytics?range=${range}`)
-      .then(setData)
-      .catch(() => toast.error("Couldn't load analytics"))
-      .finally(() => setLoading(false));
+      .then((d) => active && setData(d))
+      .catch(() => active && toast.error("Couldn't load analytics"))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    // Guard against out-of-order resolution on fast range toggles.
+    return () => {
+      active = false;
+    };
   }, [range]);
 
   return (

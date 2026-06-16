@@ -51,18 +51,29 @@ export function useSearchList<T>(
       });
   }, [debounced]);
 
+  // Synchronous in-flight guard: the `loadingMore` STATE updates a render late,
+  // so two quick calls could both pass a state-only check and double-append.
+  const loadingMoreRef = useRef(false);
   const loadMore = useCallback(() => {
-    if (!cursor || loadingMore) return;
+    if (!cursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
     const id = reqId.current;
     setLoadingMore(true);
     fetchRef.current({ q: debounced, cursor })
       .then((page) => {
+        // Drop the page if a new search bumped reqId while this was in flight.
         if (id !== reqId.current) return;
         setItems((prev) => [...prev, ...page.items]);
         setCursor(page.nextCursor);
       })
-      .finally(() => setLoadingMore(false));
-  }, [cursor, loadingMore, debounced]);
+      .catch(() => {
+        /* keep the current list; the row stays available to retry */
+      })
+      .finally(() => {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      });
+  }, [cursor, debounced]);
 
   const patchItem = useCallback((match: (it: T) => boolean, next: (it: T) => T) => {
     setItems((prev) => prev.map((it) => (match(it) ? next(it) : it)));

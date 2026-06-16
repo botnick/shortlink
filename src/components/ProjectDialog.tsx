@@ -155,8 +155,13 @@ export function ProjectDialog({
 
             {project.linkCount > 0 && (
               <div className="space-y-3">
-                <label className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-primary">
+                {/* A wrapper <div>, not <label>: this row holds two form controls
+                    (radio + select), and a <label> may be associated with only
+                    one — nesting both makes clicks ambiguous. The radio is
+                    labelled explicitly via htmlFor instead. */}
+                <div className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-primary">
                   <input
+                    id="del-move"
                     type="radio"
                     name="del"
                     checked={deleteMode === "move"}
@@ -164,7 +169,9 @@ export function ProjectDialog({
                     className="mt-1 accent-primary"
                   />
                   <span className="min-w-0 flex-1 space-y-2">
-                    <span className="block text-sm font-medium">Move the links to another project</span>
+                    <label htmlFor="del-move" className="block text-sm font-medium">
+                      Move the links to another project
+                    </label>
                     <select
                       value={moveTo}
                       onChange={(e) => setMoveTo(e.target.value)}
@@ -178,7 +185,7 @@ export function ProjectDialog({
                       ))}
                     </select>
                   </span>
-                </label>
+                </div>
                 <label className="flex items-start gap-3 rounded-lg border p-3 has-[:checked]:border-destructive">
                   <input
                     type="radio"

@@ -1,12 +1,29 @@
+import { lazy, Suspense } from "react";
 import { NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import { BarChart3, Globe, Link2, LineChart, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AdminOverview } from "@/pages/admin/AdminOverview";
-import { AdminAnalytics } from "@/pages/admin/AdminAnalytics";
-import { AdminLinks } from "@/pages/admin/AdminLinks";
-import { AdminTeam } from "@/pages/admin/AdminTeam";
-import { AdminDomains } from "@/pages/admin/AdminDomains";
-import { AdminSettings } from "@/pages/admin/AdminSettings";
+import { PageLoader } from "@/components/PageLoader";
+
+// Code-split each admin tab so opening the console doesn't pull in all six
+// (AdminSettings alone is large) — only the visited tab's chunk loads.
+const AdminOverview = lazy(() =>
+  import("@/pages/admin/AdminOverview").then((m) => ({ default: m.AdminOverview })),
+);
+const AdminAnalytics = lazy(() =>
+  import("@/pages/admin/AdminAnalytics").then((m) => ({ default: m.AdminAnalytics })),
+);
+const AdminLinks = lazy(() =>
+  import("@/pages/admin/AdminLinks").then((m) => ({ default: m.AdminLinks })),
+);
+const AdminTeam = lazy(() =>
+  import("@/pages/admin/AdminTeam").then((m) => ({ default: m.AdminTeam })),
+);
+const AdminDomains = lazy(() =>
+  import("@/pages/admin/AdminDomains").then((m) => ({ default: m.AdminDomains })),
+);
+const AdminSettings = lazy(() =>
+  import("@/pages/admin/AdminSettings").then((m) => ({ default: m.AdminSettings })),
+);
 
 const TABS: { to: string; label: string; icon: typeof BarChart3; end?: boolean }[] = [
   { to: "/admin", label: "Overview", icon: BarChart3, end: true },
@@ -67,14 +84,16 @@ export function Admin() {
         })}
       </div>
 
-      <Routes>
-        <Route index element={<AdminOverview />} />
-        <Route path="analytics" element={<AdminAnalytics />} />
-        <Route path="links" element={<AdminLinksRoute />} />
-        <Route path="team" element={<AdminTeam />} />
-        <Route path="domains" element={<AdminDomains />} />
-        <Route path="settings" element={<AdminSettings />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route index element={<AdminOverview />} />
+          <Route path="analytics" element={<AdminAnalytics />} />
+          <Route path="links" element={<AdminLinksRoute />} />
+          <Route path="team" element={<AdminTeam />} />
+          <Route path="domains" element={<AdminDomains />} />
+          <Route path="settings" element={<AdminSettings />} />
+        </Routes>
+      </Suspense>
     </div>
   );
 }

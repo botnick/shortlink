@@ -114,7 +114,9 @@ export function AdminOverview() {
               Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)
             ) : data && data.topLinks.length > 0 ? (
               data.topLinks.map((l) => (
-                <div key={l.slug} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50">
+                // slug isn't unique cross-domain; pair it with the owner for a
+                // stabler key (a per-link id in the DTO would be the full fix).
+                <div key={`${l.slug}-${l.ownerEmail}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">/{l.slug}</div>
                     <div className="truncate text-xs text-muted-foreground">{l.ownerEmail}</div>

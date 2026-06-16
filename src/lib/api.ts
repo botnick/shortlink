@@ -7,7 +7,22 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+/**
+ * Called once when an authenticated request comes back 401 (session expired or
+ * revoked). The AuthProvider registers a handler that clears the user, so
+ * ProtectedRoute then bounces to /login instead of leaving stale `user` state.
+ * Auth endpoints are excluded — a 401 from /auth/login is just a bad password,
+ * not an expired session.
+ */
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn;
+}
+
+async function request<T>(
+  path: string,
+  options?: RequestInit & { signal?: AbortSignal },
+): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
@@ -17,6 +32,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const body = isJson ? await res.json() : null;
 
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/auth/")) {
+      onUnauthorized?.();
+    }
     throw new ApiError(res.status, extractError(body, res.status));
   }
   return body as T;
@@ -52,7 +70,7 @@ function extractError(body: unknown, status: number): string {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
+  get: <T>(path: string, signal?: AbortSignal) => request<T>(path, { signal }),
   post: <T>(path: string, data?: unknown) =>
     request<T>(path, {
       method: "POST",

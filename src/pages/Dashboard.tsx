@@ -48,6 +48,7 @@ export function Dashboard() {
   const [importOpen, setImportOpen] = useState(false);
   const [nonce, setNonce] = useState(0);
   const reqId = useRef(0);
+  const loadingMoreRef = useRef(false);
   const navigate = useNavigate();
 
   const confirm = useConfirm();
@@ -95,15 +96,22 @@ export function Dashboard() {
   }, [search, selectedId, activeTag, nonce, fetchPage]);
 
   async function loadMore() {
-    if (!cursor) return;
+    // Synchronous guard: a state-only check updates a render late, so a rapid
+    // second call could append the same cursor page twice.
+    if (!cursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    const id = reqId.current;
     setLoadingMore(true);
     try {
       const data = await fetchPage(search, cursor, selectedId, activeTag);
+      // A search/filter change reset the list while this was in flight — drop it.
+      if (id !== reqId.current) return;
       setLinks((prev) => [...prev, ...data.links]);
       setCursor(data.nextCursor);
     } catch {
-      toast.error("Couldn't load more");
+      if (id === reqId.current) toast.error("Couldn't load more");
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
   }
@@ -186,6 +194,7 @@ export function Dashboard() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search your links…"
+          aria-label="Search your links"
           className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>

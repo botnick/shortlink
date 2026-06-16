@@ -143,6 +143,7 @@ export function AdminLinks({
             value={list.query}
             onChange={(e) => list.setQuery(e.target.value)}
             placeholder="Search slug, URL, title or owner…"
+            aria-label="Search links"
             className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>

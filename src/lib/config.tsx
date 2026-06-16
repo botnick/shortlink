@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -65,6 +66,10 @@ function setFavicon(href: string) {
 interface ConfigState {
   config: AppConfigDTO;
   loading: boolean;
+  /** True when the initial /config load failed. Consumers should surface a retry
+   *  rather than trust the defaults (which include `needsSetup: false`, so a
+   *  silent fallback would mis-gate first-run setup). */
+  error: boolean;
   refresh: () => Promise<void>;
 }
 
@@ -73,12 +78,15 @@ const ConfigContext = createContext<ConfigState | null>(null);
 export function ConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AppConfigDTO>(DEFAULT);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
+      setError(false);
       setConfig(await api.get<AppConfigDTO>("/config"));
     } catch {
-      // keep defaults on failure
+      // Surface the failure instead of silently serving defaults.
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -122,10 +130,13 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     }
   }, [config]);
 
+  const value = useMemo(
+    () => ({ config, loading, error, refresh }),
+    [config, loading, error, refresh],
+  );
+
   return (
-    <ConfigContext.Provider value={{ config, loading, refresh }}>
-      {children}
-    </ConfigContext.Provider>
+    <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
   );
 }
 
