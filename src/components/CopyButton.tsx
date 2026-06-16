@@ -39,7 +39,7 @@ export function CopyButton({
       {...props}
     >
       {copied ? <Check className="text-emerald-500" /> : <Copy />}
-      {label}
+      {label ? (copied ? "Copied" : label) : null}
     </Button>
   );
   // Icon-only copy buttons get a tooltip so they're understandable.
