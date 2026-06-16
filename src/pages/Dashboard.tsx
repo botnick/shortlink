@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   ExternalLink,
   Link2,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { formatNumber, timeAgo } from "@/lib/format";
 import type { LinkDTO, LinkListDTO, ProjectDTO } from "@shared/types";
 import { useProjects } from "@/lib/useProjects";
+import { isHttpUrl } from "@/lib/linkForm";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { ProjectDialog } from "@/components/ProjectDialog";
 import { BulkImportDialog } from "@/components/BulkImportDialog";
@@ -48,6 +50,8 @@ export function Dashboard() {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const [quickUrl, setQuickUrl] = useState("");
+  const [quickSubmitting, setQuickSubmitting] = useState(false);
   const reqId = useRef(0);
   const loadingMoreRef = useRef(false);
   const navigate = useNavigate();
@@ -126,6 +130,35 @@ export function Dashboard() {
     });
   }
 
+  // Quick create: paste a long link, hit Shorten, and the server picks the
+  // back-half. A bare domain gets https:// added, like the full editor does.
+  const quickDestination = quickUrl.trim()
+    ? isHttpUrl(quickUrl.trim())
+      ? quickUrl.trim()
+      : `https://${quickUrl.trim()}`
+    : "";
+  const quickValid = isHttpUrl(quickDestination);
+
+  async function quickCreate(e: FormEvent) {
+    e.preventDefault();
+    if (!quickValid || quickSubmitting) return;
+    setQuickSubmitting(true);
+    try {
+      const { link } = await api.post<{ link: LinkDTO }>("/links", {
+        destination: quickDestination,
+        projectId: selectedId ?? undefined,
+      });
+      upsert(link);
+      setQuickUrl("");
+      void refreshProjects();
+      toast.success("Short link created");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't create link");
+    } finally {
+      setQuickSubmitting(false);
+    }
+  }
+
   async function toggleActive(link: LinkDTO) {
     try {
       const { link: updated } = await api.patch<{ link: LinkDTO }>(
@@ -187,6 +220,41 @@ export function Dashboard() {
             <Plus /> <span className="hidden sm:inline">New link</span>
           </Button>
         </div>
+      </div>
+
+      {/* Quick create — paste a link and shorten it instantly (the server picks
+          the back-half). The full editor ("New link") stays for tracking/options. */}
+      <div className="space-y-1.5">
+        <form
+          onSubmit={quickCreate}
+          className="flex flex-col gap-2 rounded-xl border bg-card p-3 sm:flex-row sm:items-center sm:gap-3 sm:p-4"
+        >
+          <div className="relative flex-1">
+            <Link2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="url"
+              inputMode="url"
+              value={quickUrl}
+              onChange={(e) => setQuickUrl(e.target.value)}
+              placeholder="Paste a long link to shorten…"
+              aria-label="Paste a link to shorten"
+              className="h-11 w-full rounded-lg border bg-background pl-9 pr-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={!quickValid || quickSubmitting}
+            className="min-h-11 shrink-0"
+          >
+            {quickSubmitting ? <Loader2 className="animate-spin" /> : <Plus />}
+            Shorten
+          </Button>
+        </form>
+        {quickUrl.trim() && !quickValid && (
+          <p className="px-1 text-xs text-amber-600">
+            Enter a valid link, e.g. example.com — we’ll add https:// for you.
+          </p>
+        )}
       </div>
 
       <div className="relative">
