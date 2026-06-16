@@ -7,6 +7,8 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Power,
+  PowerOff,
   QrCode,
   Search,
   Trash2,
@@ -26,7 +28,6 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Hint } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/CopyButton";
 import {
@@ -231,7 +232,7 @@ export function Dashboard() {
           {links.map((link) => (
             <li
               key={link.id}
-              className="flex items-center gap-3 rounded-lg border bg-card p-3"
+              className="flex items-center gap-3 rounded-lg border bg-card p-4"
             >
               <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                 <Link2 className="size-4" />
@@ -281,7 +282,9 @@ export function Dashboard() {
                 <span>{timeAgo(link.createdAt)}</span>
               </div>
 
-              <CopyButton value={link.shortUrl} />
+              {/* Copy is the primary action — labelled and prominent so it's the
+                  obvious, large tap target. */}
+              <CopyButton value={link.shortUrl} label="Copy" variant="secondary" />
 
               <Hint label="Edit">
                 <Button
@@ -294,14 +297,6 @@ export function Dashboard() {
                 </Button>
               </Hint>
 
-              <Hint label={link.isActive ? "Deactivate" : "Activate"}>
-                <Switch
-                  checked={link.isActive}
-                  onCheckedChange={() => toggleActive(link)}
-                  aria-label={link.isActive ? "Deactivate link" : "Activate link"}
-                />
-              </Hint>
-
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" aria-label="Link actions" title="More actions">
@@ -309,6 +304,16 @@ export function Dashboard() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
+                  {/* Activate/Deactivate lives in the menu (not an inline switch)
+                      so it can't be toggled by an accidental tap. */}
+                  <DropdownMenuItem
+                    onClick={() => toggleActive(link)}
+                    className={link.isActive ? "text-amber-600 focus:text-amber-600" : undefined}
+                  >
+                    {link.isActive ? <PowerOff /> : <Power />}
+                    {link.isActive ? "Deactivate link" : "Activate link"}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <RouterLink to={`/links/${link.id}`}>
                       <BarChart3 /> Analytics
