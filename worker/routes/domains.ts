@@ -32,7 +32,7 @@ const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 async function loadSaas(c: AppContext): Promise<SaasConfig | null> {
   const map = await getAllSettings(c.var.db, c.var.schema);
-  return saasConfigFrom(map, c.env.APP_URL);
+  return saasConfigFrom(map, c.env.APP_URL, c.env.SESSION_SECRET);
 }
 
 function toDTO(saas: boolean, row: DomainRow): DomainDTO {
@@ -110,7 +110,7 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
   const user = c.var.user!;
   const { hostname } = c.req.valid("json");
   const map = await getAllSettings(c.var.db, c.var.schema);
-  const saas = saasConfigFrom(map, c.env.APP_URL);
+  const saas = await saasConfigFrom(map, c.env.APP_URL, c.env.SESSION_SECRET);
   const cap = maxDomainsPerUserFrom(map);
 
   const existing = await c.var.db

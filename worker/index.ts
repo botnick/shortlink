@@ -502,6 +502,9 @@ async function serveLinkOgImage(c: AppContext, id: string): Promise<Response> {
       headers: {
         "content-type": obj.httpMetadata?.contentType ?? "image/jpeg",
         "cache-control": "public, max-age=86400",
+        // Don't let a stored blob be sniffed into an executable type (only raster
+        // MIMEs are accepted on write — this is the second layer).
+        "x-content-type-options": "nosniff",
       },
     });
   } finally {
@@ -568,7 +571,7 @@ async function cleanupUnverifiedDomains(env: AppBindings): Promise<void> {
         ),
       );
     if (stale.length === 0) return;
-    const saas = saasConfigFrom(settings, env.APP_URL);
+    const saas = await saasConfigFrom(settings, env.APP_URL, env.SESSION_SECRET);
     if (saas) {
       for (const d of stale) {
         if (d.cfHostnameId) {

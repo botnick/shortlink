@@ -9,7 +9,17 @@ import { SETTING_KEYS } from "../lib/settings";
 import { invalidateSeo } from "../lib/seo";
 import { invalidatePublicConfig } from "../lib/appconfig";
 import { timingSafeEqual } from "../lib/encoding";
+import { isRateLimited } from "../lib/ratelimit";
+import { getClientIp } from "../lib/geo";
 import type { UserDTO } from "@shared/types";
+
+// Throttle setup-token guessing: a handful of attempts per IP per 15 min. The
+// claim insert makes setup one-shot, but this stops a brute-force before then.
+const SETUP_WINDOW_SEC = 15 * 60;
+const SETUP_MAX_ATTEMPTS = 10;
+// Reject a low-entropy SETUP_TOKEN outright so a guessable value can't be the
+// only thing standing between an attacker and the first admin account.
+const MIN_SETUP_TOKEN_LEN = 24;
 
 const setup = new Hono<AppEnv>();
 
@@ -27,8 +37,20 @@ async function tokenMatches(provided: string, expected: string): Promise<boolean
 // First-run installer. Creates the admin + initial settings, then signs in.
 setup.post("/", zValidator("json", setupSchema), async (c) => {
   const expected = c.env.SETUP_TOKEN;
-  if (!expected) {
+  if (!expected || expected.length < MIN_SETUP_TOKEN_LEN) {
+    // Missing or weak token → refuse rather than accept a guessable secret.
     return c.json({ error: "Setup is not configured on the server" }, 503);
+  }
+
+  if (
+    await isRateLimited(
+      c.env,
+      `setup:${getClientIp(c)}`,
+      SETUP_MAX_ATTEMPTS,
+      SETUP_WINDOW_SEC,
+    )
+  ) {
+    return c.json({ error: "Too many attempts — please try again later" }, 429);
   }
 
   const input = c.req.valid("json");

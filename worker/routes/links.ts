@@ -47,11 +47,20 @@ async function resolveOgImage(
   }
   const m = /^data:([^;]+);base64,(.+)$/.exec(value);
   if (!m) return "";
+  // Only store raster image types. SVG (image/svg+xml) is rejected on purpose:
+  // /ogimg/:id serves these bytes same-origin with their stored content-type, so
+  // an SVG would render inline and could carry script — restrict the MIME here
+  // (and the endpoint sends X-Content-Type-Options: nosniff as a second layer).
+  const mime = m[1].toLowerCase();
+  if (!["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"].includes(mime)) {
+    await env.LOGO_BUCKET.delete(key).catch(() => {});
+    return "";
+  }
   try {
     const bin = atob(m[2]);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    await env.LOGO_BUCKET.put(key, bytes, { httpMetadata: { contentType: m[1] } });
+    await env.LOGO_BUCKET.put(key, bytes, { httpMetadata: { contentType: mime } });
     return "r2";
   } catch {
     return ""; // malformed image → store nothing rather than failing the request
@@ -530,6 +539,12 @@ route.get("/slug-check", zValidator("query", slugCheckSchema), async (c) => {
   const settings = await getAllSettings(c.var.db, c.var.schema);
   if (extraReservedFrom(settings).includes(slug.toLowerCase())) {
     return c.json({ available: false, reason: "reserved" });
+  }
+  // A domainId must be one of the caller's own usable domains — otherwise this
+  // would leak slug availability across other users' custom-domain buckets.
+  if (domainId) {
+    const dom = await resolveLinkDomain(c.var.db, c.var.schema, c.var.user!.id, domainId);
+    if ("error" in dom) return c.json({ available: false, reason: "reserved" });
   }
   // Availability is per-domain and spans live back-halves + retired aliases.
   const taken = await slugTaken(c.var.db, c.var.schema, domainId, slug);
