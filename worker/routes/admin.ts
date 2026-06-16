@@ -78,7 +78,8 @@ import {
   twitterHandleFrom,
   setSetting,
 } from "../lib/settings";
-import { getCustomHostname } from "../lib/cloudflare";
+import { deleteCustomHostname, getCustomHostname } from "../lib/cloudflare";
+import { encryptSecret } from "../lib/secret";
 import { checkTxtVerification } from "../lib/dns";
 import { invalidateSeo } from "../lib/seo";
 import { invalidatePublicConfig, shortOrigin } from "../lib/appconfig";
@@ -330,7 +331,14 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   // Custom-domain (Cloudflare for SaaS) config — set via the web, no env vars.
   // An empty token clears it; a blank token is ignored so it isn't wiped on save.
   if (input.cfApiToken !== undefined && input.cfApiToken !== "") {
-    await setSetting(db, schema, SETTING_KEYS.cfApiToken, input.cfApiToken);
+    // Encrypt at rest so a DB-only leak can't expose the Cloudflare API token
+    // (the key derives from SESSION_SECRET, which never touches the database).
+    await setSetting(
+      db,
+      schema,
+      SETTING_KEYS.cfApiToken,
+      await encryptSecret(input.cfApiToken, c.env.SESSION_SECRET),
+    );
   }
   if (input.cfZoneId !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.cfZoneId, input.cfZoneId);
@@ -714,14 +722,19 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
       })
       .from(links)
       .where(inArray(links.id, ids));
+    // Purge every cache entry point (live back-half + retired aliases) BEFORE the
+    // delete. purgeLinkCache reads link_aliases, which the delete cascades away —
+    // so running it afterwards (as this did) leaves the retired-alias keys in KV
+    // and deleted links keep redirecting via them until the TTL lapses. This
+    // mirrors the single-link DELETE and the documented invariant.
+    await Promise.all(targets.map((r) => purgeLinkCache(c.env, db, c.var.schema, r)));
     await db.delete(links).where(inArray(links.id, ids));
     c.executionCtx.waitUntil(
-      Promise.all([
-        ...targets.map((r) => purgeLinkCache(c.env, db, c.var.schema, r)),
-        ...targets
+      Promise.all(
+        targets
           .filter((r) => r.ogImage === "r2")
           .map((r) => c.env.LOGO_BUCKET.delete(`og/${r.id}`).catch(() => {})),
-      ]).then(() => {}),
+      ).then(() => {}),
     );
     return c.json({ ok: true, count: targets.length });
   }
@@ -898,7 +911,7 @@ admin.post("/domains/:id/check", async (c) => {
   if (!row) return c.json({ error: "Not found" }, 404);
 
   const map = await getAllSettings(c.var.db, c.var.schema);
-  const saas = saasConfigFrom(map, c.env.APP_URL);
+  const saas = await saasConfigFrom(map, c.env.APP_URL, c.env.SESSION_SECRET);
 
   if (saas && row.cfHostnameId) {
     try {
@@ -934,7 +947,7 @@ admin.delete("/domains/:id", async (c) => {
   const { domains } = c.var.schema;
   const existing = (
     await c.var.db
-      .select({ hostname: domains.hostname })
+      .select({ hostname: domains.hostname, cfHostnameId: domains.cfHostnameId })
       .from(domains)
       .where(eq(domains.id, id))
       .limit(1)
@@ -951,6 +964,17 @@ admin.delete("/domains/:id", async (c) => {
     throw e;
   }
   await invalidateDomainHost(c.env.LINKS_KV, existing.hostname);
+  // Release the Cloudflare-for-SaaS hostname too, so a removed domain stops
+  // routing (the cron cleanup does this — manual admin delete must match it).
+  if (existing.cfHostnameId) {
+    const map = await getAllSettings(c.var.db, c.var.schema);
+    const saas = await saasConfigFrom(map, c.env.APP_URL, c.env.SESSION_SECRET);
+    if (saas) {
+      c.executionCtx.waitUntil(
+        deleteCustomHostname(saas, existing.cfHostnameId).catch(() => {}),
+      );
+    }
+  }
   return c.json({ ok: true });
 });
 

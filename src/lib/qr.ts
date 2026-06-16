@@ -170,8 +170,14 @@ export interface Composed {
 /** Wrap the QR in one of several frames — all drawn as our own SVG. */
 export function composeFrame(qrSvg: string, cfg: QrCfg): Composed {
   const S = QR_BASE;
-  const fc = cfg.frameColor;
-  const tc = cfg.frameTextColor;
+  // Escape the colour values before they're interpolated raw into SVG
+  // attributes below. qrConfig is persisted as an arbitrary record (the API /
+  // MCP accept any value for it), so a stray `"`/`<` here would otherwise break
+  // out of the attribute — harmless-looking, but this SVG is rendered inline via
+  // dangerouslySetInnerHTML in the QR studio. Valid hex / "transparent" colours
+  // contain no escaped chars, so this is a no-op for every legitimate config.
+  const fc = escapeXml(cfg.frameColor);
+  const tc = escapeXml(cfg.frameTextColor);
   const txt = cfg.frameText.trim();
   const pad = 32;
   const box = S + pad * 2;

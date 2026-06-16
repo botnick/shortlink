@@ -13,6 +13,7 @@ import {
   DEFAULT_OG_FONT,
   DEFAULT_OG_TEMPLATE,
 } from "@shared/defaults";
+import { decryptSecret } from "./secret";
 
 export const SETTING_KEYS = {
   registration: "registration_enabled",
@@ -550,13 +551,18 @@ export interface SaasConfig {
 /** Cloudflare-for-SaaS config, read from settings (configured via /admin — no
  *  env vars). Returns null unless a token + zone id are present. Fallback host
  *  defaults to the app's own host. */
-export function saasConfigFrom(
+export async function saasConfigFrom(
   map: Record<string, unknown>,
   appUrl: string,
-): SaasConfig | null {
-  const token = asString(map[SETTING_KEYS.cfApiToken], "");
+  secret: string,
+): Promise<SaasConfig | null> {
+  const stored = asString(map[SETTING_KEYS.cfApiToken], "");
   const zoneId = asString(map[SETTING_KEYS.cfZoneId], "");
-  if (!token || !zoneId) return null;
+  if (!stored || !zoneId) return null;
+  // The token is encrypted at rest (see encryptSecret); decrypt with the env
+  // secret. A blank result means corrupt/undecryptable → treat SaaS as unset.
+  const token = await decryptSecret(stored, secret);
+  if (!token) return null;
   let fallbackHost = asString(map[SETTING_KEYS.cfFallbackHost], "");
   if (!fallbackHost) {
     try {
