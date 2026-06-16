@@ -1,10 +1,12 @@
 # Human Check v3 — interactive game CAPTCHA
 
 A self-hosted, server-authoritative human-verification layer for sign-in and
-sign-up. Turnstile-style lifecycle (challenge → token → siteverify-on-consume),
-but when a game mode is on **everyone plays at least one short game** — there is
-no silent pass. No third-party service; nothing on the client is worth
-reverse-engineering.
+sign-up. Turnstile-style lifecycle (challenge → token → siteverify-on-consume).
+The default mode is **invisible-first**: a silent proof-of-work + behavioral/
+request scoring lets confident-human traffic pass without a game, escalating to
+one short game only when the signals are unsure. In **game-only** mode everyone
+plays at least one game (no silent pass). No third-party service; nothing on the
+client is worth reverse-engineering.
 
 ---
 
@@ -255,7 +257,12 @@ differs every challenge, and the client rasterizes with a random cell-count (12�
 sub-cell offset per piece so the rendered bitmap differs every time too. Same clean,
 readable silhouette; a different sprite each challenge. (Honest: a true vertex-count/CV
 classifier can still read a star — that residual is covered by the economic + interaction
-+ deception layers, not the shapes.)
++ deception layers, not the shapes.) **The piece is NEVER rendered as a shape-named
+asset** (e.g. a `/captcha-gems/star.webp` `<image>`): that would leak the answer in the
+DOM as a plaintext URL, collapsing perception back to a string compare. The only raster
+art is the **decorative full-scene backdrop** (`public/captcha-scenes/*.webp`), chosen by
+*game type* (never the secret answer), purely cosmetic, painted over a procedural fallback
+and skipped under `Save-Data` — it is no part of validation and leaks nothing.
 
 **Deliberately NOT done (they cost money / break $0):**
 - **D — Private Access Tokens** — needs an issuer (Apple/Cloudflare) or

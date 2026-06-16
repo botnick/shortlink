@@ -55,7 +55,7 @@ import {
 } from "./crypto";
 import { planChallenge } from "./plan";
 import { GAME_PLUGINS, generateGame, type GameInstance } from "./games";
-import { assessBehavior, assessPassive, hardFailure } from "./risk";
+import { assessBehavior, assessPassive, hardFailure, isCompleteProbe } from "./risk";
 import { requestEnvFromContext, scoreRequest } from "./requestSignals";
 import {
   claimChallengeStep,
@@ -323,11 +323,11 @@ export async function submitChallenge(
         return fail(true, hard, row.id);
       }
     }
-    // A real widget always attaches the probe with a measured pageDwellMs.
-    // Missing evidence — OR evidence carrying no/empty signals — is a script that
-    // skipped the widget: never silent-pass it (escalate, don't block).
-    const hasProbe =
-      !!evidence?.signals && typeof evidence.signals.pageDwellMs === "number";
+    // A real widget always attaches the FULL probe (collectProbe). Missing
+    // evidence — OR a partial/forged stub like {signals:{pageDwellMs:1}} that
+    // isn't a complete probe — is a script that skipped the widget: never
+    // silent-pass it (escalate, don't block).
+    const hasProbe = isCompleteProbe(evidence?.signals);
     const passive = hasProbe
       ? assessPassive(evidence!)
       : { score: cfg.riskMedium, reasons: ["no-probe"] };

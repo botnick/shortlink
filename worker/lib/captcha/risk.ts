@@ -179,6 +179,30 @@ export function assessPassive(evidence: CaptchaEvidence): RiskAssessment {
   return { score, reasons };
 }
 
+/**
+ * Is this the full probe a genuine widget always attaches (`collectProbe`)?
+ *
+ * A real probe carries every one of these — booleans for webdriver /
+ * softwareRender / interactedBefore and numbers for headlessHints /
+ * automationMarkers / pageDwellMs. A script that hand-rolls a stub to look
+ * "probed" (e.g. `{signals:{pageDwellMs:1500}}`) fails this and is treated as
+ * NO probe by the invisible auto-check — so it can never silently pass on a
+ * single forged field; it must play a game. Tightening this never blocks a real
+ * user (their probe is always complete); it only denies the silent pass to a
+ * partial forgery.
+ */
+export function isCompleteProbe(sig: CaptchaEvidence["signals"] | undefined): boolean {
+  if (!sig) return false;
+  return (
+    typeof sig.pageDwellMs === "number" &&
+    typeof sig.headlessHints === "number" &&
+    typeof sig.automationMarkers === "number" &&
+    typeof sig.webdriver === "boolean" &&
+    typeof sig.softwareRender === "boolean" &&
+    typeof sig.interactedBefore === "boolean"
+  );
+}
+
 // --- Phase B/C: environment + session signals --------------------------------
 /** All client-reported and trivially spoofable, so individually weak and, as a
  *  group, capped well below the block threshold — they can never block a real

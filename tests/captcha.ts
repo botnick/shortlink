@@ -18,7 +18,7 @@ import {
   sha256Hex,
   verifyPowSolution,
 } from "../worker/lib/captcha/crypto";
-import { assessBehavior, hardFailure } from "../worker/lib/captcha/risk";
+import { assessBehavior, hardFailure, isCompleteProbe } from "../worker/lib/captcha/risk";
 import { scoreRequest, type RequestEnv } from "../worker/lib/captcha/requestSignals";
 import { takeToken } from "../worker/lib/captcha/tokenBucket";
 import {
@@ -301,6 +301,55 @@ async function main() {
       { issueToSubmitMs: 3000 },
     );
     check("env signals capped ≤45 (need behavior to block)", allEnv.score - human.score <= 45, allEnv);
+  }
+
+  // ---------------------------------------------------------------------------
+  console.log("\n[3a] Invisible-mode probe completeness (no silent pass on a forged stub)");
+  {
+    // A genuine widget always attaches the FULL collectProbe() shape.
+    const realProbe = {
+      webdriver: false,
+      touch: false,
+      softwareRender: false,
+      headlessHints: 0,
+      automationMarkers: 0,
+      interactedBefore: true,
+      clientCanary: false,
+      pageDwellMs: 4200,
+    };
+    check("complete real probe is accepted", isCompleteProbe(realProbe) === true);
+
+    // The exact trivial bypass codex flagged: a stub with only pageDwellMs.
+    check("forged {pageDwellMs:1} stub is NOT a probe", isCompleteProbe({ pageDwellMs: 1 }) === false);
+    check("undefined signals is NOT a probe", isCompleteProbe(undefined) === false);
+    check("empty signals object is NOT a probe", isCompleteProbe({}) === false);
+
+    // Partial probes (missing any core field) must not count as a probe, so the
+    // invisible check escalates them to a game instead of silent-passing.
+    check(
+      "probe missing automationMarkers rejected",
+      isCompleteProbe({ ...realProbe, automationMarkers: undefined }) === false,
+    );
+    check(
+      "probe missing webdriver rejected",
+      isCompleteProbe({ ...realProbe, webdriver: undefined }) === false,
+    );
+    check(
+      "probe missing pageDwellMs rejected",
+      isCompleteProbe({ ...realProbe, pageDwellMs: undefined }) === false,
+    );
+    // Wrong types (a script that sets numbers as strings) are rejected too.
+    check(
+      "probe with string pageDwellMs rejected",
+      isCompleteProbe({ ...realProbe, pageDwellMs: "4200" as unknown as number }) === false,
+    );
+
+    // A complete probe that happens to carry automation tells is still a probe
+    // (it gets SCORED, not silent-passed and not auto-blocked).
+    check(
+      "complete probe with tells is still a probe (scored, not bypassed)",
+      isCompleteProbe({ ...realProbe, webdriver: true, automationMarkers: 4 }) === true,
+    );
   }
 
   // ---------------------------------------------------------------------------

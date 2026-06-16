@@ -33,41 +33,16 @@ export function usePieceColor(id: string, serverColor: string): string {
 }
 
 
-const GEM_SHAPES = [
-  "diamond", "star", "heart", "hexagon", "circle", "triangle", "square", "plus",
-] as const;
-type GemShape = (typeof GEM_SHAPES)[number];
-
-/** Classify the server's nameless jittered polygon into a gem shape — purely to
- *  pick a pretty sprite. This runs ENTIRELY client-side from geometry the client
- *  already received, so nothing extra crosses the wire and the bot/human
- *  asymmetry is unchanged (a script already reads the raw vertex list). Returns
- *  null for anything unexpected, which falls back to the procedural painter. */
-function classifyGem(poly: ScenePoint[] | undefined, round: boolean | undefined): GemShape | null {
-  if (round) return "circle";
-  if (!poly) return null;
-  const n = poly.length;
-  if (n === 3) return "triangle";
-  if (n === 6) return "hexagon";
-  if (n === 10) return "star";
-  if (n === 12) return "plus";
-  if (n >= 16) return "heart";
-  if (n === 4) {
-    // Diamond (a vertex points straight up, over the centre) vs square (a flat
-    // top edge of two off-centre corners).
-    const cx = poly.reduce((s, q) => s + q.x, 0) / n;
-    const xs = poly.map((q) => q.x);
-    const halfW = (Math.max(...xs) - Math.min(...xs)) / 2 || 1;
-    const top = poly.reduce((a, b) => (b.y < a.y ? b : a));
-    return Math.abs(top.x - cx) < 0.35 * halfW ? "diamond" : "square";
-  }
-  return null;
-}
-
 /** One game piece. The server sends a jittered vertex polygon with NO shape name;
- *  we classify it client-side and paint a matching pixel-art gem sprite (or, for
- *  an unrecognised polygon, the procedural faceted painter). The silhouette a
- *  person reads is the same the server validated. */
+ *  we rasterise THAT polygon straight into a faceted pixel-art gem. Nothing names
+ *  the shape — not a field, not an asset URL — so a script still has to visually
+ *  classify the geometry to know which piece the prompt means. The silhouette a
+ *  person reads is the exact geometry the server validated.
+ *
+ *  SECURITY: do NOT classify the polygon into a named sprite (e.g. a
+ *  `/captcha-gems/star.webp` <image>). That would leak the answer in the DOM —
+ *  a bot could match the asset name to the prompt word without any perception.
+ *  Always render procedurally from `obj.poly`. */
 export function ShapeGlyph({
   obj,
   pos,
@@ -81,8 +56,6 @@ export function ShapeGlyph({
   highlight?: boolean;
 }) {
   const p = pos ?? obj.pos;
-  const gem = classifyGem(obj.poly, obj.round);
-  const s = obj.size * 1.16;
 
   return (
     <g transform={`translate(${p.x} ${p.y})`} opacity={faded ? 0.45 : 1}>
@@ -103,18 +76,7 @@ export function ShapeGlyph({
             strokeDasharray="2.6 2"
           />
         )}
-        {gem ? (
-          <image
-            href={`/captcha-gems/${gem}.webp`}
-            x={-s}
-            y={-s}
-            width={s * 2}
-            height={s * 2}
-            preserveAspectRatio="xMidYMid meet"
-          />
-        ) : (
-          <ProceduralGem obj={obj} />
-        )}
+        <ProceduralGem obj={obj} />
         {obj.label && (
           <text
             textAnchor="middle"
@@ -132,9 +94,11 @@ export function ShapeGlyph({
   );
 }
 
-/** Fallback painter for an unrecognised polygon: a crisp faceted pixel jewel
- *  rasterised straight from the server's vertices (hard outline + 5-step
- *  top-left facet ramp + specular glint). */
+/** Paints a piece as a crisp faceted pixel jewel rasterised straight from the
+ *  server's jittered vertices (hard outline + 5-step top-left facet ramp +
+ *  specular glint). Per-challenge raster jitter means the SAME shape renders a
+ *  different bitmap every time — a "hash the rendered sprite once" bot is defeated
+ *  while a human reads the same clean silhouette. No shape name anywhere. */
 function ProceduralGem({ obj }: { obj: SceneObject }) {
   const color = usePieceColor(obj.id, obj.color);
   const edgeColor = useMemo(() => darken(color, 0.64), [color]);
