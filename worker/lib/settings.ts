@@ -53,6 +53,7 @@ export const SETTING_KEYS = {
   captchaVerifyLimit: "captcha_verify_limit",
   captchaEnforce: "captcha_enforce",
   captchaTransportBind: "captcha_transport_bind",
+  captchaReputation: "captcha_reputation",
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
@@ -508,6 +509,13 @@ export function captchaTransportBindFrom(map: Record<string, unknown>): boolean 
   return map[SETTING_KEYS.captchaTransportBind] !== false;
 }
 
+/** Abuse reputation feeds the risk engine (Phase E). Default on. Recent per-IP /
+ *  per-ASN check failures add a small capped risk so a grinding offender is
+ *  blocked sooner. A real user (zero failures) scores zero. Off = inert. */
+export function captchaReputationFrom(map: Record<string, unknown>): boolean {
+  return map[SETTING_KEYS.captchaReputation] !== false;
+}
+
 /** Everything the challenge engine needs, resolved in one place. */
 export interface CaptchaConfig {
   mode: VerificationMode;
@@ -525,6 +533,7 @@ export interface CaptchaConfig {
   verifyLimit: number;
   enforce: boolean;
   transportBind: boolean;
+  reputation: boolean;
 }
 
 export function captchaConfigFrom(map: Record<string, unknown>): CaptchaConfig {
@@ -547,6 +556,7 @@ export function captchaConfigFrom(map: Record<string, unknown>): CaptchaConfig {
     verifyLimit: captchaVerifyLimitFrom(map),
     enforce: captchaEnforceFrom(map),
     transportBind: captchaTransportBindFrom(map),
+    reputation: captchaReputationFrom(map),
   };
 }
 
