@@ -1,6 +1,6 @@
 import "@fontsource/press-start-2p/400.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Keyboard, Loader2, Shuffle } from "lucide-react";
 import type {
   CaptchaAction,
   CaptchaChallengeDTO,
@@ -256,29 +256,31 @@ export function HumanCheck({
           </div>
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span aria-live="polite">{hint ?? " "}</span>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1.5">
               {!accessibleRef.current && (
                 <button
                   type="button"
-                  className="underline-offset-2 hover:underline"
+                  aria-label="Switch to a keyboard-only challenge"
+                  className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground"
                   onClick={() => {
                     accessibleRef.current = true;
                     remintsRef.current = 0;
                     void mint();
                   }}
                 >
-                  Keyboard-only
+                  <Keyboard className="size-3" /> Keyboard
                 </button>
               )}
               <button
                 type="button"
-                className="underline-offset-2 hover:underline"
+                aria-label="Get a different puzzle"
+                className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground"
                 onClick={() => {
                   remintsRef.current = 0;
                   void mint();
                 }}
               >
-                {accessibleRef.current ? "New challenge" : "Different puzzle"}
+                <Shuffle className="size-3" /> {accessibleRef.current ? "New" : "New puzzle"}
               </button>
             </div>
           </div>
