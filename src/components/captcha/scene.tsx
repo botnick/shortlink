@@ -51,8 +51,11 @@ export function ShapeGlyph({
 }) {
   const p = pos ?? obj.pos;
   const color = usePieceColor(obj.id, obj.color);
-  const edgeColor = useMemo(() => darken(color, 0.45), [color]);
-  const topColor = useMemo(() => lighten(color, 0.34), [color]);
+  // Key light from the top-left: a darker edge, a lit top bevel, and 1–2 bright
+  // specular pixels give the flat shape a chunky "pixel gem" read.
+  const edgeColor = useMemo(() => darken(color, 0.5), [color]);
+  const topColor = useMemo(() => lighten(color, 0.42), [color]);
+  const specColor = useMemo(() => lighten(color, 0.72), [color]);
 
   // Per-piece raster recipe (random cell count + sub-cell offset) → the SAME
   // shape rasterizes to a DIFFERENT bitmap each challenge, so a bot can't hash
@@ -67,25 +70,35 @@ export function ShapeGlyph({
   const paths = useMemo(() => {
     const px = (obj.size * 2) / raster.n;
     const w = (px * 1.03).toFixed(2);
-    let base = "", edge = "", top = "";
+    // The 1–2 top-edge cells nearest the top-left become a specular glint.
+    const tops = cells
+      .filter((c) => c.topEdge)
+      .sort((a, b) => a.gx + a.gy - (b.gx + b.gy));
+    const spec = new Set(tops.slice(0, tops.length > 6 ? 2 : 1).map((c) => `${c.gx},${c.gy}`));
+    let base = "", edge = "", top = "", glint = "";
     for (const c of cells) {
       const x = (-obj.size + c.gx * px).toFixed(2);
       const y = (-obj.size + c.gy * px).toFixed(2);
       const seg = `M${x} ${y}h${w}v${w}h-${w}z`;
-      if (c.topEdge) top += seg;
+      if (spec.has(`${c.gx},${c.gy}`)) glint += seg;
+      else if (c.topEdge) top += seg;
       else if (c.edge) edge += seg;
       else base += seg;
     }
-    return { base, edge, top };
+    return { base, edge, top, glint };
   }, [cells, obj.size, raster.n]);
 
   return (
     <g transform={`translate(${p.x} ${p.y})`} opacity={faded ? 0.45 : 1}>
+      {/* Contact shadow — grounds the piece and stays put while it bobs above. */}
+      <ellipse cy={obj.size * 1.28} rx={obj.size * 0.92} ry={obj.size * 0.3} fill="#000" opacity={0.34} />
       {/* Idle bob (decorative; CSS-disabled under prefers-reduced-motion). */}
       <g
         className="hc-bob"
         style={{ animationDelay: `${(-(obj.phase / (Math.PI * 2)) * 3.6).toFixed(2)}s` }}
       >
+        {/* Soft colour halo so the piece reads on any busy backdrop. */}
+        <circle r={obj.size * 1.32} fill={color} opacity={0.16} />
         {highlight && (
           <circle
             r={obj.size * 1.5}
@@ -98,6 +111,7 @@ export function ShapeGlyph({
         {paths.base && <path d={paths.base} fill={color} shapeRendering="crispEdges" />}
         {paths.edge && <path d={paths.edge} fill={edgeColor} shapeRendering="crispEdges" />}
         {paths.top && <path d={paths.top} fill={topColor} shapeRendering="crispEdges" />}
+        {paths.glint && <path d={paths.glint} fill={specColor} shapeRendering="crispEdges" />}
         {obj.label && (
           <text
             textAnchor="middle"
