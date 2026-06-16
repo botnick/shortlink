@@ -21,6 +21,7 @@ import {
 import { assessBehavior, hardFailure, isCompleteProbe } from "../worker/lib/captcha/risk";
 import { scoreRequest, type RequestEnv } from "../worker/lib/captcha/requestSignals";
 import { scoreTransport, transportCohort } from "../worker/lib/captcha/transport";
+import { reputationScore } from "../worker/lib/captcha/reputation";
 import { takeToken } from "../worker/lib/captcha/tokenBucket";
 import {
   detectDeception,
@@ -407,6 +408,28 @@ async function main() {
     check("different cipher → different cohort", (await transportCohort(ENV, { ...t, tlsCipher: "ECDHE-RSA-AES256" })) !== a);
     check("missing TLS → inert empty cohort", (await transportCohort(ENV, { tlsVersion: "", tlsCipher: "", ua: CHROME })) === "");
     check("partial TLS (cipher only) → inert empty cohort", (await transportCohort(ENV, { tlsVersion: "", tlsCipher: "x", ua: CHROME })) === "");
+  }
+
+  // ---------------------------------------------------------------------------
+  console.log("\n[3bc] Abuse reputation (Phase E) — repeat offenders, never real users");
+  {
+    // A real user has zero recent failures → zero reputation risk (unchanged).
+    check("no failures → no reputation signal", reputationScore(0, 0).score === 0);
+    check("no failures → no reasons", reputationScore(0, 0).reasons.length === 0);
+
+    // Per-IP failures accrue, but stay capped well below the block line.
+    const one = reputationScore(1, 0);
+    check("one IP failure flagged + small", one.reasons.includes("ip-recent-fails") && one.score === 6, one);
+    check("IP failures capped at +24 (< block 60)", reputationScore(100, 0).score === 24);
+
+    // Per-ASN is weak and only kicks in after sustained abuse; capped at +8.
+    check("few ASN failures ignored (<5)", reputationScore(0, 4).score === 0);
+    const asn = reputationScore(0, 10);
+    check("sustained ASN abuse adds a weak nudge", asn.reasons.includes("asn-recent-fails") && asn.score > 0, asn);
+    check("ASN nudge capped at +8", reputationScore(0, 10_000).score === 8);
+
+    // Even the worst combined reputation can't block alone (stays < 60).
+    check("max reputation (IP+ASN) stays < block 60", reputationScore(100, 10_000).score === 32);
   }
 
   // ---------------------------------------------------------------------------

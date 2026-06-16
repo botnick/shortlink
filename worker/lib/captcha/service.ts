@@ -57,6 +57,7 @@ import { planChallenge } from "./plan";
 import { GAME_PLUGINS, generateGame, type GameInstance } from "./games";
 import { assessBehavior, assessPassive, hardFailure, isCompleteProbe } from "./risk";
 import { scoreTransport, transportCohort, transportEnvFromContext } from "./transport";
+import { recordAsnFailure, reputationRisk } from "./reputation";
 import { requestEnvFromContext, scoreRequest } from "./requestSignals";
 import {
   claimChallengeStep,
@@ -282,7 +283,12 @@ export async function submitChallenge(
     code: string,
     cid?: string,
   ): Promise<VerifyOutcome> => {
-    if (escalate) await recordCheckFailure(c.env, ip);
+    if (escalate) {
+      await recordCheckFailure(c.env, ip);
+      // Cross-IP abuse memory (Phase E): also count it against the ASN so a
+      // botnet spread across many IPs on one network accrues reputation too.
+      if (cfg.reputation) await recordAsnFailure(c.env, requestEnvFromContext(c).asn);
+    }
     console.warn("humancheck rejected:", code, cid ? cid.slice(0, 8) : "-");
     return { ok: false, status: 403 };
   };
@@ -309,6 +315,15 @@ export async function submitChallenge(
     ? scoreTransport(row.transport, await transportCohort(c.env, transportEnv), transportEnv)
     : { score: 0, reasons: [] as string[] };
 
+  // Abuse reputation (Phase E): recent per-IP / per-ASN check failures add a
+  // small capped risk so a grinding offender is blocked sooner. Zero for any
+  // real user (they have no recent failures). Computed once; used by both the
+  // invisible auto-check and the game step below.
+  const reqEnv = requestEnvFromContext(c);
+  const repRisk = cfg.reputation
+    ? await reputationRisk(c.env, ip, reqEnv.asn)
+    : { score: 0, reasons: [] as string[] };
+
   // Proof-of-work gate: solved once per challenge, on the first submit. A bad
   // solution locks the challenge — a genuine client never submits unsolved work.
   let powDone = row.powDone;
@@ -328,7 +343,7 @@ export async function submitChallenge(
     // globals, synthetic events) that the widget always sends now. A protocol
     // violation in the probe is a hard tell; a submit with NO probe is itself a
     // sign of a script that skipped the widget, so it never silently passes.
-    const reqScore = scoreRequest(requestEnvFromContext(c)).score;
+    const reqScore = scoreRequest(reqEnv).score;
     const evidence = input.evidence;
     if (evidence) {
       if (evidence.events.length > cfg.maxEvents) return fail(true, "event-flood", row.id);
@@ -346,12 +361,12 @@ export async function submitChallenge(
     const passive = hasProbe
       ? assessPassive(evidence!)
       : { score: cfg.riskMedium, reasons: ["no-probe"] };
-    const combined = reqScore + passive.score + transportRisk.score;
+    const combined = reqScore + passive.score + transportRisk.score + repRisk.score;
     if (combined >= cfg.riskMedium) {
       console.warn(
         "humancheck invisible escalate:",
         combined,
-        [...passive.reasons, ...transportRisk.reasons].join(","),
+        [...passive.reasons, ...transportRisk.reasons, ...repRisk.reasons].join(","),
         row.id.slice(0, 8),
       );
     }
@@ -413,10 +428,10 @@ export async function submitChallenge(
   const behavior = assessBehavior(evidence, {
     issueToSubmitMs: Date.now() - game.issuedAtMs,
   });
-  const reqSig = scoreRequest(requestEnvFromContext(c));
+  const reqSig = scoreRequest(reqEnv);
   const risk = {
-    score: behavior.score + reqSig.score + transportRisk.score,
-    reasons: [...behavior.reasons, ...reqSig.reasons, ...transportRisk.reasons],
+    score: behavior.score + reqSig.score + transportRisk.score + repRisk.score,
+    reasons: [...behavior.reasons, ...reqSig.reasons, ...transportRisk.reasons, ...repRisk.reasons],
   };
   if (risk.score >= cfg.riskMedium) {
     console.warn(
@@ -473,6 +488,7 @@ export async function submitChallenge(
     });
     if (!won) return fail(false, "step-conflict", row.id);
     await recordCheckFailure(c.env, ip);
+    if (cfg.reputation) await recordAsnFailure(c.env, reqEnv.asn);
     return {
       ok: true,
       body: {
@@ -600,8 +616,10 @@ export async function consumeHumanToken(
   // from another — same IP (clientKey matched) but a different client stack —
   // is the "solve in a real browser, redeem from a script" pattern. Log +
   // escalate the IP's next PoW, but NEVER fail the login on it (a genuine
-  // reconnect can renegotiate TLS). Inert when no cohort was captured.
-  if (row.transport) {
+  // reconnect can renegotiate TLS). Inert when no cohort was captured, OR when
+  // an admin has switched transport binding off (the live setting is the kill
+  // switch even for tokens already issued with a cohort).
+  if (row.transport && captchaConfigFrom(await getCachedSettings(c.var.db, c.var.schema)).transportBind) {
     const current = await transportCohort(c.env, transportEnvFromContext(c));
     if (current && current !== row.transport) {
       console.warn("humancheck consume transport-shift:", action, row.challengeId.slice(0, 8));

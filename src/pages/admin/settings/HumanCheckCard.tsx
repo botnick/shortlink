@@ -75,6 +75,9 @@ function HumanCheckForm({ initial, patch }: { initial: SettingsDTO; patch: Setti
   const [captchaTransportBind, setCaptchaTransportBind] = useState(
     initial.captchaTransportBind ?? true,
   );
+  const [captchaReputation, setCaptchaReputation] = useState(
+    initial.captchaReputation ?? true,
+  );
   const [saving, setSaving] = useState(false);
   const [captchaStats, setCaptchaStats] = useState<Record<string, unknown> | null>(null);
 
@@ -108,6 +111,7 @@ function HumanCheckForm({ initial, patch }: { initial: SettingsDTO; patch: Setti
         captchaVerifyLimit: Math.max(0, Math.floor(captchaVerifyLimit) || 0),
         captchaEnforce,
         captchaTransportBind,
+        captchaReputation,
       });
       toast.success("Human check saved");
     } catch (err) {
@@ -148,6 +152,23 @@ function HumanCheckForm({ initial, patch }: { initial: SettingsDTO; patch: Setti
           checked={captchaTransportBind}
           onCheckedChange={setCaptchaTransportBind}
           aria-label="TLS transport binding"
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+        <div>
+          <p className="text-sm font-medium">Abuse reputation</p>
+          <p className="text-xs text-muted-foreground">
+            Recent failed checks from the same IP (and, weakly, the same network)
+            add a small, capped risk so a grinding bot is blocked sooner — on top
+            of the proof-of-work it already escalates. A real visitor has no
+            failures, so they score nothing. Off makes it inert.
+          </p>
+        </div>
+        <Switch
+          checked={captchaReputation}
+          onCheckedChange={setCaptchaReputation}
+          aria-label="Abuse reputation"
         />
       </div>
 

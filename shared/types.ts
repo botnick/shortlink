@@ -291,6 +291,8 @@ export interface SettingsDTO {
   captchaEnforce: boolean;
   /** Soft TLS-cohort transport binding (request.cf). Off makes it fully inert. */
   captchaTransportBind: boolean;
+  /** Abuse reputation (recent per-IP/ASN failures) feeds the risk engine. */
+  captchaReputation: boolean;
   /** Cloudflare for SaaS — configured via /admin. The token is never returned;
    *  `cfConfigured` reflects whether a token + zone id are set. */
   cfZoneId: string;

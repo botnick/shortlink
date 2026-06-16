@@ -264,6 +264,18 @@ soft and capped below the block threshold, preserving "no single signal blocks":
   class — transport below the JS the attacker controls — that Turnstile/reCAPTCHA
   lean on; we approximate it at $0 minus their network-scale reputation. Admin:
   `captcha_transport_bind` (default on).
+- **Abuse reputation → risk (Phase E)** ✅ `worker/lib/captcha/reputation.ts`. The
+  escalator already makes a grinding IP pay more proof-of-work; this gives the
+  *risk score* the same memory so a repeat offender is blocked sooner instead of
+  getting a clean slate each attempt. Recent **per-IP** failures (the existing
+  `powfail:<ip>` counter) add up to +24; sustained **per-ASN** failures (a new
+  `asnfail:<asn>` counter, the cross-IP / network-reputation half) add a weak,
+  capped +8 so a shared carrier/VPN ASN with one bot can never punish everyone
+  behind it. Both SOFT and well under the 60 block line; the counters only move
+  on FAILED checks, so a real visitor (zero failures) scores zero and nothing is
+  written on the legitimate pass path. This is the $0 stand-in for the network
+  reputation noted as the honest gap in §9. Admin: `captcha_reputation` (default
+  on); respects shadow mode like every other signal.
 
 **Anti-fixed-sprite (defeats "hash the rendered sprite once"):** pieces stay procedural —
 the server jitters the polygon (±5% + free/k·90° rotation, heart flip) so the vertex list
@@ -309,5 +321,9 @@ and skipped under `Save-Data` — it is no part of validation and leaks nothing.
 - **PoW on very low-end devices.** Difficulty is admin-tunable; the default (16
   bits) solves in tens of ms in the Web Worker and runs in the background while
   the user plays, escalating only on failure. Extreme low-end hardware is slower.
-- **No network reputation.** Unlike Turnstile we have no cross-site IP/ASN
-  reputation; per-IP PoW escalation + rate limits are the substitute.
+- **No *cross-site* network reputation.** Unlike Turnstile we have no reputation
+  shared across millions of other sites. Within this deployment we now keep
+  per-IP **and** per-ASN abuse memory that feeds both the PoW price (escalation)
+  and the risk score (Phase E reputation), plus the TLS transport cohort
+  (Phase D) — together a $0 substitute. What we still can't see is an IP/ASN's
+  history on *other* properties, which is the part only a network operator has.
