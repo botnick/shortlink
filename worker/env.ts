@@ -10,17 +10,22 @@ export interface AppBindings extends Env {
   SESSION_SECRET: string;
   /** One-time bootstrap token gating the first-run installer (`POST /api/setup`). */
   SETUP_TOKEN: string;
-  /** Deploy-time PBKDF2 cost (wrangler var, default "20000"). Read + clamped by
-   *  `pbkdf2Iterations()`; see worker/lib/password.ts. */
-  PBKDF2_ITERATIONS: string;
+  /** NOTE: `PBKDF2_ITERATIONS` (deploy-time PBKDF2 cost, default "20000") is a
+   *  wrangler var, so it is already part of the generated `Env` and inherited
+   *  here — it is intentionally NOT redeclared. `wrangler types` emits it as the
+   *  literal `"20000"`, and widening it to `string` here breaks `extends Env`
+   *  (TS2430). Read + clamped by `pbkdf2Iterations()`; see worker/lib/password.ts. */
   /** Cloudflare D1 binding, present only when DB_DRIVER="d1" (otherwise absent
    *  from the generated Env, so it's declared optional here). DB_DRIVER itself
    *  comes from the generated Env (a wrangler var). Cloudflare-for-SaaS custom
    *  domain credentials live in settings (configured via /admin), not env. */
   DB?: D1Database;
-  /** Exact rate-limit Durable Object (Phase F). Optional — when absent, the
-   *  human check falls back to the KV limiter, so deploys without it still work. */
-  RATE_LIMITER?: DurableObjectNamespace;
+  /** NOTE: `RATE_LIMITER` (exact rate-limit Durable Object, Phase F) is a wrangler
+   *  binding, so it is in the generated `Env` and inherited here — NOT redeclared.
+   *  `wrangler types` types it as `DurableObjectNamespace<RateLimiter>` (required);
+   *  redeclaring it optional/untyped breaks `extends Env` (TS2430). It is treated
+   *  as optional at runtime (deploys without it fall back to the KV limiter) via a
+   *  cast in `worker/lib/ratelimit.ts` (`env.RATE_LIMITER ?? null`). */
 }
 
 export interface SessionUser {
