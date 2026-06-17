@@ -9,7 +9,7 @@ const clampPos = (v: number) => Math.min(96, Math.max(4, v));
 
 /** "Drag the star into the dashed ring" — one drag, or pick-up/move/drop with
  *  the keyboard (Enter grabs, arrows move, Enter drops). */
-export function DragTargetGame({ game, rec, disabled, onAnswer }: GameProps) {
+export function DragTargetGame({ game, rec, disabled, onAnswer, tolerance }: GameProps) {
   const payload = game.payload as DragTargetPayload;
   const { toScene, surfaceProps } = useGameSurface(rec);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function DragTargetGame({ game, rec, disabled, onAnswer }: GameProps) {
   };
 
   const drop = (id: string, p: ScenePoint) => {
-    if (distance(p, ring.pos) <= ring.size) {
+    if (distance(p, ring.pos) <= ring.size * tolerance) {
       onAnswer({ objectId: id });
     } else {
       shake();

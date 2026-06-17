@@ -13,7 +13,7 @@ function angDiff(a: number, b: number): number {
 
 /** "Turn the arrow to point at the dot" — drag around the pivot, or arrow keys
  *  then Enter. Submits when the arrow is released roughly on target. */
-export function RotateGame({ game, rec, disabled, onAnswer }: GameProps) {
+export function RotateGame({ game, rec, disabled, onAnswer, tolerance }: GameProps) {
   const payload = game.payload as RotatePayload;
   const { toScene, surfaceProps } = useGameSurface(rec);
   const { arrow, dot } = payload;
@@ -35,7 +35,7 @@ export function RotateGame({ game, rec, disabled, onAnswer }: GameProps) {
   };
 
   const submitIfAligned = (a: number) => {
-    if (angDiff(a, dot.angle) <= ALIGN_DEG) {
+    if (angDiff(a, dot.angle) <= ALIGN_DEG * tolerance) {
       onAnswer({ angle: ((a % 360) + 360) % 360 });
     } else {
       setMiss(true);

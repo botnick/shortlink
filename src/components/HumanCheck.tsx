@@ -61,6 +61,15 @@ export function HumanCheck({
   const accessibleRef = useRef(false);
   // A fresh decorative pixel-art backdrop per challenge (purely cosmetic).
   const [themeSeed, setThemeSeed] = useState(() => Math.floor(Math.random() * 1e9));
+  // Coarse pointer (finger) → widen the client "feels aligned" gates a little on
+  // top of the admin tolerance, so an imprecise touch isn't rejected before the
+  // server even sees it. Stable for the component's life.
+  const [coarsePointer] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches,
+  );
 
   const mint = useCallback(async () => {
     abortRef.current?.abort();
@@ -247,6 +256,9 @@ export function HumanCheck({
                   rec={recRef.current}
                   disabled={phase !== "playing"}
                   onAnswer={handleAnswer}
+                  tolerance={
+                    (chRef.current?.tolerance ?? 1) * (coarsePointer ? 1.25 : 1)
+                  }
                 />
               </CaptchaPaletteContext.Provider>
             </div>

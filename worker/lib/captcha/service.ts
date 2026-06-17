@@ -138,6 +138,7 @@ export async function createChallenge(
         gamesTotal: 1,
         gameIndex: 0,
         limits: { maxEvents: cfg.maxEvents },
+        tolerance: cfg.toleranceMult,
         ...generateDecoys(),
       } as CaptchaChallengeDTO,
     };
@@ -194,6 +195,7 @@ export async function createChallenge(
       gamesTotal,
       gameIndex: 0,
       limits: { maxEvents: cfg.maxEvents },
+      tolerance: cfg.toleranceMult,
       ...generateDecoys(),
     } as CaptchaChallengeDTO,
   };

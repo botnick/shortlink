@@ -475,7 +475,11 @@ export function captchaToleranceFrom(
   map: Record<string, unknown>,
 ): CaptchaTolerance {
   const v = map[SETTING_KEYS.captchaTolerance];
-  return v === "lenient" || v === "strict" ? v : "standard";
+  // Default LENIENT: this is a public link shortener whose audience includes
+  // older / less dexterous users, and the captcha's security never rested on
+  // tight geometry — it's the PoW economics + single-use + interaction risk +
+  // bindings (see docs/human-check-v3.md). An admin can still pick strict.
+  return v === "lenient" || v === "strict" || v === "standard" ? v : "lenient";
 }
 
 const TOLERANCE_MULT: Record<CaptchaTolerance, number> = {

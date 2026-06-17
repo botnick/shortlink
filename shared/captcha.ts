@@ -235,6 +235,11 @@ export interface CaptchaChallengeDTO {
   gamesTotal: number;
   gameIndex: number; // 0-based
   limits: { maxEvents: number };
+  /** Geometry-forgiveness multiplier (the admin touch-tolerance profile). The
+   *  client mirrors it in its "feels aligned" gates so a lenient setting feels
+   *  lenient on the client too — the server still holds the authoritative
+   *  tolerance and re-validates every answer. Not a secret. */
+  tolerance: number;
 }
 
 export interface CaptchaVerifyRequestDTO {
