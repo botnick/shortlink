@@ -6,7 +6,6 @@ import { darken, lighten } from "@/lib/pixel";
 import { useGameSurface, usePieceColor } from "../scene";
 import type { GameProps } from "./types";
 
-const ALIGN = 7; // client "looks aligned" feel (server holds the real tolerance)
 const KB_STEP = 3;
 const clampPos = (v: number) => Math.min(100, Math.max(0, v));
 
@@ -25,7 +24,9 @@ export function SlideGame({ game, rec, disabled, onAnswer, tolerance }: GameProp
 
   const release = (p: number) => {
     setDrag(false);
-    if (Math.abs(p - payload.target) <= ALIGN * tolerance) onAnswer({ pos: p });
+    // Mirror the server's acceptance (payload.tol) so a gesture the client
+    // accepts is one the server accepts — no client-only over/under-shoot.
+    if (Math.abs(p - payload.target) <= payload.tol * tolerance) onAnswer({ pos: p });
     else {
       setMiss(true);
       setTimeout(() => {

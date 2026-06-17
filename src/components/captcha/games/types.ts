@@ -8,9 +8,10 @@ export interface GameProps {
   /** Submit the answer for server-side validation (the client never knows
    *  whether it is correct — it only knows the gesture finished). */
   onAnswer: (answer: unknown) => void;
-  /** Multiplier the game applies to its own "feels aligned" acceptance gate:
-   *  the admin tolerance profile, widened a little on coarse (touch) pointers.
-   *  UX only — the server holds the real tolerance and re-validates. Games
-   *  without an alignment gate (tap-match, sort) simply ignore it. */
+  /** The admin tolerance profile (geometry-forgiveness multiplier) the game
+   *  applies to its acceptance gate, so the gate mirrors the server's and a
+   *  lenient setting feels lenient on the client too. The server holds the
+   *  authoritative tolerance and re-validates. Games without an alignment gate
+   *  (tap-match, sort) simply ignore it. */
   tolerance: number;
 }

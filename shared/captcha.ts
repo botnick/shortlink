@@ -93,6 +93,11 @@ export interface SlidePayload {
   game: "slide";
   target: number; // 0–100 along the track
   color: string;
+  /** Base acceptance half-width (same units as target) the server validates
+   *  against, so the client's "feels aligned" gate matches the server exactly
+   *  instead of guessing. Not a secret: a bot submits the exact target anyway —
+   *  this only governs how forgiving imprecise human input is. */
+  tol: number;
 }
 
 export interface TapMatchPayload {
@@ -105,6 +110,9 @@ export interface RotatePayload {
   arrow: { pos: ScenePoint; size: number; angle: number; color: string };
   /** Marker the arrow must point at, on a ring around the arrow's center. */
   dot: { angle: number; radius: number; size: number; color: string };
+  /** Base acceptance half-angle (degrees) the server validates against, so the
+   *  client gate matches the server exactly. Not a secret (see SlidePayload). */
+  tol: number;
 }
 
 export interface ConnectPayload {

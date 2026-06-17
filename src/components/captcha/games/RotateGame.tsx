@@ -4,9 +4,6 @@ import { cn } from "@/lib/utils";
 import { useGameSurface, usePieceColor } from "../scene";
 import type { GameProps } from "./types";
 
-const ALIGN_DEG = 12; // client-side "feels aligned" check (UX only — the
-// server holds the real tolerance and validates the submitted angle itself)
-
 function angDiff(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
@@ -35,7 +32,8 @@ export function RotateGame({ game, rec, disabled, onAnswer, tolerance }: GamePro
   };
 
   const submitIfAligned = (a: number) => {
-    if (angDiff(a, dot.angle) <= ALIGN_DEG * tolerance) {
+    // Mirror the server's acceptance angle (payload.tol) exactly.
+    if (angDiff(a, dot.angle) <= payload.tol * tolerance) {
       onAnswer({ angle: ((a % 360) + 360) % 360 });
     } else {
       setMiss(true);
