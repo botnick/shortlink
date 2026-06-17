@@ -63,10 +63,12 @@ export function RotateGame({ game, rec, disabled, onAnswer }: GameProps) {
         onPointerMove={(e) => {
           if (dragging && !disabled) setAngle(pointTo(e));
         }}
-        onPointerUp={() => {
+        onPointerUp={(e) => {
           if (!dragging || disabled) return;
           setDragging(false);
-          submitIfAligned(angle);
+          const a = pointTo(e); // judge the released angle, not stale state
+          setAngle(a);
+          submitIfAligned(a);
         }}
         onPointerCancel={() => setDragging(false)}
         onKeyDown={(e: KeyboardEvent<SVGSVGElement>) => {

@@ -47,10 +47,16 @@ export function PathTraceGame({ game, rec, disabled, onAnswer }: GameProps) {
             setProgress((n) => n + 1);
           }
         }}
-        onPointerUp={() => {
+        onPointerUp={(e) => {
           if (!tracing || disabled) return;
           setTracing(false);
-          if (progress >= ordered.length) submit();
+          // Count the dot under the release point too, so lifting your finger
+          // right on the last dot still completes the stroke (coarse touch
+          // often fires no final pointermove there).
+          let reached = progress;
+          const last = ordered[reached];
+          if (last && distance(toScene(e), last.pos) <= hitR(last)) reached += 1;
+          if (reached >= ordered.length) submit();
           else setProgress(0); // no penalty — just try the stroke again
         }}
         onPointerCancel={() => {
