@@ -396,11 +396,12 @@ export function challengeModeFrom(map: Record<string, unknown>): VerificationMod
 // --- Human check v3 (interactive game CAPTCHA) --------------------------------
 // Every knob is an admin setting; nothing about the check is hardcoded.
 
-// The default-on pool: the three games a person understands at a glance — tap
-// one shape, drag one shape into a ring, trace numbered dots. The more
-// cognitive games (rotate / connect-the-pair / sort-by-size) ship implemented
-// but OFF, so an admin can opt in without us starting anyone on a harder puzzle.
-const DEFAULT_GAMES: GameType[] = ["slide", "tap-match", "drag-target", "path-trace"];
+// The default-on pool: the three games a person understands at a glance — slide
+// a handle into a notch, tap one shape, drag one shape into a ring. The more
+// dexterity-/cognition-heavy games (path-trace continuous stroke, rotate,
+// connect-the-pair, sort-by-size) ship implemented but OFF, so an admin can opt
+// in without us starting anyone — least of all an older user — on a harder puzzle.
+const DEFAULT_GAMES: GameType[] = ["slide", "tap-match", "drag-target"];
 
 /** Which VISUAL games the pool may serve. Unknown/non-pool entries (e.g. the
  *  accessible `key-count`, which is never in the rotation) are dropped; an empty

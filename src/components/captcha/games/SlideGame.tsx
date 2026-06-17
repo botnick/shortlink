@@ -61,7 +61,12 @@ export function SlideGame({ game, rec, disabled, onAnswer }: GameProps) {
         onPointerMove={(e) => {
           if (drag && !disabled) setPos(trackXToPos(e));
         }}
-        onPointerUp={() => drag && !disabled && release(pos)}
+        onPointerUp={(e) => {
+          if (!drag || disabled) return;
+          const p = trackXToPos(e); // judge the released point, not stale state
+          setPos(p);
+          release(p);
+        }}
         onPointerCancel={() => setDrag(false)}
         onKeyDown={(e: KeyboardEvent<SVGSVGElement>) => {
           if (disabled) return;
