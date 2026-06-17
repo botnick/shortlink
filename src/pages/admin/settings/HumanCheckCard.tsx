@@ -67,7 +67,7 @@ function HumanCheckForm({ initial, patch }: { initial: SettingsDTO; patch: Setti
   const [captchaRiskMedium, setCaptchaRiskMedium] = useState(initial.captchaRiskMedium ?? 30);
   const [captchaRiskHigh, setCaptchaRiskHigh] = useState(initial.captchaRiskHigh ?? 60);
   const [captchaTolerance, setCaptchaTolerance] = useState<"lenient" | "standard" | "strict">(
-    initial.captchaTolerance ?? "standard",
+    initial.captchaTolerance ?? "lenient",
   );
   const [captchaCreateLimit, setCaptchaCreateLimit] = useState(initial.captchaCreateLimit ?? 10);
   const [captchaVerifyLimit, setCaptchaVerifyLimit] = useState(initial.captchaVerifyLimit ?? 30);
@@ -300,7 +300,7 @@ function HumanCheckForm({ initial, patch }: { initial: SettingsDTO; patch: Setti
             }
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <option value="lenient">Lenient — most forgiving</option>
+            <option value="lenient">Lenient — most forgiving (default)</option>
             <option value="standard">Standard</option>
             <option value="strict">Strict</option>
           </select>

@@ -7,7 +7,7 @@ import type { GameProps } from "./types";
 /** "Drag through the dots in order" — one continuous stroke 1→2→3(→4), or
  *  activate the dots in order with the keyboard. Releasing early just resets
  *  the visual progress; nothing is submitted until the trace completes. */
-export function PathTraceGame({ game, rec, disabled, onAnswer }: GameProps) {
+export function PathTraceGame({ game, rec, disabled, onAnswer, tolerance }: GameProps) {
   const payload = game.payload as PathTracePayload;
   const { toScene, surfaceProps } = useGameSurface(rec);
   const [progress, setProgress] = useState(0);
@@ -21,7 +21,7 @@ export function PathTraceGame({ game, rec, disabled, onAnswer }: GameProps) {
       [...payload.dots].sort((a, b) => Number(a.label ?? 0) - Number(b.label ?? 0)),
     [payload.dots],
   );
-  const hitR = (d: SceneObject) => Math.max(d.size * 2, 8);
+  const hitR = (d: SceneObject) => Math.max(d.size * 2, 8) * tolerance;
 
   const done = Math.max(progress, kbProgress);
 

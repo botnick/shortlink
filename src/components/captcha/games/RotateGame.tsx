@@ -4,16 +4,13 @@ import { cn } from "@/lib/utils";
 import { useGameSurface, usePieceColor } from "../scene";
 import type { GameProps } from "./types";
 
-const ALIGN_DEG = 12; // client-side "feels aligned" check (UX only — the
-// server holds the real tolerance and validates the submitted angle itself)
-
 function angDiff(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
 
 /** "Turn the arrow to point at the dot" — drag around the pivot, or arrow keys
  *  then Enter. Submits when the arrow is released roughly on target. */
-export function RotateGame({ game, rec, disabled, onAnswer }: GameProps) {
+export function RotateGame({ game, rec, disabled, onAnswer, tolerance }: GameProps) {
   const payload = game.payload as RotatePayload;
   const { toScene, surfaceProps } = useGameSurface(rec);
   const { arrow, dot } = payload;
@@ -35,7 +32,8 @@ export function RotateGame({ game, rec, disabled, onAnswer }: GameProps) {
   };
 
   const submitIfAligned = (a: number) => {
-    if (angDiff(a, dot.angle) <= ALIGN_DEG) {
+    // Mirror the server's acceptance angle (payload.tol) exactly.
+    if (angDiff(a, dot.angle) <= payload.tol * tolerance) {
       onAnswer({ angle: ((a % 360) + 360) % 360 });
     } else {
       setMiss(true);

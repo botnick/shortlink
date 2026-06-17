@@ -28,6 +28,7 @@ export const rotate: GamePlugin = {
     let initial = targetAngle + randFloat(70, 290);
     initial = ((initial % 360) + 360) % 360;
 
+    const tol = TOLERANCE[difficulty];
     const payload: RotatePayload = {
       game: "rotate",
       arrow: {
@@ -42,10 +43,12 @@ export const rotate: GamePlugin = {
         size: randFloat(3.5, 4.5),
         color: pick(COLORS),
       },
+      // tol mirrors the secret so the client gate matches server acceptance.
+      tol,
     };
     const secret: Secret = {
       targetAngle,
-      tolerance: TOLERANCE[difficulty],
+      tolerance: tol,
     };
     return {
       type: "rotate",

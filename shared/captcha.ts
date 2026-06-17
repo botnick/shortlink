@@ -93,6 +93,11 @@ export interface SlidePayload {
   game: "slide";
   target: number; // 0–100 along the track
   color: string;
+  /** Base acceptance half-width (same units as target) the server validates
+   *  against, so the client's "feels aligned" gate matches the server exactly
+   *  instead of guessing. Not a secret: a bot submits the exact target anyway —
+   *  this only governs how forgiving imprecise human input is. */
+  tol: number;
 }
 
 export interface TapMatchPayload {
@@ -105,6 +110,9 @@ export interface RotatePayload {
   arrow: { pos: ScenePoint; size: number; angle: number; color: string };
   /** Marker the arrow must point at, on a ring around the arrow's center. */
   dot: { angle: number; radius: number; size: number; color: string };
+  /** Base acceptance half-angle (degrees) the server validates against, so the
+   *  client gate matches the server exactly. Not a secret (see SlidePayload). */
+  tol: number;
 }
 
 export interface ConnectPayload {
@@ -235,6 +243,11 @@ export interface CaptchaChallengeDTO {
   gamesTotal: number;
   gameIndex: number; // 0-based
   limits: { maxEvents: number };
+  /** Geometry-forgiveness multiplier (the admin touch-tolerance profile). The
+   *  client mirrors it in its "feels aligned" gates so a lenient setting feels
+   *  lenient on the client too — the server still holds the authoritative
+   *  tolerance and re-validates every answer. Not a secret. */
+  tolerance: number;
 }
 
 export interface CaptchaVerifyRequestDTO {

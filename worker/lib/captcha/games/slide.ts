@@ -27,8 +27,11 @@ export const slide: GamePlugin = {
   generate({ difficulty }) {
     // Keep the notch away from the edges so "do nothing" never lands it.
     const target = randInt(22, 82);
-    const payload: SlidePayload = { game: "slide", target, color: pick(COLORS) };
-    const secret: Secret = { target, tolerance: TOLERANCE[difficulty] };
+    const tol = TOLERANCE[difficulty];
+    // tol travels in the public payload too so the client's auto-submit gate
+    // matches the server's acceptance exactly (the secret stays authoritative).
+    const payload: SlidePayload = { game: "slide", target, color: pick(COLORS), tol };
+    const secret: Secret = { target, tolerance: tol };
     return {
       type: "slide",
       prompt: "Slide the handle into the notch",

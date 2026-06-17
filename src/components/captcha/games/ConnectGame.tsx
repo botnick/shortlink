@@ -6,7 +6,7 @@ import type { GameProps } from "./types";
 
 /** "Draw a line between the two diamonds" — one stroke, or select both pieces
  *  with the keyboard. */
-export function ConnectGame({ game, rec, disabled, onAnswer }: GameProps) {
+export function ConnectGame({ game, rec, disabled, onAnswer, tolerance }: GameProps) {
   const payload = game.payload as ConnectPayload;
   const { toScene, surfaceProps } = useGameSurface(rec);
   const [fromId, setFromId] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function ConnectGame({ game, rec, disabled, onAnswer }: GameProps) {
     setLineEnd(null);
     if (!start) return;
     const target = payload.objects.find(
-      (o) => o.id !== start && distance(p, o.pos) <= Math.max(o.size * 1.8, 8),
+      (o) => o.id !== start && distance(p, o.pos) <= Math.max(o.size * 1.8, 8) * tolerance,
     );
     if (target) onAnswer({ a: start, b: target.id });
     else shake();

@@ -6,14 +6,13 @@ import { darken, lighten } from "@/lib/pixel";
 import { useGameSurface, usePieceColor } from "../scene";
 import type { GameProps } from "./types";
 
-const ALIGN = 7; // client "looks aligned" feel (server holds the real tolerance)
 const KB_STEP = 3;
 const clampPos = (v: number) => Math.min(100, Math.max(0, v));
 
 /** A chunky pixel handle on a track; slide it into the notch. Pointer drag or
  *  arrow keys. The visible style is pixel-art; the maths is the same 0–100 the
  *  server validated. */
-export function SlideGame({ game, rec, disabled, onAnswer }: GameProps) {
+export function SlideGame({ game, rec, disabled, onAnswer, tolerance }: GameProps) {
   const payload = game.payload as SlidePayload;
   const { ref, toScene, surfaceProps } = useGameSurface(rec);
   const [pos, setPos] = useState(8);
@@ -25,7 +24,9 @@ export function SlideGame({ game, rec, disabled, onAnswer }: GameProps) {
 
   const release = (p: number) => {
     setDrag(false);
-    if (Math.abs(p - payload.target) <= ALIGN) onAnswer({ pos: p });
+    // Mirror the server's acceptance (payload.tol) so a gesture the client
+    // accepts is one the server accepts — no client-only over/under-shoot.
+    if (Math.abs(p - payload.target) <= payload.tol * tolerance) onAnswer({ pos: p });
     else {
       setMiss(true);
       setTimeout(() => {

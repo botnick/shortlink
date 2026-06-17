@@ -247,6 +247,7 @@ export function HumanCheck({
                   rec={recRef.current}
                   disabled={phase !== "playing"}
                   onAnswer={handleAnswer}
+                  tolerance={chRef.current?.tolerance ?? 1}
                 />
               </CaptchaPaletteContext.Provider>
             </div>
