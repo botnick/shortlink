@@ -1,14 +1,20 @@
-# Shortlink
+# Shortlink — self-hosted URL shortener on Cloudflare
 
-A fast, clean, self-hosted **URL shortener** with accounts, custom domains, QR codes
-and detailed analytics — running entirely on **Cloudflare Workers** for **$0** on the
-free plan. Short links live on your own domain: **`go.yoursite.com/<slug>`**.
+> **Open-source, self-hosted URL shortener & link-management platform** — a [Bitly](https://bitly.com) / TinyURL alternative you fully own. Branded short links on your own domain, a QR-code studio, bot-filtered click analytics, a REST API and an MCP server — running entirely on **Cloudflare Workers** for **$0** on the free plan.
 
-```
-Cloudflare Workers · Hono · React 19 + Vite + Tailwind v4 · Drizzle ORM · Postgres or D1
-```
+Create short links on **your own domain** (`go.yoursite.com/<slug>`), track every click with privacy-first analytics, and let your whole team manage links from one dashboard — **no monthly SaaS bill, no vendor lock-in**.
+
+- 🔗 **Branded short links** — random or custom back-halves, per-domain slugs, expiry, pause, tags & search, per-OS deep links, password-protected links, UTM builder, bulk CSV import
+- 📊 **Privacy-first analytics** — totals, uniques, time charts, countries, referrers, device/browser/OS, live feed; bot traffic auto-excluded; CSV/JSON export
+- 🎨 **QR-code studio** — frames, shapes, colors, gradients, logo library, saved presets; export PNG / SVG / JPEG
+- 🤖 **REST API + MCP server** — API keys and 12 MCP tools so AI agents can manage your links
+- 🛡️ **Self-hosted human check** — invisible proof-of-work + optional mini-game CAPTCHA, no third party
+- 💸 **$0 on Cloudflare** — Workers + KV + R2 + (D1 or Postgres), free-tier friendly; configure everything in-app, no redeploy
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/botnick/shortlink)
+
+> **Deploy your own in one click** with the button above — or clone and `npm run dev` for local.
+> Stack: **Cloudflare Workers · Hono · React 19 + Vite + Tailwind v4 · Drizzle ORM · Postgres or D1**
 
 ---
 
