@@ -1,0 +1,1 @@
+ALTER TABLE `links` ADD `geo_rules` text;

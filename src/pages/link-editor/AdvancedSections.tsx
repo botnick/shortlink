@@ -1,7 +1,8 @@
-import { Check, Link2, Megaphone, Monitor, Plus, Share2, Smartphone } from "lucide-react";
+import { Check, Globe, Link2, Megaphone, Monitor, Plus, Share2, Smartphone, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isHttpUrl, UTM_KEYS } from "@/lib/linkForm";
 import type { PreviewMode } from "@shared/types";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AppleLogo, AndroidLogo } from "@/components/icons";
@@ -26,6 +27,8 @@ export function AdvancedSections({ form }: { form: LinkEditorForm }) {
     setAndroidUrl,
     desktopUrl,
     setDesktopUrl,
+    geoRules,
+    setGeoRules,
     previewMode,
     setPreviewMode,
     destMeta,
@@ -179,6 +182,89 @@ export function AdvancedSections({ form }: { form: LinkEditorForm }) {
               <Link2 className="mt-0.5 size-3.5 shrink-0" />
               <span>
                 Everyone else (and any platform left blank) goes to your destination above.
+              </span>
+            </div>
+          </Collapsible>
+
+          {/* Country routing */}
+          <Collapsible
+            icon={Globe}
+            title="Country routing"
+            summary={
+              geoRules.length > 0
+                ? `${geoRules.length} countr${geoRules.length > 1 ? "ies" : "y"} routed`
+                : "Send visitors to a different URL by country"
+            }
+            defaultOpen={geoRules.length > 0}
+          >
+            <div className="space-y-2">
+              {geoRules.map((rule, i) => {
+                const badUrl = Boolean(rule.url.trim() && !isHttpUrl(rule.url));
+                return (
+                  <div key={i} className="flex items-start gap-2">
+                    <Input
+                      value={rule.country}
+                      onChange={(e) =>
+                        setGeoRules(
+                          geoRules.map((r, j) =>
+                            j === i
+                              ? { ...r, country: e.target.value.toUpperCase().slice(0, 2) }
+                              : r,
+                          ),
+                        )
+                      }
+                      placeholder="TH"
+                      maxLength={2}
+                      className="h-9 w-16 uppercase"
+                      aria-label={`Country code for rule ${i + 1}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        type="url"
+                        value={rule.url}
+                        onChange={(e) =>
+                          setGeoRules(
+                            geoRules.map((r, j) => (j === i ? { ...r, url: e.target.value } : r)),
+                          )
+                        }
+                        placeholder="https://example.com/th"
+                        className="h-9"
+                        aria-label={`Destination for rule ${i + 1}`}
+                        aria-invalid={badUrl}
+                      />
+                      {badUrl && (
+                        <p className="mt-1 text-[11px] text-red-600">Must be a valid http(s) URL.</p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-9 shrink-0 text-muted-foreground"
+                      onClick={() => setGeoRules(geoRules.filter((_, j) => j !== i))}
+                      aria-label={`Remove rule ${i + 1}`}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                );
+              })}
+              {geoRules.length < 20 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGeoRules([...geoRules, { country: "", url: "" }])}
+                >
+                  <Plus className="size-4" /> Add country
+                </Button>
+              )}
+            </div>
+            <div className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
+              <Globe className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                Use 2-letter country codes (ISO-3166, e.g. TH, US, JP). A matching country wins over
+                device routing; everyone else uses the targets above.
               </span>
             </div>
           </Collapsible>

@@ -6,6 +6,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { GeoRule } from "@shared/types";
 
 // Coalesce a NULL domain (the default short host) to '' so it participates in
 // the per-domain unique slug index — SQLite treats NULLs as distinct otherwise.
@@ -85,6 +86,9 @@ export const links = sqliteTable(
     iosUrl: text(),
     androidUrl: text(),
     desktopUrl: text(),
+    // Optional per-country redirect overrides ([{ country, url }]). When a
+    // visitor's country matches, it wins over the per-OS targets and destination.
+    geoRules: text({ mode: "json" }).$type<GeoRule[]>(),
     // Optional password gate (PBKDF2 hash). When set, the redirect serves a
     // password prompt instead of forwarding until the visitor unlocks it.
     passwordHash: text(),

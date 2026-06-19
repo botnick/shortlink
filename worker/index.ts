@@ -192,10 +192,12 @@ app.post("/api/unlock/:slug", async (c) => {
         iosUrl: l.iosUrl,
         androidUrl: l.androidUrl,
         desktopUrl: l.desktopUrl,
+        geoRules: l.geoRules ?? null,
         isActive: l.isActive,
         hasPassword: true,
         expiresAt: null,
       },
+      getCountry(c),
       os,
       deviceType,
     );
@@ -352,10 +354,10 @@ app.get("/:slug", async (c) => {
   // click is counted on a successful unlock (in /api/unlock), not here.
   if (cached.hasPassword) return passwordPage(c, slug);
 
-  // Per-OS deep-link routing (iOS / Android / desktop), resolved on the cached
-  // payload so it stays on the edge with no extra DB read.
+  // Per-country + per-OS routing (country wins), resolved on the cached payload
+  // so it stays on the edge with no extra DB read.
   const { os, deviceType } = parseUserAgent(c.req.header("user-agent") ?? null);
-  const target = routeDestination(cached, os, deviceType);
+  const target = routeDestination(cached, getCountry(c), os, deviceType);
 
   // Optional link-safety interstitial: confirm before forwarding to an external
   // site. The toggle is read from the 30s-memoised public config (no per-redirect

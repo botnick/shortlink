@@ -102,6 +102,7 @@ function toLinkDTO(
     iosUrl: row.iosUrl,
     androidUrl: row.androidUrl,
     desktopUrl: row.desktopUrl,
+    geoRules: row.geoRules ?? [],
     isActive: row.isActive,
     expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     clickCount: row.clickCount,
@@ -323,6 +324,13 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
   if (isBlockedDestination(input.destination, blockedDomainsFrom(settings))) {
     return c.json({ error: "That destination domain isn’t allowed" }, 400);
   }
+  if (
+    input.geoRules?.some((r) =>
+      isBlockedDestination(r.url, blockedDomainsFrom(settings)),
+    )
+  ) {
+    return c.json({ error: "A country-routing destination domain isn’t allowed" }, 400);
+  }
   if (input.slug && extraReservedFrom(settings).includes(input.slug.toLowerCase())) {
     return c.json({ error: "That custom alias is reserved" }, 400);
   }
@@ -362,6 +370,7 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
           iosUrl: input.iosUrl ?? null,
           androidUrl: input.androidUrl ?? null,
           desktopUrl: input.desktopUrl ?? null,
+          geoRules: input.geoRules ?? null,
           passwordHash,
           userId: user.id,
           projectId,
@@ -780,12 +789,23 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
       return c.json({ error: "That destination domain isn’t allowed" }, 400);
     }
   }
+  if (input.geoRules !== undefined && input.geoRules.length > 0) {
+    settings ??= await getAllSettings(db, schema);
+    if (
+      input.geoRules.some((r) =>
+        isBlockedDestination(r.url, blockedDomainsFrom(settings!)),
+      )
+    ) {
+      return c.json({ error: "A country-routing destination domain isn’t allowed" }, 400);
+    }
+  }
 
   const patch: Partial<typeof links.$inferInsert> = { updatedAt: new Date() };
   if (input.destination !== undefined) patch.destination = input.destination;
   if (input.iosUrl !== undefined) patch.iosUrl = input.iosUrl;
   if (input.androidUrl !== undefined) patch.androidUrl = input.androidUrl;
   if (input.desktopUrl !== undefined) patch.desktopUrl = input.desktopUrl;
+  if (input.geoRules !== undefined) patch.geoRules = input.geoRules;
   if (input.password !== undefined) {
     patch.passwordHash = input.password ? await hashPassword(input.password, c.env.SESSION_SECRET, pbkdf2Iterations(c.env)) : null;
   }

@@ -379,11 +379,29 @@ const tagsField = z
 // The custom domain a link's back-half lives on, or null for the default host.
 const linkDomainId = z.string().uuid().nullable();
 
+// Per-country redirect overrides. Country = ISO-3166 alpha-2 (normalised to
+// uppercase); url is a normal http(s) link. Deduped by country and capped — the
+// edge matches the visitor's country against these before per-OS routing.
+const countryCode = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]{2}$/, "Country must be a 2-letter code")
+  .transform((s) => s.toUpperCase());
+
+const geoRulesField = z
+  .array(z.object({ country: countryCode, url: httpUrl }))
+  .max(20)
+  .transform((arr) => {
+    const seen = new Set<string>();
+    return arr.filter((r) => (seen.has(r.country) ? false : seen.add(r.country)));
+  });
+
 export const createLinkSchema = z.object({
   destination: httpUrl,
   iosUrl: deepLink.optional(),
   androidUrl: deepLink.optional(),
   desktopUrl: deepLink.optional(),
+  geoRules: geoRulesField.optional(),
   password: linkPassword.optional(),
   slug: slugField.optional(),
   domainId: linkDomainId.optional(),
@@ -401,6 +419,7 @@ export const updateLinkSchema = z.object({
   iosUrl: deepLink.optional(),
   androidUrl: deepLink.optional(),
   desktopUrl: deepLink.optional(),
+  geoRules: geoRulesField.optional(),
   password: linkPassword.optional(),
   qrConfig: qrConfigField.optional(),
   // Editable back-half + domain. The previous (domain, slug) is retired to an

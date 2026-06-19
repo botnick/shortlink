@@ -2,6 +2,8 @@
  * Edge cache for the redirect hot path. Postgres stays the source of truth;
  * KV is a globally-replicated read cache so redirects rarely touch the DB.
  */
+import type { GeoRule } from "@shared/types";
+
 export interface CachedLink {
   id: string;
   destination: string;
@@ -9,6 +11,8 @@ export interface CachedLink {
   iosUrl: string | null;
   androidUrl: string | null;
   desktopUrl: string | null;
+  /** Per-country redirect overrides; absent on links cached before this shipped. */
+  geoRules?: GeoRule[] | null;
   isActive: boolean;
   /** true when the link is password-gated (the hash itself stays in the DB) */
   hasPassword: boolean;
@@ -17,16 +21,23 @@ export interface CachedLink {
 }
 
 /**
- * Pick the destination for a visitor's platform (Rebrandly-style device
- * routing): iOS / Android get their app/universal-link target, desktop its own;
- * anything unset falls back to the canonical `destination`. Done on the cached
- * payload so it stays on the edge hot path with no extra DB read.
+ * Pick the destination for a visitor. Precedence: a matching per-country rule
+ * wins first, then the per-OS deep links (iOS / Android / desktop), then the
+ * canonical `destination`. Run on the cached payload so it stays on the edge hot
+ * path with no extra DB read. `country` is the edge-detected ISO-3166 alpha-2
+ * code (uppercased here); unknown/missing simply skips the geo step.
  */
 export function routeDestination(
   link: CachedLink,
+  country: string | null,
   os: string | null,
   deviceType: string | null,
 ): string {
+  if (country && link.geoRules && link.geoRules.length > 0) {
+    const cc = country.toUpperCase();
+    const rule = link.geoRules.find((r) => r.country === cc);
+    if (rule) return rule.url;
+  }
   if (os === "iOS" && link.iosUrl) return link.iosUrl;
   if (os === "Android" && link.androidUrl) return link.androidUrl;
   if (deviceType === "desktop" && link.desktopUrl) return link.desktopUrl;

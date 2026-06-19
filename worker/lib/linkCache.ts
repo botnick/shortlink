@@ -17,6 +17,7 @@ export function cachePayload(row: LinkRow): CachedLink {
     iosUrl: row.iosUrl,
     androidUrl: row.androidUrl,
     desktopUrl: row.desktopUrl,
+    geoRules: row.geoRules ?? null,
     isActive: row.isActive,
     hasPassword: Boolean(row.passwordHash),
     expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,

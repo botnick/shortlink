@@ -18,7 +18,8 @@
     "test:e2e": "tsx tests/e2e.ts",
     "test:captcha": "tsx tests/captcha.ts",
     "test:captcha:flow": "node --env-file-if-exists=.dev.vars node_modules/tsx/dist/cli.mjs tests/captcha-flow.ts",
-    "test:password": "tsx tests/password.ts"
+    "test:password": "tsx tests/password.ts",
+    "test:routing": "tsx tests/routing.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans-thai": "^5.2.8",

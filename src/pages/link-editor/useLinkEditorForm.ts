@@ -23,6 +23,7 @@ import {
 import type {
   DomainDTO,
   DomainListDTO,
+  GeoRule,
   LinkAliasDTO,
   LinkAliasListDTO,
   LinkDTO,
@@ -61,6 +62,7 @@ export function useLinkEditorForm() {
   const [iosUrl, setIosUrl] = useState("");
   const [androidUrl, setAndroidUrl] = useState("");
   const [desktopUrl, setDesktopUrl] = useState("");
+  const [geoRules, setGeoRules] = useState<GeoRule[]>([]);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("off");
   const [ogTitle, setOgTitle] = useState("");
   const [ogDescription, setOgDescription] = useState("");
@@ -102,6 +104,7 @@ export function useLinkEditorForm() {
         setIosUrl(l.iosUrl ?? "");
         setAndroidUrl(l.androidUrl ?? "");
         setDesktopUrl(l.desktopUrl ?? "");
+        setGeoRules(l.geoRules ?? []);
         setPreviewMode(l.previewMode);
         setOgTitle(l.ogTitle ?? "");
         setOgDescription(l.ogDescription ?? "");
@@ -419,6 +422,9 @@ export function useLinkEditorForm() {
       iosUrl: iosUrl.trim() || null,
       androidUrl: androidUrl.trim() || null,
       desktopUrl: desktopUrl.trim() || null,
+      geoRules: geoRules
+        .map((r) => ({ country: r.country.trim().toUpperCase(), url: r.url.trim() }))
+        .filter((r) => r.country && r.url),
     };
   }
   function passwordField() {
@@ -570,6 +576,8 @@ export function useLinkEditorForm() {
     setAndroidUrl,
     desktopUrl,
     setDesktopUrl,
+    geoRules,
+    setGeoRules,
     previewMode,
     setPreviewMode,
     ogTitle,

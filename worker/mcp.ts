@@ -50,6 +50,20 @@ const EXPIRES_IN = {
     'Relative expiry like "30m", "12h", "7d", "4w" (minutes/hours/days/weeks). Alternative to expiresAt.',
 };
 
+const GEO_RULES = {
+  type: "array",
+  description:
+    "Per-country redirect overrides; country = ISO-3166 alpha-2 (e.g. TH, US). A matching visitor's country takes precedence over the per-OS targets and destination. Replaces the whole set; max 20.",
+  items: {
+    type: "object",
+    properties: {
+      country: { type: "string", description: "ISO-3166 alpha-2 code" },
+      url: { type: "string", description: "Destination for that country" },
+    },
+    required: ["country", "url"],
+  },
+};
+
 interface ToolDef {
   name: string;
   title: string;
@@ -103,6 +117,7 @@ const TOOLS: ToolDef[] = [
         iosUrl: { type: "string", description: "iOS visitors go here instead" },
         androidUrl: { type: "string", description: "Android visitors go here instead" },
         desktopUrl: { type: "string", description: "Desktop visitors go here instead" },
+        geoRules: GEO_RULES,
         projectId: { type: "string", description: "Project to file the link under (see list_projects)" },
       },
       required: ["destination"],
@@ -159,6 +174,7 @@ const TOOLS: ToolDef[] = [
         iosUrl: { type: ["string", "null"] },
         androidUrl: { type: ["string", "null"] },
         desktopUrl: { type: ["string", "null"] },
+        geoRules: GEO_RULES,
         projectId: { type: "string" },
       },
       required: ["link"],
@@ -314,6 +330,7 @@ function compactLink(l: LinkDTO): Record<string, unknown> {
     iosUrl: l.iosUrl,
     androidUrl: l.androidUrl,
     desktopUrl: l.desktopUrl,
+    geoRules: l.geoRules,
     projectId: l.projectId,
     createdAt: l.createdAt,
     ...(qrOrigin
@@ -471,6 +488,7 @@ async function executeTool(
         "iosUrl",
         "androidUrl",
         "desktopUrl",
+        "geoRules",
         "projectId",
       ]) {
         if (args[k] !== undefined) body[k] = args[k];
@@ -511,6 +529,7 @@ async function executeTool(
         "iosUrl",
         "androidUrl",
         "desktopUrl",
+        "geoRules",
         "projectId",
       ]) {
         if (args[k] !== undefined) body[k] = args[k];

@@ -12,6 +12,14 @@ export interface UserDTO {
 
 export type PreviewMode = "off" | "custom" | "destination";
 
+/** A per-country redirect override. `country` is an uppercase ISO-3166 alpha-2
+ *  code; visitors from that country are sent to `url`. Takes precedence over the
+ *  per-OS deep links and the default `destination`. */
+export interface GeoRule {
+  country: string;
+  url: string;
+}
+
 export interface LinkDTO {
   id: string;
   slug: string;
@@ -21,6 +29,8 @@ export interface LinkDTO {
   iosUrl: string | null;
   androidUrl: string | null;
   desktopUrl: string | null;
+  /** Per-country redirect overrides (take precedence over OS routing). */
+  geoRules: GeoRule[];
   isActive: boolean;
   expiresAt: string | null;
   clickCount: number;
