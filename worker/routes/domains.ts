@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull } from "drizzle-orm";
 import type { AppContext, AppEnv } from "../env";
 import type { DomainRow } from "../db/schema";
 import { domainSchema } from "../lib/validators";
 import { requireAuth } from "../middleware/auth";
 import {
   getAllSettings,
+  maxCustomHostnamesFrom,
   maxDomainsPerUserFrom,
   saasConfigFrom,
   type SaasConfig,
@@ -125,6 +126,25 @@ route.post("/", zValidator("json", domainSchema), async (c) => {
   let cfRecords: DomainDnsRecord[] | null = null;
   let status = "pending";
   if (saas) {
+    // Cost guard: never provision more Cloudflare custom hostnames than the cap
+    // (free tier is 100, then billed per hostname). Counts ALL users' SaaS
+    // hostnames, since the Cloudflare charge is account-wide.
+    const maxCH = maxCustomHostnamesFrom(map);
+    if (maxCH > 0) {
+      const [{ n }] = await c.var.db
+        .select({ n: count() })
+        .from(domains)
+        .where(isNotNull(domains.cfHostnameId));
+      if (Number(n) >= maxCH) {
+        return c.json(
+          {
+            error:
+              "Custom-domain limit reached. Raise “Max custom hostnames” in Admin → Custom domains, or remove unused domains.",
+          },
+          409,
+        );
+      }
+    }
     try {
       const cf = await createCustomHostname(saas, hostname);
       cfHostnameId = cf.cfId;

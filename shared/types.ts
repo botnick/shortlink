@@ -298,6 +298,9 @@ export interface SettingsDTO {
   cfZoneId: string;
   cfFallbackHost: string;
   cfConfigured: boolean;
+  /** Global cap on Cloudflare-for-SaaS custom hostnames — a cost guard (free tier
+   *  is 100, then ~$0.10 each). Default 95 (buffer under the free tier); 0 = unlimited. */
+  maxCustomHostnames: number;
   ogTemplate: string;
   ogFont: string;
   // Social-card identity (raw overrides; blank = inherit the branding value).

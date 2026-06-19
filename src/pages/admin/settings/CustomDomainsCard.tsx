@@ -40,6 +40,7 @@ function CustomDomainsForm({ initial, patch }: { initial: SettingsDTO; patch: Se
   const [cfToken, setCfToken] = useState("");
   const [cfZoneId, setCfZoneId] = useState(initial.cfZoneId);
   const [cfFallbackHost, setCfFallbackHost] = useState(initial.cfFallbackHost);
+  const [maxCustomHostnames, setMaxCustomHostnames] = useState(initial.maxCustomHostnames);
   const [unverifiedDays, setUnverifiedDays] = useState(initial.domainUnverifiedDays);
   const [cfConfigured, setCfConfigured] = useState(initial.cfConfigured);
   const [saving, setSaving] = useState(false);
@@ -51,6 +52,7 @@ function CustomDomainsForm({ initial, patch }: { initial: SettingsDTO; patch: Se
       const body: Partial<SettingsDTO & { cfApiToken: string }> = {
         cfZoneId,
         cfFallbackHost,
+        maxCustomHostnames,
         domainUnverifiedDays: unverifiedDays,
       };
       if (cfToken.trim()) body.cfApiToken = cfToken.trim();
@@ -94,6 +96,29 @@ function CustomDomainsForm({ initial, patch }: { initial: SettingsDTO; patch: Se
           <span className="font-normal text-muted-foreground">(optional — members CNAME to this)</span>
         </Label>
         <Input id="cfFallback" value={cfFallbackHost} onChange={(e) => setCfFallbackHost(e.target.value)} placeholder="defaults to this app's domain" />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="maxCustomHostnames">Max custom hostnames (cost cap)</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            id="maxCustomHostnames"
+            type="number"
+            min={0}
+            max={100000}
+            value={maxCustomHostnames}
+            onChange={(e) =>
+              setMaxCustomHostnames(Math.max(0, Math.floor(Number(e.target.value) || 0)))
+            }
+            className="w-24"
+          />
+          <span className="text-sm text-muted-foreground">
+            total SaaS hostnames (0 = unlimited)
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Cloudflare for SaaS includes 100 free custom hostnames, then bills per hostname.
+          Adding a domain is blocked once this many exist. Default 95 (a safe buffer).
+        </p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="unverifiedDays">Auto-remove unverified domains</Label>

@@ -158,6 +158,7 @@ export const settingsSchema = z
     cfApiToken: z.string().trim().max(200).optional(),
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),
+    maxCustomHostnames: z.number().int().min(0).max(100_000).optional(),
     domainUnverifiedDays: z.number().int().min(0).max(3650).optional(),
     clicksRetentionDays: z.number().int().min(0).max(3650).optional(),
     exportMaxRows: z.number().int().min(0).max(1_000_000).optional(),

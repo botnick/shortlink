@@ -57,6 +57,7 @@ export const SETTING_KEYS = {
   cfApiToken: "cf_api_token",
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
+  maxCustomHostnames: "max_custom_hostnames",
   domainUnverifiedDays: "domain_unverified_days",
   clicksRetentionDays: "clicks_retention_days",
   exportMaxRows: "export_max_rows",
@@ -611,6 +612,15 @@ export function cfZoneIdFrom(map: Record<string, unknown>): string {
 
 export function cfFallbackHostFrom(map: Record<string, unknown>): string {
   return asString(map[SETTING_KEYS.cfFallbackHost], "");
+}
+
+/** Global safety cap on Cloudflare-for-SaaS custom hostnames (a cost guard — the
+ *  free tier is 100 hostnames, then ~$0.10 each/month). The SaaS add path refuses
+ *  to create a new custom hostname once the total reaches this. Default 95 — a
+ *  safety buffer under the 100 free tier; 0 = unlimited (you accept charges). */
+export function maxCustomHostnamesFrom(map: Record<string, unknown>): number {
+  const v = map[SETTING_KEYS.maxCustomHostnames];
+  return typeof v === "number" && v >= 0 ? Math.floor(v) : 95;
 }
 
 /** Days an unverified custom domain is kept before the cron removes it.

@@ -58,6 +58,7 @@ import {
   cfConfiguredFrom,
   cfFallbackHostFrom,
   cfZoneIdFrom,
+  maxCustomHostnamesFrom,
   descriptionFrom,
   domainUnverifiedDaysFrom,
   clicksRetentionDaysFrom,
@@ -153,6 +154,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     cfZoneId: cfZoneIdFrom(map),
     cfFallbackHost: cfFallbackHostFrom(map),
     cfConfigured: cfConfiguredFrom(map),
+    maxCustomHostnames: maxCustomHostnamesFrom(map),
     domainUnverifiedDays: domainUnverifiedDaysFrom(map),
     clicksRetentionDays: clicksRetentionDaysFrom(map),
     exportMaxRows: exportMaxRowsFrom(map),
@@ -355,6 +357,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.cfFallbackHost !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.cfFallbackHost, input.cfFallbackHost);
+  }
+  if (input.maxCustomHostnames !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.maxCustomHostnames, input.maxCustomHostnames);
   }
   if (input.domainUnverifiedDays !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.domainUnverifiedDays, input.domainUnverifiedDays);
