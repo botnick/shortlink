@@ -8,7 +8,7 @@
 // For Postgres (DB_DRIVER="postgres") it is a no-op: a DB firewall locked to
 // Cloudflare IP ranges often blocks CI runners, so run `npm run db:migrate`
 // yourself from an allowed machine (see docs/DEPLOYMENT.md).
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 let driver = "d1";
@@ -25,4 +25,4 @@ if (driver !== "d1") {
   process.exit(0);
 }
 
-execSync("node scripts/d1-migrate.mjs", { stdio: "inherit" });
+execFileSync("node", ["scripts/d1-migrate.mjs"], { stdio: "inherit" });

@@ -94,9 +94,10 @@ The short version: provision **KV + R2 + (Hyperdrive or D1)**, set your **domain
 | --- | --- |
 | `npm run dev` | Local dev server (client + Worker, hot-reload) |
 | `npm run build` | Build client → `dist/client`, Worker → `dist/shortlink` |
-| `npm run deploy` | Build + deploy to Cloudflare |
+| `npm run deploy` | Build + deploy to Cloudflare (also auto-applies D1 migrations) |
 | `npm run typecheck` | Type-check client, Worker, and Node configs |
 | `npm run db:migrate` | Apply Postgres migrations (reads `.dev.vars`) |
+| `npm run db:migrate:d1` | Apply D1 migrations `--remote` (resolves the auto-provisioned id) |
 | `npm run db:generate` / `:sqlite` | Generate a Drizzle migration after a schema change (do **both**) |
 | `npm run db:studio` | Open Drizzle Studio |
 | `DBURL=… npm run test:e2e` | Full-API integration test against a **throwaway** Postgres |

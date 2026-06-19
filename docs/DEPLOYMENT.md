@@ -187,8 +187,11 @@ npx wrangler secret put SETUP_TOKEN       # paste your setup token
 ## Step 6 — Deploy
 
 ```bash
-npm run deploy     # builds the client + Worker, then wrangler deploy
+npm run deploy     # build client + Worker → wrangler deploy → auto-apply D1 migrations
 ```
+
+On **[D1]** this also applies the schema to the remote database after deploying (via
+`scripts/postdeploy.mjs` → `scripts/d1-migrate.mjs`); on **[Postgres]** that step is a no-op.
 
 ---
 
@@ -247,8 +250,9 @@ Members can serve links from `go.theirbrand.com`. Two modes, picked automaticall
 In **/admin → Settings → Custom domains**, paste a **Cloudflare API token** (permission:
 *SSL and Certificates → Edit*) and your **Zone ID**. Now a member just adds their domain on the
 **Domains** page, points one **CNAME** at the fallback host, and it connects with automatic TLS —
-no per-domain work for you, no redeploy. The first **100 custom hostnames are free**, then a
-small per-hostname fee (check current Cloudflare for SaaS pricing).
+no per-domain work for you, no redeploy. Cloudflare for SaaS includes a free allotment of custom
+hostnames, then a per-hostname fee beyond it — see current
+[Cloudflare for SaaS pricing](https://developers.cloudflare.com/cloudflare-for-saas/).
 
 **Manual / $0 — DNS verification.** Leave the token unset. A member adds their domain and a
 `_shortlink-verify` **TXT** record; the Worker confirms ownership over public DNS-over-HTTPS.
@@ -268,7 +272,7 @@ custom hostname.
 | --- | --- | --- |
 | **Workers: 100,000 requests/day** | SPA loads, API calls, **every redirect** | The real ceiling — see below |
 | KV: 100k reads/day, 1k writes/day | redirect cache | Reads track redirects; writes are tiny (well under) |
-| D1 free: 500 MB/db, 100k writes/day | the clicks table | Use retention to stay under 500 MB |
+| D1 free: 5 GB storage, 5M rows read/day, 100k rows written/day | the clicks table | Use retention to bound it; see [current D1 limits](https://developers.cloudflare.com/d1/platform/pricing/) |
 | R2: 10 GB | QR logos / uploaded OG images | Plenty |
 | Durable Object (rate limiter) | login/API/abuse throttling | On the free plan |
 
@@ -315,7 +319,9 @@ npm run db:migrate:d1    # [D1] resolves the auto-provisioned id, applies --remo
 > **[D1]** Use `npm run db:migrate:d1` (not a bare `wrangler d1 migrations apply … --remote`).
 > Because the one-click config omits the `database_id` for auto-provisioning, the bare command
 > fails with *"missing a database_id"* — the script resolves the id for you. `npm run deploy`
-> already runs this automatically after deploying.
+> already runs this automatically after deploying. If you belong to **more than one Cloudflare
+> account**, first `wrangler login` or `export CLOUDFLARE_ACCOUNT_ID=<id>` so the lookup isn't
+> ambiguous.
 
 Then `npm run deploy`. See [ARCHITECTURE.md → Database](ARCHITECTURE.md#database--dual-dialect)
 for why both schemas are kept in lockstep.

@@ -12,10 +12,16 @@ confusion.
 | The whole app (dashboard + your links) to live on `go.yoursite.com` instead of `*.workers.dev` | **App domain** | [Part 1](#part-1--the-apps-own-domain) |
 | Each member to run *their* links on *their own* `go.theirbrand.com` | **Member domain** | [Part 2](#part-2--member-domains) |
 
-> **Prerequisite for everything here:** the domain's **zone must be on a Cloudflare account
-> you control** (the domain is added to Cloudflare and its nameservers point at Cloudflare).
-> Adding a domain to Cloudflare is free — *Add a site* in the dashboard, then update the
-> nameservers at your registrar. Without this, none of the automatic DNS/TLS below works.
+> **Where the domain's DNS must live — depends on the mode:**
+> - **App domain (Part 1)** and **member domains in DNS-verification mode (Part 2B)**: the
+>   domain's **zone must be on a Cloudflare account you control** (added to Cloudflare,
+>   nameservers pointed at Cloudflare), because you route it as a Workers Custom Domain. Adding
+>   a site to Cloudflare is free — *Add a site* in the dashboard, then update nameservers at
+>   your registrar.
+> - **Member domains via Cloudflare for SaaS (Part 2A)**: the **member's domain does NOT need to
+>   be on Cloudflare** — they keep their existing DNS provider and just add one **CNAME** to your
+>   fallback host. Only *your* app zone (the one the API token + Zone ID point at) is on
+>   Cloudflare.
 
 ---
 
@@ -131,10 +137,11 @@ per-domain work for you, no redeploy.
 **CNAME** record (`go.theirbrand.com → <fallback host>`) at their DNS provider. Cloudflare
 issues the certificate and starts serving — usually within minutes.
 
-> **Cost:** the first **100 custom hostnames are free**, then a small per-hostname fee. Check
-> current [Cloudflare for SaaS pricing](https://developers.cloudflare.com/cloudflare-for-saas/).
-> The token is stored as an **admin setting**, not an env secret, so it can be rotated in-app
-> with no redeploy.
+> **Cost:** Cloudflare for SaaS includes a free allotment of custom hostnames, then a
+> per-hostname fee beyond it — the exact figures change, so treat
+> [Cloudflare for SaaS pricing](https://developers.cloudflare.com/cloudflare-for-saas/) as the
+> source of truth. The token is stored as an **admin setting**, not an env secret, so it can be
+> rotated in-app with no redeploy.
 
 ### Mode B — DNS verification ($0, no token)
 

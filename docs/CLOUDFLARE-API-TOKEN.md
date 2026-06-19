@@ -13,8 +13,9 @@ basic deploy.
 | # | Job | Token permissions | Where it goes |
 | --- | --- | --- | --- |
 | 1 | **Member custom domains** via Cloudflare for SaaS (auto TLS) | **Zone › SSL and Certificates › Edit** | App UI → **/admin → Settings → Custom domains** (an admin setting, not an env secret) |
-| 2 | **Deploy from GitHub Actions** (`deploy.yml`) | **Account › Workers Scripts › Edit** | GitHub repo → **Settings → Secrets and variables → Actions** → `CLOUDFLARE_API_TOKEN` (+ `CLOUDFLARE_ACCOUNT_ID`) |
-| 3 | **Local/automation wrangler** (optional, instead of `wrangler login`) | **Account › Workers Scripts › Edit** (add KV/D1/R2 *Edit* if you provision resources) | Shell env var `CLOUDFLARE_API_TOKEN` |
+| 2a | **Deploy to already-provisioned resources** (GitHub Actions `deploy.yml`, steady state) | **Account › Workers Scripts › Edit** | GitHub repo → **Settings → Secrets and variables → Actions** → `CLOUDFLARE_API_TOKEN` (+ `CLOUDFLARE_ACCOUNT_ID`) |
+| 2b | **First deploy / auto-provision + D1 migrate** (the very first push, or `npm run deploy`) | Add **Account › Workers KV Storage › Edit**, **Account › D1 › Edit**, **Account › Workers R2 Storage › Edit** to 2a | same as 2a (or the env var below) |
+| 3 | **Local/automation wrangler** (optional, instead of `wrangler login`) | Same as 2a for redeploys; same as 2b to provision/migrate | Shell env var `CLOUDFLARE_API_TOKEN` (+ `CLOUDFLARE_ACCOUNT_ID`) |
 
 > **You do NOT need a token to deploy via the Deploy button / Workers Builds.** Workers
 > Builds runs inside Cloudflare with its own credentials. Tokens 2 and 3 are only for
@@ -55,13 +56,18 @@ basic deploy.
 
 ### 2. GitHub Actions deploy (`deploy.yml`)
 
-- **Permission:** `Account` · **Workers Scripts** · **Edit**
+- **Permission (steady state):** `Account` · **Workers Scripts** · **Edit** — enough to redeploy
+  the Worker when KV/R2/D1 already exist.
+- **Permission (first deploy / auto-provision):** also add `Account` · **Workers KV Storage** ·
+  **Edit**, `Account` · **D1** · **Edit**, and `Account` · **Workers R2 Storage** · **Edit** — the
+  very first deploy creates those resources by name, which the token must be allowed to do. (D1
+  **Edit** is also what `npm run db:migrate:d1` needs to read the database and apply migrations.)
 - **Account Resources:** the account the Worker is on.
 - In the GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**,
   add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (your account id).
   `deploy.yml` skips cleanly (stays green) until both exist, then deploys on every push to
-  `main`. Migrations are **not** run in CI — apply them via `npm run deploy` (Workers Builds)
-  or `npm run db:migrate:d1` from an allowed machine.
+  `main`. Note `deploy.yml` itself runs `wrangler deploy`, **not** migrations — apply the schema
+  via `npm run deploy` (Workers Builds) or `npm run db:migrate:d1` from an allowed machine.
 
 ### 3. Local wrangler via token (instead of `wrangler login`)
 
