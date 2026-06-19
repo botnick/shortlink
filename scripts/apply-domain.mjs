@@ -1,15 +1,20 @@
-// Makes custom domains "set one value". Derives the Workers route from APP_URL's
-// host at deploy time, so APP_URL is the ONLY thing you edit to change domains —
-// you never touch a `routes` block. Runs after build, before `wrangler deploy`
-// (see the `deploy` script); also runs in Workers Builds, which calls the same script.
+// Makes custom domains "set one env var" — no wrangler.jsonc editing, so an
+// open-source deploy is configured entirely from the environment.
 //
-//   APP_URL host is *.workers.dev  → no custom route (served on the workers.dev subdomain)
-//   APP_URL host is your own domain → routes:[{ pattern: host, custom_domain: true }]
-//                                     (Cloudflare manages its DNS + TLS automatically)
+// Resolves APP_URL with this precedence, then writes it into the built config's
+// vars (so the deployed Worker gets it at runtime) and derives the Worker's route
+// from its host:
+//   1. process.env.APP_URL      — Workers Builds "Variables", or `export APP_URL=…`
+//   2. APP_URL in ./.dev.vars   — local deploys
+//   3. vars.APP_URL in wrangler.jsonc — the shipped default (a *.workers.dev URL)
 //
-// The custom domain's zone must be on the same Cloudflare account as the Worker —
-// see docs/CUSTOM-DOMAINS.md. APP_URL is the single source of truth, so whatever
-// route this derives overwrites any existing one in the built config.
+//   host is *.workers.dev   → no custom route (served on the workers.dev subdomain)
+//   host is your own domain → routes:[{ pattern: host, custom_domain: true }]
+//                             (Cloudflare manages its DNS + TLS automatically)
+//
+// Runs after build, before `wrangler deploy` (see the `deploy` script); also runs
+// in Workers Builds, which calls the same script. The custom domain's zone must be
+// on the same Cloudflare account as the Worker — see docs/CUSTOM-DOMAINS.md.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const path = "dist/shortlink/wrangler.json";
@@ -21,11 +26,31 @@ try {
   process.exit(1);
 }
 
-const appUrl = cfg.vars?.APP_URL;
+// Minimal .dev.vars reader (KEY=value / KEY="value", ignores comments/blanks).
+function fromDevVars(key) {
+  let text;
+  try {
+    text = readFileSync(".dev.vars", "utf8");
+  } catch {
+    return undefined;
+  }
+  for (const line of text.split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
+    if (m && m[1] === key) return m[2].replace(/^["']|["']$/g, "").trim();
+  }
+  return undefined;
+}
+
+cfg.vars = cfg.vars ?? {};
+const appUrl =
+  process.env.APP_URL || fromDevVars("APP_URL") || cfg.vars.APP_URL;
 if (!appUrl) {
-  console.log("[apply-domain] no APP_URL set — leaving routes as-is.");
+  console.log("[apply-domain] no APP_URL (env, .dev.vars, or config) — leaving routes as-is.");
   process.exit(0);
 }
+// Persist the resolved value so the deployed Worker has it as a runtime var
+// (otherwise `wrangler deploy` would ship the stale wrangler.jsonc default).
+cfg.vars.APP_URL = appUrl;
 
 let host;
 try {

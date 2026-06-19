@@ -23,11 +23,12 @@
   },
   "vars": {
     // The canonical public origin used for every displayed short URL, QR target
-    // and API doc — AND the single knob for your domain: the deploy derives the
-    // Worker's route from this host automatically (see the routes note at the
-    // bottom). AFTER your first deploy set this to your real address — your custom
-    // domain (https://go.yoursite.com) or the assigned
-    // https://shortlink.<your-subdomain>.workers.dev — then redeploy. That's it.
+    // and API doc — AND the single knob for your domain (the deploy derives the
+    // Worker's route from its host; see the routes note at the bottom).
+    // This is just the DEFAULT. To use your own domain you don't edit this file:
+    // set an APP_URL env var instead — in Workers Builds → Settings → Variables,
+    // or local `.dev.vars` / `export APP_URL=…` — and `scripts/apply-domain.mjs`
+    // applies it on deploy.
     "APP_URL": "https://shortlink.botnick.workers.dev",
     // Database driver: "d1" (default — fully on Cloudflare, $0, nothing to set
     // up) or "postgres" (uncomment the `hyperdrive` block at the bottom and set
@@ -82,9 +83,10 @@
   // ],
 
   // --- Serve on your own domain --------------------------------------------------
-  // You DON'T edit routes here. Just set APP_URL above to your domain and deploy —
-  // `scripts/apply-domain.mjs` derives the Workers Custom Domain route from APP_URL's
-  // host at deploy time (a *.workers.dev host gets no route; your own domain gets a
+  // You DON'T edit routes here, and you don't even have to edit APP_URL above: set
+  // an APP_URL env var (Workers Builds → Variables, or local .dev.vars / export) and
+  // `scripts/apply-domain.mjs` derives the Workers Custom Domain route from its host
+  // at deploy time (a *.workers.dev host gets no route; your own domain gets a
   // `custom_domain` route, with Cloudflare managing DNS + TLS). The domain's zone must
   // be on this Cloudflare account. See docs/CUSTOM-DOMAINS.md.
 }

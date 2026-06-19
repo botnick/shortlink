@@ -15,7 +15,7 @@ Shortlink has **three** layers of configuration, from least to most flexible:
 
 | Field | Example | What it is |
 | --- | --- | --- |
-| `vars.APP_URL` | `https://go.yoursite.com` | **The** canonical origin — every displayed short URL, QR target, and API doc — **and** the single knob for your domain: the deploy derives the Worker's route from this host (`scripts/apply-domain.mjs`). *(No separate "short domain" setting; this is the single source of truth.)* |
+| `vars.APP_URL` | `https://go.yoursite.com` | **The** canonical origin — every displayed short URL, QR target, and API doc — **and** the single knob for your domain: the deploy derives the Worker's route from this host (`scripts/apply-domain.mjs`). Override **without editing this file** via an `APP_URL` **env var** (Workers Builds → Variables, or local `.dev.vars` / `export`); the value here is just the default. *(No separate "short domain" setting; single source of truth.)* |
 | `vars.DB_DRIVER` | `postgres` or `d1` | Which database driver to use. |
 | `routes` | *(auto-derived)* | You don't set this. `apply-domain.mjs` adds a `custom_domain` route from `APP_URL`'s host on deploy (none for a `*.workers.dev` host). See [CUSTOM-DOMAINS.md](CUSTOM-DOMAINS.md). |
 
