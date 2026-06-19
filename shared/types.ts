@@ -131,6 +131,9 @@ export interface StatsDTO {
   createdAt: string;
   totalClicks: number;
   uniqueVisitors: number;
+  /** False in rollup logging mode — aggregates don't carry per-visitor hashes,
+   *  so unique counts aren't available (show "—" instead of 0). Absent = true. */
+  uniquesTracked?: boolean;
   windows: StatsWindows;
   bestDay: { day: string; count: number } | null;
   directClicks: number;
@@ -200,6 +203,8 @@ export interface AdminAnalyticsDTO {
   granularity: "hour" | "day";
   totalClicks: number;
   uniqueVisitors: number;
+  /** False in rollup logging mode (unique counts unavailable). Absent = true. */
+  uniquesTracked?: boolean;
   timeseries: TimePoint[];
   countries: NameCount[];
   referrers: NameCount[];
@@ -313,6 +318,9 @@ export interface SettingsDTO {
   maxCustomHostnames: number;
   /** Whether the opt-in AI link assistant is enabled (default true). */
   aiAssistantEnabled: boolean;
+  /** How clicks are recorded: "raw" (row per click) or "rollup" (DO-aggregated
+   *  hourly counts — for high-traffic installs to stay under D1 write limits). */
+  clickLoggingMode: "raw" | "rollup";
   /** Live custom-hostname usage right now (what counts toward the cap / free tier),
    *  split by status. Present on GET /settings; omitted elsewhere. */
   customHostnameUsage?: { total: number; active: number; pending: number };

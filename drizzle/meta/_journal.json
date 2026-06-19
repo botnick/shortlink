@@ -169,6 +169,13 @@
       "when": 1781887289835,
       "tag": "0023_bright_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1781890008979,
+      "tag": "0024_ambiguous_payback",
+      "breakpoints": true
     }
   ]
 }

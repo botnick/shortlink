@@ -61,6 +61,7 @@ import {
   cfZoneIdFrom,
   maxCustomHostnamesFrom,
   aiAssistantEnabledFrom,
+  clickLoggingModeFrom,
   descriptionFrom,
   domainUnverifiedDaysFrom,
   clicksRetentionDaysFrom,
@@ -159,6 +160,7 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
     cfConfigured: cfConfiguredFrom(map),
     maxCustomHostnames: maxCustomHostnamesFrom(map),
     aiAssistantEnabled: aiAssistantEnabledFrom(map),
+    clickLoggingMode: clickLoggingModeFrom(map),
     domainUnverifiedDays: domainUnverifiedDaysFrom(map),
     clicksRetentionDays: clicksRetentionDaysFrom(map),
     exportMaxRows: exportMaxRowsFrom(map),
@@ -404,6 +406,9 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
   }
   if (input.aiAssistantEnabled !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.aiAssistantEnabled, input.aiAssistantEnabled);
+  }
+  if (input.clickLoggingMode !== undefined) {
+    await setSetting(db, schema, SETTING_KEYS.clickLoggingMode, input.clickLoggingMode);
   }
   if (input.domainUnverifiedDays !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.domainUnverifiedDays, input.domainUnverifiedDays);
@@ -816,11 +821,15 @@ admin.post("/links/bulk", zValidator("json", bulkLinksSchema), async (c) => {
 
 // System-wide analytics for the Analytics tab.
 admin.get("/analytics", async (c) => {
+  const useRollups =
+    c.var.dialect === "sqlite" &&
+    clickLoggingModeFrom(await getAllSettings(c.var.db, c.var.schema)) === "rollup";
   const stats = await computeGlobalStats(
     c.var.db,
     c.var.schema,
     c.var.dialect,
     parseRange(c.req.query("range")),
+    useRollups,
   );
   return c.json(stats);
 });

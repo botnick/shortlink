@@ -180,6 +180,41 @@ export const clicks = sqliteTable(
   ],
 );
 
+// Hourly click aggregates for "rollup" logging mode (mirrors schema.ts). A
+// Durable Object flushes one upserted row per (link, hour, dimensions) instead
+// of a row per click, keeping high-traffic installs under D1's write cap.
+export const clickRollups = sqliteTable(
+  "click_rollups",
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    linkId: text()
+      .notNull()
+      .references(() => links.id, { onDelete: "cascade" }),
+    bucket: integer().notNull(), // epoch hour: floor(epochMs / 3,600,000)
+    country: text().notNull().default(""),
+    referrerDomain: text().notNull().default(""),
+    browser: text().notNull().default(""),
+    os: text().notNull().default(""),
+    deviceType: text().notNull().default(""),
+    isBot: integer({ mode: "boolean" }).notNull().default(false),
+    count: integer().notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("click_rollups_dims_idx").on(
+      t.linkId,
+      t.bucket,
+      t.country,
+      t.referrerDomain,
+      t.browser,
+      t.os,
+      t.deviceType,
+      t.isBot,
+    ),
+    index("click_rollups_link_bucket_idx").on(t.linkId, t.bucket),
+    index("click_rollups_bucket_idx").on(t.bucket),
+  ],
+);
+
 export const settings = sqliteTable("settings", {
   key: text().primaryKey(),
   value: text({ mode: "json" }).notNull(),

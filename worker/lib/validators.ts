@@ -160,6 +160,7 @@ export const settingsSchema = z
     cfFallbackHost: z.string().trim().max(253).optional(),
     maxCustomHostnames: z.number().int().min(0).max(100_000).optional(),
     aiAssistantEnabled: z.boolean().optional(),
+    clickLoggingMode: z.enum(["raw", "rollup"]).optional(),
     domainUnverifiedDays: z.number().int().min(0).max(3650).optional(),
     clicksRetentionDays: z.number().int().min(0).max(3650).optional(),
     exportMaxRows: z.number().int().min(0).max(1_000_000).optional(),

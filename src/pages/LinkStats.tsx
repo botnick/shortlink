@@ -267,6 +267,7 @@ export function LinkStats() {
               label="Unique visitors"
               value={stats?.uniqueVisitors}
               loading={loading}
+              unavailable={stats?.uniquesTracked === false}
             />
           </div>
 
@@ -303,7 +304,16 @@ export function LinkStats() {
             </CardContent>
           </Card>
 
-          <RecentActivity items={activity} />
+          {stats?.uniquesTracked === false ? (
+            <Card>
+              <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                Live activity isn’t available in rollup logging mode — clicks are
+                aggregated hourly. Totals and breakdowns above stay accurate.
+              </CardContent>
+            </Card>
+          ) : (
+            <RecentActivity items={activity} />
+          )}
         </div>
       )}
 
@@ -349,11 +359,14 @@ function StatCard({
   label,
   value,
   loading,
+  unavailable,
 }: {
   icon: ReactNode;
   label: string;
   value: number | undefined;
   loading: boolean;
+  /** Metric isn't tracked in the current mode (e.g. uniques under rollup) → "—". */
+  unavailable?: boolean;
 }) {
   return (
     <Card>
@@ -363,7 +376,14 @@ function StatCard({
         </div>
         <div>
           <div className="text-sm text-muted-foreground">{label}</div>
-          {loading || value === undefined ? (
+          {unavailable ? (
+            <div
+              className="mt-1 text-2xl font-bold text-muted-foreground"
+              title="Not tracked in rollup logging mode"
+            >
+              —
+            </div>
+          ) : loading || value === undefined ? (
             <Skeleton className="mt-1 h-7 w-16" />
           ) : (
             <div className="text-2xl font-bold tabular-nums">{formatNumber(value)}</div>

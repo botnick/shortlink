@@ -69,6 +69,7 @@ async function resolveOgImage(
 }
 import {
   aiAssistantEnabledFrom,
+  clickLoggingModeFrom,
   blockedDomainsFrom,
   createRateLimitFrom,
   exportMaxRowsFrom,
@@ -672,6 +673,9 @@ route.get("/:id/stats", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
+  const useRollups =
+    c.var.dialect === "sqlite" &&
+    clickLoggingModeFrom(await getAllSettings(c.var.db, c.var.schema)) === "rollup";
   const stats = await computeStats(
     c.var.db,
     c.var.schema,
@@ -679,6 +683,7 @@ route.get("/:id/stats", async (c) => {
     id,
     parseRange(c.req.query("range")),
     link.createdAt,
+    useRollups,
   );
   return c.json(stats);
 });

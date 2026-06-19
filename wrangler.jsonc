@@ -72,9 +72,18 @@
   // so it runs on the Workers FREE plan). The worker falls back to the KV limiter
   // if this binding is ever absent. Local dev simulates it automatically.
   "durable_objects": {
-    "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+    "bindings": [
+      { "name": "RATE_LIMITER", "class_name": "RateLimiter" },
+      // Aggregates clicks for the optional "rollup" logging mode (sharded per
+      // link) and flushes hourly counts to D1 — keeps high-traffic installs
+      // under D1's write cap. SQLite-backed, so it's on the Free plan.
+      { "name": "CLICK_AGG", "class_name": "ClickAggregator" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RateLimiter"] },
+    { "tag": "v2", "new_sqlite_classes": ["ClickAggregator"] }
+  ]
 
   // --- Use Postgres instead of D1 (optional) -----------------------------------
   // Set "DB_DRIVER": "postgres" above, provision Hyperdrive and paste its id, then

@@ -7,8 +7,10 @@ import { getDbHandle } from "./db";
 import { isRateLimited } from "./lib/ratelimit";
 import {
   authRateLimitFrom,
+  clickLoggingModeFrom,
   domainUnverifiedDaysFrom,
   getAllSettings,
+  getCachedSettings,
   saasConfigFrom,
 } from "./lib/settings";
 import { deleteCustomHostname } from "./lib/cloudflare";
@@ -534,6 +536,15 @@ async function serveLinkOgImage(c: AppContext, id: string): Promise<Response> {
   }
 }
 
+function referrerDomain(ref: string | null): string {
+  if (!ref) return "";
+  try {
+    return new URL(ref).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
 async function logClick(c: AppContext, linkId: string): Promise<void> {
   const { db, schema, close } = getDbHandle(c.env);
   const { clicks, links } = schema;
@@ -543,6 +554,30 @@ async function logClick(c: AppContext, linkId: string): Promise<void> {
     // Bot/automation traffic is recorded (for auditing) but kept out of the
     // denormalized counter so dashboards and analytics agree on human clicks.
     const isBot = isBotUA(ua);
+
+    // Rollup mode (D1 only): hand the click to the per-link aggregator DO — no
+    // per-click DB write — which flushes hourly counts to `click_rollups`.
+    const settings = await getCachedSettings(db, schema);
+    if (
+      clickLoggingModeFrom(settings) === "rollup" &&
+      c.env.DB_DRIVER === "d1" &&
+      c.env.CLICK_AGG
+    ) {
+      const qs = new URLSearchParams({
+        linkId,
+        bucket: String(Math.floor(Date.now() / 3_600_000)),
+        country: getCountry(c) ?? "",
+        ref: referrerDomain(getReferrer(c)),
+        browser: browser ?? "",
+        os: os ?? "",
+        device: deviceType ?? "",
+        bot: isBot ? "1" : "0",
+      });
+      const stub = c.env.CLICK_AGG.get(c.env.CLICK_AGG.idFromName(linkId));
+      await stub.fetch(`https://agg/record?${qs.toString()}`);
+      return;
+    }
+
     await Promise.all([
       db.insert(clicks).values({
         linkId,
@@ -621,6 +656,7 @@ async function cleanupUnverifiedDomains(env: AppBindings): Promise<void> {
 // runtime can instantiate it; used via the optional RATE_LIMITER binding (the
 // worker falls back to KV when it isn't configured).
 export { RateLimiter } from "./durable/RateLimiter";
+export { ClickAggregator } from "./durable/ClickAggregator";
 
 export default {
   fetch: app.fetch,

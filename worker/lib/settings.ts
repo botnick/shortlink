@@ -59,6 +59,7 @@ export const SETTING_KEYS = {
   cfFallbackHost: "cf_fallback_host",
   maxCustomHostnames: "max_custom_hostnames",
   aiAssistantEnabled: "ai_assistant_enabled",
+  clickLoggingMode: "click_logging_mode",
   domainUnverifiedDays: "domain_unverified_days",
   clicksRetentionDays: "clicks_retention_days",
   exportMaxRows: "export_max_rows",
@@ -622,6 +623,15 @@ export function cfFallbackHostFrom(map: Record<string, unknown>): string {
 export function maxCustomHostnamesFrom(map: Record<string, unknown>): number {
   const v = map[SETTING_KEYS.maxCustomHostnames];
   return typeof v === "number" && v >= 0 ? Math.floor(v) : 95;
+}
+
+/** How clicks are recorded. "raw" (default) inserts one row per click — exact,
+ *  granular, fine for normal traffic. "rollup" batches counts through a Durable
+ *  Object that flushes hourly aggregates to `click_rollups`, so a high-traffic
+ *  install stays under D1's daily rows-written cap (no per-click DB write). Only
+ *  takes effect on D1; Postgres always uses raw. */
+export function clickLoggingModeFrom(map: Record<string, unknown>): "raw" | "rollup" {
+  return map[SETTING_KEYS.clickLoggingMode] === "rollup" ? "rollup" : "raw";
 }
 
 /** Whether the opt-in AI link assistant (slug + social-card suggestions) is on.

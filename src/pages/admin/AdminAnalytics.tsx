@@ -125,7 +125,13 @@ export function AdminAnalytics() {
         <Card>
           <CardContent className="p-5">
             <div className="text-sm text-muted-foreground">Unique visitors</div>
-            {loading || !data ? <Skeleton className="mt-1 h-7 w-20" /> : <div className="text-2xl font-bold tabular-nums">{formatNumber(data.uniqueVisitors)}</div>}
+            {loading || !data ? (
+              <Skeleton className="mt-1 h-7 w-20" />
+            ) : data.uniquesTracked === false ? (
+              <div className="mt-1 text-2xl font-bold text-muted-foreground" title="Not tracked in rollup logging mode">—</div>
+            ) : (
+              <div className="text-2xl font-bold tabular-nums">{formatNumber(data.uniqueVisitors)}</div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -196,6 +196,43 @@ export const clicks = pgTable(
   ],
 );
 
+// Hourly click aggregates for "rollup" logging mode. A Durable Object batches
+// counts and flushes one upserted row per (link, hour, dimension-combo) instead
+// of a row per click — so a high-traffic install stays under D1's write cap.
+// Dimensions are NOT NULL ('' = unknown) so the unique index merges cleanly.
+export const clickRollups = pgTable(
+  "click_rollups",
+  {
+    id: bigserial({ mode: "number" }).primaryKey(),
+    linkId: uuid()
+      .notNull()
+      .references(() => links.id, { onDelete: "cascade" }),
+    // Epoch hour: floor(epochMs / 3,600,000). Cheap to range-scan and to bucket.
+    bucket: integer().notNull(),
+    country: text().notNull().default(""),
+    referrerDomain: text().notNull().default(""),
+    browser: text().notNull().default(""),
+    os: text().notNull().default(""),
+    deviceType: text().notNull().default(""),
+    isBot: boolean().notNull().default(false),
+    count: integer().notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("click_rollups_dims_idx").on(
+      t.linkId,
+      t.bucket,
+      t.country,
+      t.referrerDomain,
+      t.browser,
+      t.os,
+      t.deviceType,
+      t.isBot,
+    ),
+    index("click_rollups_link_bucket_idx").on(t.linkId, t.bucket),
+    index("click_rollups_bucket_idx").on(t.bucket),
+  ],
+);
+
 export const settings = pgTable("settings", {
   key: text().primaryKey(),
   value: jsonb().notNull(),

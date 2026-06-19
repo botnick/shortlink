@@ -7,6 +7,7 @@ import { LimitsCard } from "./settings/LimitsCard";
 import { HumanCheckCard } from "./settings/HumanCheckCard";
 import { CustomDomainsCard } from "./settings/CustomDomainsCard";
 import { AiAssistantCard } from "./settings/AiAssistantCard";
+import { ClickLoggingCard } from "./settings/ClickLoggingCard";
 
 /** The admin settings tab. Loads the settings once, then renders each section as
  *  a self-contained card that owns its own draft state and save handler. See
@@ -24,6 +25,7 @@ export function AdminSettings() {
       <HumanCheckCard {...cardProps} />
       <CustomDomainsCard {...cardProps} />
       <AiAssistantCard {...cardProps} />
+      <ClickLoggingCard {...cardProps} />
     </div>
   );
 }
