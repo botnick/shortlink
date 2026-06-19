@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
+import { useConfig } from "@/lib/config";
 import type { SettingsDTO } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,21 @@ function CustomDomainsForm({ initial, patch }: { initial: SettingsDTO; patch: Se
   const [unverifiedDays, setUnverifiedDays] = useState(initial.domainUnverifiedDays);
   const [cfConfigured, setCfConfigured] = useState(initial.cfConfigured);
   const [saving, setSaving] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const { refresh: refreshConfig } = useConfig();
+
+  async function clearCache() {
+    setPurging(true);
+    try {
+      await api.post("/admin/cache/purge");
+      await refreshConfig();
+      toast.success("Cache cleared — the public site reflects your changes now");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't clear cache");
+    } finally {
+      setPurging(false);
+    }
+  }
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -157,6 +173,22 @@ function CustomDomainsForm({ initial, patch }: { initial: SettingsDTO; patch: Se
         {saving && <Loader2 className="animate-spin" />}
         Save
       </Button>
+      <div className="space-y-2 border-t pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={clearCache}
+          disabled={purging}
+        >
+          {purging && <Loader2 className="animate-spin" />}
+          Clear cached config &amp; SEO
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Forces the public site to refresh branding, social (OG) tags and the app
+          origin immediately — otherwise the KV cache updates within ~1 hour. Use
+          after changing your domain or branding.
+        </p>
+      </div>
     </form>
   );
 }

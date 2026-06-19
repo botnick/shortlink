@@ -191,6 +191,15 @@ admin.get("/settings", async (c) => {
   });
 });
 
+// Manually purge the KV-cached public config + SEO bundle. Useful right after a
+// deploy-time change (e.g. a new APP_URL / custom domain) so the public site
+// reflects it immediately instead of waiting out the 1h cache TTL.
+admin.post("/cache/purge", async (c) => {
+  await invalidateSeo(c.env.LINKS_KV);
+  await invalidatePublicConfig(c.env.LINKS_KV);
+  return c.json({ ok: true });
+});
+
 // Human-check observability (Phase G). Aggregates over the LIVE challenge rows
 // (kept ~minutes before the cron purges them), so it adds NO writes — it just
 // reads what's already there. Shows pass/lock rates + the risk-score spread so
