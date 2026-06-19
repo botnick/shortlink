@@ -105,7 +105,9 @@ geometry. Two things narrow the gap:
 
 The one game whose answer is structurally in the payload is **sort-by-size**
 (the client must render the sizes). It's **off by default** for exactly this
-reason; when enabled it relies entirely on the interaction + economic layers.
+reason; when enabled it relies entirely on the interaction + economic layers —
+and on the **accumulated behavioral block** (§8): forged uniform-timing tap
+telemetry scores medium every round, so it can never quietly mint on one solve.
 
 ---
 
@@ -290,7 +292,47 @@ art is the **decorative full-scene backdrop** (`public/captcha-scenes/*.webp`), 
 *game type* (never the secret answer), purely cosmetic, painted over a procedural fallback
 and skipped under `Save-Data` — it is no part of validation and leaks nothing.
 
+**Anti-forged-evidence hardening (closes "derive the structural answer + forge benign telemetry"):**
+The honest residual above — a script that reads the answer from the payload and
+submits *plausible* interaction evidence — is squeezed by three stateless, $0
+rules in `service.ts` + `risk.ts`:
+- **Accumulated behavioral risk, valid-only.** A correct-but-medium-risk solve no
+  longer just earns "one more game"; the *behavioral* component of each VALID
+  solve is summed across the games (stored in `humanChallenges.riskScore`), and
+  crossing the high line locks the challenge. Forged uniform telemetry scores
+  medium every round, so two such rounds block. Static per-request signals
+  (request/transport/reputation) are deliberately **not** summed — they recur on
+  every request, so accumulating them would slowly punish a steady real user.
+  A wrong answer never poisons the accumulator (only correct solves add).
+- **No weak final game.** Single-action games (`tap-match`, and the keyboard
+  `key-count`) carry almost no behavioral signal — one clean tap/press scores ~0.
+  `finalPool` strips them from the *final/solo* slot, so the last puzzle before a
+  token always has a real interaction to score (a drag, a 3-tap sort, an ordered
+  trace). They remain available only as a non-final warm-up.
+- **Low-move drag tell.** A "drag" of only 4–7 move points — just enough to clear
+  a validator's move floor, versus the dozens a real ~40 Hz gesture streams —
+  scores `low-move-drag` (+20 soft).
+
+**Accessible lane — inverted so it is never the cheap door.** `accessible:true`
+used to hand back a single *easy* keyboard game, so a script could request it to
+dodge the visual checks. Now an accessible auth challenge is **two *normal*
+`key-count` rounds** (4–5 keys, never the low-entropy 3-key), the keyboard cadence
+tell is weighted **+30** so two metronomic rounds reach the block line via the
+accumulator, and the lane carries a small fixed **PoW +2** (keyboard has no
+pointer-physics signal, so it leans harder on the economic gate). A real
+screen-reader user — whose key timing jitters — just plays two short rounds and is
+never blocked. Heavier structural options (server-stepped reveal so the full
+sequence never ships; render-only scenes) are deferred: on a keyboard lane stepped
+reveal multiplies request count against the $0 free-tier quota for little gain
+(the answer is "press the arrow shown" either way).
+
 **Deliberately NOT done (they cost money / break $0):**
+- **Payload / JS obfuscation** — nested/byte-swapped protobuf or a deploy-time
+  bundle obfuscator is an obscurity treadmill: the client runs in the attacker's
+  browser, so it is deobfuscated (or `fetch`-hooked / runtime-read) once and then
+  parsed forever, at the cost of bundle size, client CPU, debuggability and a11y.
+  Only the cheap hygiene is kept (no semantic answer fields, compact names, decoy
+  fields, rounded geometry). Effort goes to protocol/economic changes instead.
 - **D — Private Access Tokens** — needs an issuer (Apple/Cloudflare) or
   Turnstile (a 3rd party, which this project rejects). No clean self-hosted $0
   path.
@@ -318,6 +360,15 @@ and skipped under `Save-Data` — it is no part of validation and leaks nothing.
   (the "Keyboard-only" opt-in) is non-visual + screen-reader friendly + server-
   validated, covering motor + keyboard + screen-reader users. A dedicated *audio*
   challenge for a different cohort is still possible future work.
+- **Forged client evidence (the keyboard lane especially).** Telemetry is
+  client-reported, so a determined script can in principle submit *plausible*
+  (jittered, non-uniform) evidence. The accumulated behavioral block, no-weak-final
+  pool and accessible PoW bump (§8) defeat the uniform-timing scripts seen in
+  practice and raise the cost, but the structurally stronger fix — **server-stepped
+  reveal** (never ship the full answer; reveal one step per round-trip) — is
+  deferred because on a keyboard lane it multiplies requests against the $0 quota
+  for little added security (the answer is the on-screen arrow either way). This is
+  the same client-trust gap Turnstile closes only with private browser attestation.
 - **PoW on very low-end devices.** Difficulty is admin-tunable; the default (16
   bits) solves in tens of ms in the Web Worker and runs in the background while
   the user plays, escalating only on failure. Extreme low-end hardware is slower.

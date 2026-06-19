@@ -96,6 +96,37 @@ for (let i = 1; i <= 8; i++) {
 realDrag.push({ t: "pointer-up", x: 80, y: 26, offsetMs: 1850 });
 const r4 = assessBehavior(ev(realDrag), opts("connect"));
 check("real drag → no drag-without-motion", !has(r4, "drag-without-motion"));
+check("real drag (8 moves) → no low-move-drag", !has(r4, "low-move-drag"));
+
+// 5. A few interpolated hops: clears a validator move-floor but is far short of
+//    a real ~40Hz stream → low-move-drag (soft).
+const fewHops: CaptchaEvent[] = [{ t: "pointer-down", x: 20, y: 50, offsetMs: 1000 }];
+for (let i = 1; i <= 5; i++) {
+  fewHops.push({ t: "pointer-move", x: 20 + i * 11, y: 50 - i * 4, offsetMs: 1000 + i * 120 });
+}
+fewHops.push({ t: "pointer-up", x: 80, y: 26, offsetMs: 1700 });
+const r5 = assessBehavior(ev(fewHops), opts("slide"));
+check("few drag hops → low-move-drag", has(r5, "low-move-drag"));
+
+// 6. Scripted KEYBOARD sequence with metronomic cadence → uniform-key-cadence,
+//    weighted so two such rounds reach the block line via the accumulator.
+const scriptedKeys: CaptchaEvent[] = [];
+for (let i = 0; i < 4; i++) {
+  scriptedKeys.push({ t: "key-down", targetId: "key-up", offsetMs: 1000 + i * 500 });
+}
+const rk = assessBehavior({ ...ev(scriptedKeys), inputMode: "keyboard" }, opts("key-count"));
+check("scripted keys → uniform-key-cadence", has(rk, "uniform-key-cadence"));
+check("scripted keys reach medium (>=30)", rk.score >= 30);
+
+// 7. Human keyboard: jittered inter-key gaps → no uniform-key-cadence.
+const humanKeys: CaptchaEvent[] = [
+  { t: "key-down", targetId: "key-up", offsetMs: 1000 },
+  { t: "key-down", targetId: "key-left", offsetMs: 1480 },
+  { t: "key-down", targetId: "key-down", offsetMs: 2090 },
+  { t: "key-down", targetId: "key-right", offsetMs: 2510 },
+];
+const rhk = assessBehavior({ ...ev(humanKeys), inputMode: "keyboard" }, opts("key-count"));
+check("human keys → no uniform-key-cadence", !has(rhk, "uniform-key-cadence"));
 
 console.log(`\ncaptcha-risk: ${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

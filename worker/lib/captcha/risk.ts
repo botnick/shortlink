@@ -89,7 +89,11 @@ export function assessBehavior(
       for (let i = 1; i < keys.length; i++) {
         buckets.add(Math.round((keys[i].offsetMs - keys[i - 1].offsetMs) / 8));
       }
-      if (buckets.size <= 1) add(18, "uniform-key-cadence");
+      // Weighted heavier than the pointer cadence tells: the accessible lane is
+      // keyboard-only (no pointer physics to corroborate), so a metronomic
+      // sequence is one of the few signals there. Two such rounds reach the
+      // block line via the valid-only accumulator; a real key user jitters.
+      if (buckets.size <= 1) add(30, "uniform-key-cadence");
     }
     return { score, reasons };
   }
@@ -126,10 +130,18 @@ export function assessBehavior(
       for (let i = 0; i < n; i++) press.add(Math.round((ups[i].offsetMs - downs[i].offsetMs) / 8));
       if (press.size <= 1) add(18, "uniform-tap-press");
     }
-  } else if (DRAG_GAMES.has(gameType) && evidence.events.length > 0 && moves.length < 4) {
-    // A genuine drag/slide/rotate/connect streams many moves; a script that just
-    // sends down→up (teleport) skipped the actual interaction it claims to have done.
-    add(35, "drag-without-motion");
+  } else if (DRAG_GAMES.has(gameType) && evidence.events.length > 0) {
+    // A genuine drag/slide/rotate/connect streams many moves (the recorder
+    // throttles to ~40Hz, so even a brisk gesture is dozens of points).
+    if (moves.length < 4) {
+      // down→up teleport — skipped the interaction it claims to have done.
+      add(35, "drag-without-motion");
+    } else if (moves.length <= 7) {
+      // A handful of interpolated hops: just enough to clear a validator's move
+      // floor, far short of a real stream. Soft (a fast human flick can be short
+      // too), so it tips a borderline submit rather than blocking on its own.
+      add(20, "low-move-drag");
+    }
   }
 
   // Per-segment geometry/kinematics — the heart of automation detection. Real

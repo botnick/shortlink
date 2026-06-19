@@ -54,7 +54,7 @@ import {
   verifyPowSolution,
 } from "./crypto";
 import { planChallenge } from "./plan";
-import { GAME_PLUGINS, generateGame, type GameInstance } from "./games";
+import { GAME_PLUGINS, finalPool, generateGame, type GameInstance } from "./games";
 import { assessBehavior, assessPassive, hardFailure, isCompleteProbe } from "./risk";
 import { scoreTransport, transportCohort, transportEnvFromContext } from "./transport";
 import { recordAsnFailure, reputationRisk } from "./reputation";
@@ -149,19 +149,30 @@ export async function createChallenge(
   const abuse = await escalationFor(c.env, ip);
   const plan = planChallenge(cfg.mode, cfg);
   const basePow = powDifficultyFrom(map);
-  const powDifficulty = basePow > 0 ? Math.min(26, basePow + abuse) : 0;
+  // The accessible lane trades the (strong) pointer-physics signal for keyboard
+  // timing alone, so lean a little harder on the economic gate there: a small
+  // fixed PoW bump raises a scripted abuser's cost on the weakest-signal lane,
+  // while a real screen-reader user only feels ~one extra fraction of a second.
+  const powDifficulty =
+    basePow > 0 ? Math.min(26, basePow + abuse + (accessible ? 2 : 0)) : 0;
 
   const ref = newOpaqueSecret("hc1");
   // Accessible path: ONE non-visual keyboard challenge (same PoW + single-use +
   // rate limits), even in invisible mode — a screen-reader user opts into this
   // instead of a silent/visual check. Otherwise: the normal plan.
   const game = accessible
-    ? generateGame(["key-count"], plan.difficulty === "easy" ? "easy" : "normal")
+    ? // Accessible auth lane: keyboard-only, but NEVER the easy 3-key sequence —
+      // too little timing surface for a script to look human. Normal (4-5 keys).
+      generateGame(["key-count"], "normal")
     : plan.gamesTotal > 0
-      ? generateGame(cfg.games, plan.difficulty)
+      ? generateGame(plan.gamesTotal === 1 ? finalPool(cfg.games) : cfg.games, plan.difficulty)
       : null;
-  // The accessible challenge is always exactly one game, even in invisible mode.
-  const gamesTotal = accessible ? 1 : plan.gamesTotal;
+  // Accessible used to be the CHEAPER lane (one easy game) — a script could ask
+  // for it to dodge the visual checks entirely. Invert it: an accessible auth
+  // challenge is TWO normal keyboard rounds, so a metronomic scripted solver
+  // accrues uniform-key-cadence risk twice and crosses the block line, while a
+  // real screen-reader user (whose timing jitters) just plays two short rounds.
+  const gamesTotal = accessible ? 2 : plan.gamesTotal;
   const expiresAt = new Date(Date.now() + cfg.challengeTtlSec * 1000);
 
   await insertChallenge(c.var.db, c.var.schema, {
@@ -379,7 +390,7 @@ export async function submitChallenge(
     // one. (A fast silent submit is NOT suspicious — PoW is solved in tens of ms.)
     if (abuse > 0 || combined >= cfg.riskMedium) {
       const difficulty = combined >= cfg.riskHigh || abuse >= 2 ? "normal" : "easy";
-      const game = generateGame(cfg.games, difficulty);
+      const game = generateGame(finalPool(cfg.games), difficulty);
       const won = await claimChallengeStep(db, schema, row.id, row.version, {
         gamesTotal: 1,
         game,
@@ -456,12 +467,21 @@ export async function submitChallenge(
   // Shadow mode: when enforcement is off, a high risk score is logged but does
   // NOT block — the admin tunes thresholds on real traffic first. The game still
   // has to be solved correctly either way.
-  const wouldBlock = risk.score >= cfg.riskHigh;
+  // Accumulated BEHAVIORAL risk across VALID solves is the real teeth: a script
+  // that forges benign-looking evidence still scores medium on each puzzle it
+  // actually solves, and those add up across the (extra) games until they cross
+  // the block line. Static per-request signals (request/transport/reputation)
+  // are deliberately NOT accumulated — they recur on every request, so summing
+  // them across games would slowly punish a steady real user (the false-positive
+  // trap). Only the interaction physics accumulates, and only on a CORRECT solve
+  // (a human's wrong-then-right retries never poison the accumulator).
+  const blockRisk = row.riskScore + (valid ? behavior.score : 0);
+  const wouldBlock = risk.score >= cfg.riskHigh || blockRisk >= cfg.riskHigh;
   const blocked = cfg.enforce && wouldBlock;
   if (wouldBlock && !cfg.enforce) {
     console.warn(
       "humancheck SHADOW would-block:",
-      risk.score,
+      blockRisk,
       risk.reasons.join(","),
       row.id.slice(0, 8),
     );
@@ -473,21 +493,30 @@ export async function submitChallenge(
       await claimChallengeStep(db, schema, row.id, row.version, {
         status: "locked",
         powDone,
-        riskScore: row.riskScore + risk.score,
+        riskScore: blockRisk,
       });
       return fail(true, blocked ? "risk-high" : "out-of-retries", row.id);
     }
     // Retry = a FRESH layout, never the same board twice (and a different game
     // type when the pool allows) — screenshots and learned patterns go stale.
     // An accessible (key-count) challenge stays key-count on retry.
-    const retryPool = game.type === "key-count" ? (["key-count"] as const) : cfg.games;
-    const next = generateGame([...retryPool], game.difficulty, [game.type]);
+    // A retry replaces the CURRENT slot; if it's the final slot, draw the
+    // replacement from the strong pool so a script can't retry its way onto a
+    // weak single-action game as the last puzzle. The accessible (key-count)
+    // lane stays keyboard-only on every round.
+    const retryPool: GameType[] =
+      game.type === "key-count"
+        ? ["key-count"]
+        : row.gameIndex >= row.gamesTotal - 1
+          ? finalPool(cfg.games)
+          : cfg.games;
+    const next = generateGame(retryPool, game.difficulty, [game.type]);
     const won = await claimChallengeStep(db, schema, row.id, row.version, {
       retries,
       game: next,
       playedTypes: [...row.playedTypes, next.type],
       powDone,
-      riskScore: row.riskScore + risk.score,
+      riskScore: blockRisk,
     });
     if (!won) return fail(false, "step-conflict", row.id);
     await recordCheckFailure(c.env, ip);
@@ -512,8 +541,17 @@ export async function submitChallenge(
   // is pure state (no extra compute), so it stays free + within the CPU budget.
   const wantExtra = risk.score >= cfg.riskMedium && row.gamesTotal < cfg.maxGames;
   if (nextIndex < row.gamesTotal || wantExtra) {
-    const next = generateGame(cfg.games, game.difficulty, row.playedTypes as GameType[]);
     const gamesTotal = wantExtra ? row.gamesTotal + 1 : row.gamesTotal;
+    // The accessible lane stays keyboard-only every round; otherwise the LAST
+    // game before a token must carry real behavioral signal — never a weak
+    // single-action game a script can clean-solve for free.
+    const pool: GameType[] =
+      game.type === "key-count"
+        ? ["key-count"]
+        : nextIndex >= gamesTotal - 1
+          ? finalPool(cfg.games)
+          : cfg.games;
+    const next = generateGame(pool, game.difficulty, row.playedTypes as GameType[]);
     const won = await claimChallengeStep(db, schema, row.id, row.version, {
       gameIndex: nextIndex,
       gamesTotal,
@@ -521,7 +559,7 @@ export async function submitChallenge(
       game: next,
       playedTypes: [...row.playedTypes, next.type],
       powDone,
-      riskScore: row.riskScore + risk.score,
+      riskScore: blockRisk,
     });
     if (!won) return fail(false, "step-conflict", row.id);
     return {
@@ -537,7 +575,9 @@ export async function submitChallenge(
     };
   }
 
-  return issueToken(c, cfg, row, powDone, risk.score);
+  // Mint: carry only the behavioral component into the stored accumulator (the
+  // valid-only block risk), consistent with how it was tallied across the games.
+  return issueToken(c, cfg, row, powDone, behavior.score);
 }
 
 /** Mark the challenge done (atomically — exactly one parallel submit can win

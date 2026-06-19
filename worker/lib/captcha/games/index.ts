@@ -35,6 +35,22 @@ export interface GameInstance extends GeneratedGame {
 }
 
 /**
+ * Single-action games (one tap / one keypress) carry almost no behavioral
+ * signal — a scripted clean solve scores ~0 because there's no drag stream or
+ * tap cadence to inspect. They're fine as a warm-up in a multi-game plan, but
+ * must NEVER be the LAST game before a token is minted, or a script could mint
+ * on a single one. `finalPool` strips them so the final/solo game always carries
+ * enough interaction (a real drag, a 3-tap sort, an ordered trace) to score.
+ * Falls back to a strong default if an admin somehow enabled only weak games.
+ */
+const WEAK_FINAL_GAMES: readonly GameType[] = ["tap-match", "key-count"];
+
+export function finalPool(enabled: GameType[]): GameType[] {
+  const strong = enabled.filter((t) => !WEAK_FINAL_GAMES.includes(t));
+  return strong.length > 0 ? strong : ["sort-3", "drag-target"];
+}
+
+/**
  * Generate a fresh game instance. `exclude` avoids repeating a type within one
  * challenge (and across retries), so no single automation pattern gets a
  * second look at the same kind of puzzle.
