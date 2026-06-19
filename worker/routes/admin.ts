@@ -9,6 +9,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   lt,
   sql,
   sum,
@@ -171,7 +172,23 @@ function toSettingsDTO(map: Record<string, unknown>): SettingsDTO {
 
 admin.get("/settings", async (c) => {
   const map = await getAllSettings(c.var.db, c.var.schema);
-  return c.json(toSettingsDTO(map));
+  const { domains } = c.var.schema;
+  // Live custom-hostname usage (what counts toward maxCustomHostnames / the free
+  // tier): total provisioned, split into active vs still-pending.
+  const [tot] = await c.var.db
+    .select({ n: count() })
+    .from(domains)
+    .where(isNotNull(domains.cfHostnameId));
+  const [act] = await c.var.db
+    .select({ n: count() })
+    .from(domains)
+    .where(and(isNotNull(domains.cfHostnameId), eq(domains.status, "active")));
+  const total = Number(tot?.n ?? 0);
+  const active = Number(act?.n ?? 0);
+  return c.json({
+    ...toSettingsDTO(map),
+    customHostnameUsage: { total, active, pending: Math.max(0, total - active) },
+  });
 });
 
 // Human-check observability (Phase G). Aggregates over the LIVE challenge rows

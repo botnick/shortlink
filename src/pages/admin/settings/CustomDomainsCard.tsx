@@ -119,6 +119,17 @@ function CustomDomainsForm({ initial, patch }: { initial: SettingsDTO; patch: Se
           Cloudflare for SaaS includes 100 free custom hostnames, then bills per hostname.
           Adding a domain is blocked once this many exist. Default 95 (a safe buffer).
         </p>
+        {initial.customHostnameUsage && (
+          <p className="text-xs">
+            In use now:{" "}
+            <span className="font-medium">{initial.customHostnameUsage.total}</span> custom
+            hostname{initial.customHostnameUsage.total === 1 ? "" : "s"}{" "}
+            <span className="text-muted-foreground">
+              · {initial.customHostnameUsage.active} active ·{" "}
+              {initial.customHostnameUsage.pending} pending
+            </span>
+          </p>
+        )}
       </div>
       <div className="space-y-2">
         <Label htmlFor="unverifiedDays">Auto-remove unverified domains</Label>
