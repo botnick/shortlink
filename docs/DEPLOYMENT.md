@@ -143,30 +143,26 @@ npm run db:migrate     # reads .dev.vars, connects directly (not through Hyperdr
 > giving *members* their own domains. This is the quick version.
 
 Out of the box the Worker is served at `https://shortlink.<subdomain>.workers.dev` and short links
-live at `…workers.dev/<slug>`. To use your **own domain**, set it in **two places** in
-`wrangler.jsonc` (the `routes` block is commented out by default — uncomment it), and they must be
-the **same value**:
+live at `…workers.dev/<slug>`. To use your **own domain**, change **one value** — `APP_URL`:
 
 ```jsonc
 "vars": {
-  "APP_URL": "https://go.yoursite.com",   // ← your real domain (or your *.workers.dev URL)
+  "APP_URL": "https://go.yoursite.com",   // ← the only thing you edit
   "DB_DRIVER": "d1"
-},
-...
-"routes": [
-  { "pattern": "go.yoursite.com", "custom_domain": true }   // ← same host, no https://
-]
+}
 ```
 
-- **`APP_URL`** is the canonical origin the Worker uses for every displayed short URL, QR
-  target, and API doc. (There is **no** separate "short domain" admin setting — `APP_URL` is
-  the single source of truth.) Even on `*.workers.dev`, set `APP_URL` to that exact URL so links
-  display correctly.
-- **`routes[].pattern`** with `custom_domain: true` tells Cloudflare to serve the Worker on
-  that hostname and manage its DNS + TLS certificate automatically.
+You don't touch a `routes` block. On deploy, `scripts/apply-domain.mjs` reads `APP_URL`'s host and
+derives the route:
+
+- **`APP_URL`** is the canonical origin for every displayed short URL, QR target, and API doc
+  (there is **no** separate "short domain" admin setting — it's the single source of truth). Even
+  on `*.workers.dev`, set it to that exact URL so links display correctly.
+- A `*.workers.dev` host gets **no custom route**; **your own domain** gets a `custom_domain`
+  route automatically, and Cloudflare manages its DNS + TLS certificate.
 
 > A custom domain's **zone must be on your Cloudflare account**. Changing the served domain later
-> means editing these two fields and redeploying — it can't be a runtime setting.
+> is just editing `APP_URL` and redeploying — it can't be a runtime setting.
 
 ---
 

@@ -40,30 +40,27 @@ account**. Confirm `yoursite.com` shows up in that account's site list. If the z
 *different* account than the Worker, move the Worker or the zone so they match — a Workers
 Custom Domain cannot cross accounts.
 
-### 1.2 — Set it in `wrangler.jsonc` (two fields, one value)
+### 1.2 — Set one value in `wrangler.jsonc`: `APP_URL`
 
-Edit **two** fields and make their host **identical**:
+Change **just `APP_URL`** to your domain (full URL, with `https://`):
 
 ```jsonc
-{
-  "vars": {
-    "APP_URL": "https://go.yoursite.com",   // ← full URL, WITH https://
-    "DB_DRIVER": "d1"
-  },
-  // The routes block ships commented out (default = *.workers.dev). Uncomment it:
-  "routes": [
-    { "pattern": "go.yoursite.com", "custom_domain": true }   // ← host only, NO https://
-  ]
+"vars": {
+  "APP_URL": "https://go.yoursite.com",   // ← the only thing you edit
+  "DB_DRIVER": "d1"
 }
 ```
 
-- **`APP_URL`** is the single source of truth for every *displayed* short URL, QR target,
-  OG card and API doc. If this is wrong, links render with the wrong host even when routing
-  works. (There is no separate "short domain" admin setting — this field is it.)
-- **`routes[].pattern` + `custom_domain: true`** is what actually makes Cloudflare serve the
-  Worker on that host and auto-manage its DNS + certificate.
-- The two **must use the same host** (`go.yoursite.com`). `APP_URL` keeps the `https://`,
-  the route does not.
+That's it — **you don't touch a `routes` block**. On deploy, `scripts/apply-domain.mjs` reads
+`APP_URL`'s host and derives the Worker's route for you:
+
+- a `*.workers.dev` host → no custom route (served on the workers.dev subdomain);
+- your own domain → a `{ pattern: <host>, custom_domain: true }` route, so Cloudflare serves the
+  Worker there and **auto-manages its DNS + TLS certificate**.
+
+So `APP_URL` is the single source of truth for both **what links display** (every short URL, QR
+target, OG card, API doc) **and where the Worker is served**. There is no separate "short domain"
+setting, and no host to keep in sync by hand.
 
 ### 1.3 — Deploy
 
@@ -98,18 +95,18 @@ Then open `https://go.yoursite.com` in a browser. Create a test link and confirm
 
 ### Alternative: add it from the dashboard
 
-You can also connect the domain without editing `wrangler.jsonc`:
+You can also connect the domain from the UI:
 **Workers & Pages → your Worker → Settings → Domains & Routes → Add → Custom Domain**
-(the dashboard also has a dedicated **Domains** tab). If you do it this way, **still set
-`APP_URL`** to that host (Variables, or `wrangler.jsonc`) and redeploy, or displayed links
-keep the old origin. Keeping both in `wrangler.jsonc` is recommended so the config is the
-source of truth and survives redeploys.
+(the dashboard also has a dedicated **Domains** tab). If you do, **still set `APP_URL`** to that
+host so displayed links use it. Setting `APP_URL` in `wrangler.jsonc` is the recommended path
+anyway — it both fixes the displayed origin *and* derives the route, so the config stays the
+single source of truth across redeploys (no dashboard step to remember).
 
 ### Changing the app domain later
 
-It's a deploy-time value, not a runtime setting: edit the same two fields and redeploy.
-To go *back* to `*.workers.dev`, set `APP_URL` to the `…workers.dev` URL and comment the
-`routes` block out again.
+It's a deploy-time value, not a runtime setting: change `APP_URL` and redeploy. To go *back* to
+`*.workers.dev`, just set `APP_URL` to the `…workers.dev` URL and redeploy — the derived route is
+dropped automatically.
 
 ---
 
@@ -173,7 +170,7 @@ member*).
 | --- | --- | --- |
 | Links display the old `*.workers.dev` (or placeholder) host | `APP_URL` not updated | Set `APP_URL` to your host and redeploy — it's the single source of truth |
 | `https://go.yoursite.com` shows an SSL/"not secure" error right after deploy | Certificate still provisioning | Wait 1–2 min and retry; Cloudflare issues it automatically |
-| Custom domain returns Cloudflare error 1016 / won't resolve | Zone not on the Worker's account, or route not deployed | Confirm the zone is on the **same account**; uncomment `routes` and redeploy |
+| Custom domain returns Cloudflare error 1016 / won't resolve | Zone not on the Worker's account, or route not deployed | Confirm the zone is on the **same account**; make sure `APP_URL` is your domain and redeploy (the route is derived from it) |
 | Cookies don't stick / headers look weak on the custom domain | Worker is seeing plain HTTP | Enable **Always Use HTTPS** (Part 1.4) |
 | Member domain won't verify (DNS mode) | TXT not propagated / wrong value | Re-check the exact `_shortlink-verify` name+value in the app; wait for DNS |
 | Member domain verifies but shows no cert / won't load (DNS mode) | Verified but not routed | Connect it once as a Workers Custom Domain, or switch to SaaS mode |

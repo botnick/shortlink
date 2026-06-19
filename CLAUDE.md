@@ -46,7 +46,8 @@ There is no lint script. Verify backend behavior with `curl` against the dev ser
 - **Display URLs come from the server.** Use `link.shortUrl` / `config.appOrigin` — never build
   display URLs from `window.location.origin` (leaks dev hosts). Server-side, the canonical origin
   is `shortOrigin(env)`, which derives from `APP_URL` (the single source of truth — there is no
-  "Short domain" admin setting; `routes[].pattern` in wrangler must match `APP_URL`'s host).
+  "Short domain" admin setting). The Worker's `routes` are auto-derived from `APP_URL`'s host at
+  deploy time (`scripts/apply-domain.mjs`), so they always match — don't hand-edit a routes block.
 - **Purge link caches BEFORE deleting rows.** `purgeLinkCache` reads `link_aliases`, which the
   delete cascades away. Use `refreshLinkCache`/`purgeLinkCache` (`worker/lib/linkCache.ts`) —
   never raw KV put/delete for links, since every link has multiple cache entry points.

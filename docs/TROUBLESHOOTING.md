@@ -29,9 +29,10 @@ to clear the `users` table and the `setup_completed` row in `settings` (developm
 
 ### Short links show `https://links.example.com/...`
 **Cause:** `APP_URL` is still the placeholder.
-**Fix:** set `vars.APP_URL` **and** `routes[].pattern` in `wrangler.jsonc` to your real domain
-(same value), then redeploy. These two are the only place the domain is configured — there is no
-"short domain" admin setting.
+**Fix:** set `vars.APP_URL` in `wrangler.jsonc` to your real domain and redeploy. That single value
+configures both the displayed origin and the Worker's route (auto-derived by
+`scripts/apply-domain.mjs`) — there is no separate "short domain" admin setting or `routes` block to
+edit.
 
 ### My custom OG image / QR logo doesn't load
 **Cause:** almost always `APP_URL` being wrong, since social cards and image URLs derive from it.

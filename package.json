@@ -7,7 +7,7 @@
     "dev": "node --env-file-if-exists=.dev.vars node_modules/vite/bin/vite.js",
     "build": "vite build",
     "preview": "npm run build && node --env-file-if-exists=.dev.vars node_modules/vite/bin/vite.js preview",
-    "deploy": "npm run build && wrangler deploy -c dist/shortlink/wrangler.json && node scripts/postdeploy.mjs",
+    "deploy": "npm run build && node scripts/apply-domain.mjs && wrangler deploy -c dist/shortlink/wrangler.json && node scripts/postdeploy.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.node.json",
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
