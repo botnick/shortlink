@@ -26,7 +26,7 @@
     // and API doc. AFTER your first deploy, set this to your real address — your
     // custom domain (https://go.yoursite.com) or the assigned
     // https://shortlink.<your-subdomain>.workers.dev — then redeploy.
-    "APP_URL": "https://links.example.com",
+    "APP_URL": "https://shortlink.botnick.workers.dev",
     // Database driver: "d1" (default — fully on Cloudflare, $0, nothing to set
     // up) or "postgres" (uncomment the `hyperdrive` block at the bottom and set
     // its id). With D1 the database is auto-created on the first deploy and the
