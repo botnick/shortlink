@@ -8,6 +8,14 @@ SESSION_SECRET="change-me-to-a-long-random-hex-string"
 # One-time token that authorizes the first-run installer at /setup.
 SETUP_TOKEN="change-me-to-a-random-token"
 
+# (Optional) Your app's public origin — the SINGLE knob for your domain.
+# `scripts/apply-domain.mjs` reads it on `npm run deploy` and derives the Worker's
+# route from its host (a *.workers.dev host → no route; your own domain → a
+# custom_domain route). Leave unset to use the default in wrangler.jsonc. In
+# production you'd usually set this as a Workers Builds "Variable". See
+# docs/CUSTOM-DOMAINS.md.
+# APP_URL="https://go.yoursite.com"
+
 # Points local dev's Hyperdrive binding straight at your Postgres.
 # `npm run dev` uses the Vite plugin, which reads the CLOUDFLARE_ prefix.
 # (If you ever use `wrangler dev` directly, that one reads WRANGLER_ instead.)

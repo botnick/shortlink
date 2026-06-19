@@ -82,9 +82,11 @@ create the admin account, and you're in. That's the whole local setup.
 
 ### Going to production
 
-The short version: provision **KV + R2 + (Hyperdrive or D1)**, set your **domain** in
-`wrangler.jsonc` (two fields, same value), `wrangler secret put` your two secrets, then
-`npm run deploy`. Full copy-paste walkthrough in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+The short version: with **D1** there's nothing to provision (KV + R2 + D1 auto-create on first
+deploy). `wrangler secret put` your two secrets, set an **`APP_URL`** env var to your domain (one
+value — the route is derived from it, no file edits; see
+**[docs/CUSTOM-DOMAINS.md](docs/CUSTOM-DOMAINS.md)**), then `npm run deploy` (it also applies the D1
+schema). Full copy-paste walkthrough in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
 ---
 

@@ -35,8 +35,9 @@ Then finish in three steps:
    (`scripts/postdeploy.mjs`). If your Workers Builds **Deploy command** is a bare `wrangler deploy`,
    set it to **`npm run deploy`**, or apply the schema once with `npm run db:migrate:d1`.
 3. **Open your `https://shortlink.<subdomain>.workers.dev` URL** and complete the **`/setup`** installer
-   (creates the admin). Then set **`APP_URL`** (in *Variables*, or `wrangler.jsonc`) to that URL — or your
-   custom domain — and redeploy, so every displayed short link shows the right address.
+   (creates the admin). Then set the **`APP_URL`** *environment variable* (in *Settings → Build →
+   Variables*) to that URL — or your custom domain — and redeploy, so every displayed short link shows
+   the right address. You don't edit any file for this; see **[CUSTOM-DOMAINS.md](CUSTOM-DOMAINS.md)**.
 
 Want your **own domain** or **Postgres** instead of D1? Follow the manual steps below — they cover
 both, plus *Always Use HTTPS* and member custom domains.

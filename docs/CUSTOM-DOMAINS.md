@@ -73,9 +73,9 @@ TLS certificate automatically. The first request may take a minute or two while 
 certificate is issued — a brief "not secure" / SSL error right after deploy is normal; wait
 and retry.
 
-> **Deploying through Workers Builds (CI) instead of locally?** Same result — the built
-> `wrangler.json` carries the `routes` block, so the custom domain is provisioned on the
-> CI deploy. Just push to your production branch.
+> **Deploying through Workers Builds (CI) instead of locally?** Same result — set `APP_URL` as a
+> build **Variable** (not a file edit); `apply-domain.mjs` runs in the CI deploy and provisions the
+> custom domain. Just push to your production branch.
 
 ### 1.4 — Turn on "Always Use HTTPS" (required)
 
