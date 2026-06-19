@@ -60,36 +60,60 @@ export async function aiSuggest(env: AppBindings, destination: string): Promise<
     `--- page text (untrusted) ---\n${ctx.textExcerpt}\n--- end ---\n\n` +
     `Return JSON exactly: {"slugs": ["3 to 6 short memorable url slugs, lowercase, a-z 0-9 and hyphens only, 3-32 chars"], "ogTitle": "compelling title, <=70 chars", "ogDescription": "concise summary, <=160 chars"}`;
 
-  let text = "";
+  const messages = [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
+  let resp: unknown;
   try {
-    const resp = (await ai.run(MODEL, {
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      temperature: 0.2,
-      max_tokens: 256,
-    })) as { response?: unknown };
-    if (typeof resp?.response === "string") text = resp.response;
+    // JSON mode forces well-formed output (small models otherwise wrap it in
+    // prose). If the model doesn't support response_format it throws → retry plain.
+    try {
+      resp = await ai.run(MODEL, {
+        messages,
+        temperature: 0.2,
+        max_tokens: 256,
+        response_format: { type: "json_schema", json_schema: RESPONSE_SCHEMA },
+      });
+    } catch {
+      resp = await ai.run(MODEL, { messages, temperature: 0.2, max_tokens: 256 });
+    }
   } catch (e) {
-    // Surfaced in logs so a misconfigured binding / no AI access is diagnosable.
     console.warn("[ai-assist] model run failed:", (e as Error)?.message ?? e);
     return { ok: false, reason: "ai_error" };
   }
 
-  const suggestion = parseAiResponse(text);
-  return suggestion ? { ok: true, suggestion } : { ok: false, reason: "no_suggestion" };
+  // JSON mode returns `.response` as a parsed object; plain text returns a string.
+  const out = (resp as { response?: unknown })?.response;
+  const json =
+    out && typeof out === "object"
+      ? (out as Record<string, unknown>)
+      : typeof out === "string"
+        ? extractJson(out)
+        : null;
+  const suggestion = json ? buildSuggestion(json) : null;
+  if (!suggestion) {
+    console.warn("[ai-assist] no usable suggestion from:", JSON.stringify(out)?.slice(0, 300));
+    return { ok: false, reason: "no_suggestion" };
+  }
+  return { ok: true, suggestion };
 }
 
-/** Turn a raw model reply into validated, safe suggestions — or null if there's
- *  nothing usable. Pure (no I/O) so it's unit-tested directly: slugs are
- *  slugified, deduped, reserved-word filtered; OG fields are length-clamped.
- *  Model output is only ever a suggestion, never persisted without the normal
- *  create/update validators. */
-export function parseAiResponse(text: string): AiSuggestion | null {
-  const json = extractJson(text);
-  if (!json) return null;
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    slugs: { type: "array", items: { type: "string" } },
+    ogTitle: { type: "string" },
+    ogDescription: { type: "string" },
+  },
+  required: ["slugs", "ogTitle", "ogDescription"],
+} as const;
 
+/** Validate + sanitise a parsed JSON object into safe suggestions, or null if
+ *  there's nothing usable: slugs are slugified, deduped, reserved-word filtered;
+ *  OG fields length-clamped. Model output is only ever a suggestion — it's never
+ *  persisted without the normal create/update validators. */
+export function buildSuggestion(json: Record<string, unknown>): AiSuggestion | null {
   const rawSlugs = Array.isArray(json.slugs) ? json.slugs : [];
   const slugs = [
     ...new Set(rawSlugs.map((s) => slugify(String(s))).filter((s) => isValidCustomSlug(s))),
@@ -103,4 +127,11 @@ export function parseAiResponse(text: string): AiSuggestion | null {
 
   if (slugs.length === 0 && !ogTitle && !ogDescription) return null;
   return { slugs, ogTitle, ogDescription };
+}
+
+/** Parse a raw text reply (prose-wrapped JSON tolerated) then validate it. Pure;
+ *  unit-tested directly. */
+export function parseAiResponse(text: string): AiSuggestion | null {
+  const json = extractJson(text);
+  return json ? buildSuggestion(json) : null;
 }
