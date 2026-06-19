@@ -229,6 +229,26 @@ app.get("/sitemap.xml", async (c) =>
 );
 app.get("/icon", (c) => serveBrandImage(c.env, "icon"));
 app.get("/og", (c) => serveBrandImage(c.env, "og"));
+// Public, content-addressed brand images (logo / OG) stored in R2. The sha in the
+// path makes the bytes immutable, so they cache forever — this is what /api/config
+// and the SPA point at instead of shipping a ~100KB base64 data: URI.
+app.get("/brand/:kind/:sha", async (c) => {
+  const kind = c.req.param("kind");
+  const sha = c.req.param("sha");
+  if ((kind !== "logo" && kind !== "og") || !/^[a-f0-9]{64}$/.test(sha)) {
+    return c.notFound();
+  }
+  const obj = await c.env.LOGO_BUCKET.get(`brand/${kind}/${sha}`);
+  if (!obj) return c.notFound();
+  return new Response(obj.body, {
+    headers: {
+      "content-type": obj.httpMetadata?.contentType ?? "application/octet-stream",
+      "cache-control": "public, max-age=31536000, immutable",
+      etag: `"${sha}"`,
+      "x-content-type-options": "nosniff",
+    },
+  });
+});
 // Public per-link OG image (so social crawlers can fetch a real URL).
 app.get("/ogimg/:id", (c) => serveLinkOgImage(c, c.req.param("id")));
 

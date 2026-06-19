@@ -1,9 +1,10 @@
 import { getDbHandle } from "../db";
 import type { AppBindings } from "../env";
-import { getPublicConfig } from "./settings";
+import { getAllSettings, getPublicConfig } from "./settings";
+import { migrateBrandImages } from "./brandAsset";
 import type { AppConfigDTO } from "@shared/types";
 
-const KEY = "config:v9"; // v9: shortDomain now derives from APP_URL (setting removed)
+const KEY = "config:v10"; // v10: brand logo/OG migrated to R2 — logoUrl is now a short URL, not inline base64
 
 // In-isolate memo so hot paths (e.g. building 20 short URLs in one list
 // response) don't pay a KV read each time. Tiny TTL keeps edits near-instant.
@@ -33,6 +34,9 @@ export async function getCachedPublicConfig(env: AppBindings): Promise<AppConfig
   try {
     const { db, schema, close } = getDbHandle(env);
     try {
+      // Move any legacy inline data: logo/OG image into R2 once, so the config
+      // ships a short URL instead of ~100KB of base64 to every visitor.
+      await migrateBrandImages(env, db, schema, await getAllSettings(db, schema));
       const cfg = await getPublicConfig(db, schema, env.APP_URL);
       await env.LINKS_KV.put(KEY, JSON.stringify(cfg), { expirationTtl: 3600 }).catch(() => {});
       memo = { cfg, until: now + MEMO_MS };

@@ -1,6 +1,7 @@
 import { getDbHandle } from "../db";
 import type { AppBindings } from "../env";
 import { DEFAULT_APP_NAME, DEFAULT_BRAND_COLOR } from "@shared/defaults";
+import { migrateBrandImages } from "./brandAsset";
 import {
   appNameFrom,
   brandColorFrom,
@@ -12,7 +13,7 @@ import {
   twitterHandleFrom,
 } from "./settings";
 
-const KEY = "seo:v2"; // v2: added twitterHandle to the bundle shape
+const KEY = "seo:v3"; // v3: brand logo/OG served from R2 (migrated off inline base64)
 
 // In-isolate memo so repeated HTML loads on a warm isolate don't pay a KV read
 // each; tiny TTL keeps branding edits near-live. Doubles as the stale fallback.
@@ -64,6 +65,9 @@ export async function getSeoBundle(env: AppBindings): Promise<SeoBundle> {
     const { db, schema, close } = getDbHandle(env);
     try {
       const map = await getAllSettings(db, schema);
+      // Move any legacy inline data: logo/OG image into R2 once, so the bundle
+      // (and /api/config) carry a short URL instead of ~100KB of base64.
+      await migrateBrandImages(env, db, schema, map);
       const bundle: SeoBundle = {
         appName: appNameFrom(map),
         description: descriptionFrom(map),
@@ -203,6 +207,20 @@ export async function serveBrandImage(
   const src = which === "og" ? b.ogImage : b.logo;
   if (!src) return new Response("Not found", { status: 404 });
   if (src.startsWith("http")) return Response.redirect(src, 302);
+
+  // Migrated brand images live in R2 at the content-addressed key (path minus the
+  // leading slash). Serve the bytes with their stored content-type.
+  if (src.startsWith("/brand/")) {
+    const obj = await env.LOGO_BUCKET.get(src.slice(1));
+    if (!obj) return new Response("Not found", { status: 404 });
+    return new Response(obj.body, {
+      headers: {
+        "content-type": obj.httpMetadata?.contentType ?? "application/octet-stream",
+        "cache-control": "public, max-age=3600",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
 
   const m = /^data:([^;]+);base64,(.+)$/.exec(src);
   if (!m) return new Response("Not found", { status: 404 });

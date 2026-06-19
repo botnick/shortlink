@@ -36,7 +36,7 @@ const RESERVED_LIST = [
   // --- Infra / well-known / files ---
   "assets", "asset", "static", "cdn", "media", "files", "file", "download",
   "downloads", "upload", "uploads", "img", "image", "images", "icon", "icons",
-  "og", "ogimg", "favicon", "fonts", "font", "css", "js", "scripts", "style",
+  "og", "ogimg", "brand", "favicon", "fonts", "font", "css", "js", "scripts", "style",
   "styles", "robots", "sitemap", "manifest", "sw", "service-worker", "ads",
   "humans", "well-known", ".well-known", "acme-challenge", "s", "www", "ftp",
   "mail", "email", "smtp", "imap", "pop", "ns", "mx", "dns", "ws", "wss", "ssh",

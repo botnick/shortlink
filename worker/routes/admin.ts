@@ -87,6 +87,7 @@ import { encryptSecret } from "../lib/secret";
 import { checkTxtVerification } from "../lib/dns";
 import { invalidateSeo } from "../lib/seo";
 import { invalidatePublicConfig, shortOrigin } from "../lib/appconfig";
+import { normalizeBrandImage } from "../lib/brandAsset";
 import {
   bulkLinksSchema,
   createUserSchema,
@@ -253,13 +254,25 @@ admin.patch("/settings", zValidator("json", settingsSchema), async (c) => {
     await setSetting(db, schema, SETTING_KEYS.brandColor, input.brandColor);
   }
   if (input.logoUrl !== undefined) {
-    await setSetting(db, schema, SETTING_KEYS.logo, input.logoUrl);
+    // Raster data: URIs go to R2; only a short served URL is stored (keeps
+    // /api/config tiny). URLs/SVG/"" pass through unchanged.
+    await setSetting(
+      db,
+      schema,
+      SETTING_KEYS.logo,
+      await normalizeBrandImage(c.env, "logo", input.logoUrl),
+    );
   }
   if (input.description !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.description, input.description);
   }
   if (input.ogImageUrl !== undefined) {
-    await setSetting(db, schema, SETTING_KEYS.ogImage, input.ogImageUrl);
+    await setSetting(
+      db,
+      schema,
+      SETTING_KEYS.ogImage,
+      await normalizeBrandImage(c.env, "og", input.ogImageUrl),
+    );
   }
   if (input.indexable !== undefined) {
     await setSetting(db, schema, SETTING_KEYS.indexable, input.indexable);
