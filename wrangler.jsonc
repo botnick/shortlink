@@ -22,61 +22,69 @@
     "mode": "smart"
   },
   "vars": {
+    // The canonical public origin used for every displayed short URL, QR target
+    // and API doc. AFTER your first deploy, set this to your real address — your
+    // custom domain (https://go.yoursite.com) or the assigned
+    // https://shortlink.<your-subdomain>.workers.dev — then redeploy.
     "APP_URL": "https://links.example.com",
-    // Database driver: "postgres" (Hyperdrive, below) or "d1". To use D1, set
-    // this to "d1", uncomment the d1_databases block, and run the D1 migrations
-    // (see README). Default keeps the existing Postgres setup.
-    "DB_DRIVER": "postgres",
+    // Database driver: "d1" (default — fully on Cloudflare, $0, nothing to set
+    // up) or "postgres" (uncomment the `hyperdrive` block at the bottom and set
+    // its id). With D1 the database is auto-created on the first deploy and the
+    // migrations are applied automatically — see `d1_databases` below.
+    "DB_DRIVER": "d1",
     // Password PBKDF2 cost. Default 20000 fits the Workers FREE 10ms CPU budget
     // (paired with a server-side pepper — see worker/lib/password.ts). Keep it
     // <= ~45000 on the free plan; raise toward OWASP's 600000 only on Workers
     // Paid (30s CPU). Old hashes upgrade automatically on the next login.
     "PBKDF2_ITERATIONS": "20000"
   },
-  // Uncomment to run on Cloudflare D1 (set DB_DRIVER="d1" above):
-  //   npx wrangler d1 create shortlink-db   → paste the database_id here
-  //   npx wrangler d1 migrations apply shortlink-db --remote
-  // "d1_databases": [
-  //   { "binding": "DB", "database_name": "shortlink-db", "database_id": "REPLACE_WITH_D1_ID", "migrations_dir": "drizzle/sqlite" }
-  // ],
-  // --- Provision these, then replace the placeholder ids (see README) ---
-  // npx wrangler hyperdrive create shortlink-db --connection-string="postgres://USER:PASSWORD@YOUR_DB_HOST:5432/YOUR_DB?sslmode=require"
-  // Local dev reads the connection string from the env var
-  // WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE (see .dev.vars.example).
-  "hyperdrive": [
+  // D1 — Cloudflare's serverless SQL database (the default driver). On the first
+  // deploy Cloudflare AUTO-CREATES this database (no id needed); `npm run deploy`
+  // then applies the migrations in `drizzle/sqlite` for you (scripts/postdeploy.mjs).
+  "d1_databases": [
     {
-      "binding": "HYPERDRIVE",
-      "id": "REPLACE_WITH_HYPERDRIVE_ID"
+      "binding": "DB",
+      "database_name": "shortlink-db",
+      "migrations_dir": "drizzle/sqlite"
     }
   ],
-  // npx wrangler kv namespace create LINKS_KV
+  // KV — the redirect edge cache. Auto-created on the first deploy (no id needed).
   "kv_namespaces": [
     {
-      "binding": "LINKS_KV",
-      "id": "REPLACE_WITH_KV_ID"
+      "binding": "LINKS_KV"
     }
   ],
-  // npx wrangler r2 bucket create shortlink-logos  (local dev is simulated automatically)
+  // R2 — QR logo library / uploaded OG images. Auto-created on the first deploy.
   "r2_buckets": [
     {
       "binding": "LOGO_BUCKET",
       "bucket_name": "shortlink-logos"
     }
   ],
-  // Exact rate-limit counter for the human check (Phase F). SQLite-backed, so it
-  // runs on the Workers FREE plan; the migration below registers the class. The
-  // worker falls back to the KV limiter if this binding is ever absent, so it's
-  // safe to remove. Local dev simulates it automatically.
+  // Exact rate-limit counter for the human check (SQLite-backed Durable Object,
+  // so it runs on the Workers FREE plan). The worker falls back to the KV limiter
+  // if this binding is ever absent. Local dev simulates it automatically.
   "durable_objects": {
     "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }],
-  // Set this to your own short-link domain (its zone must be on Cloudflare).
-  // Short links live at <your-domain>/<slug>.
-  "routes": [
-    {
-      "pattern": "links.example.com",
-      "custom_domain": true
-    }
-  ]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }]
+
+  // --- Use Postgres instead of D1 (optional) -----------------------------------
+  // Set "DB_DRIVER": "postgres" above, provision Hyperdrive and paste its id, then
+  // uncomment the block below. Also flip the `DB` / `HYPERDRIVE` optionality in
+  // worker/env.ts (see the notes there). Local dev reads the connection string
+  // from .dev.vars (see .dev.vars.example).
+  //   npx wrangler hyperdrive create shortlink-db --connection-string="postgres://USER:PASS@HOST:5432/DB?sslmode=require"
+  // "hyperdrive": [
+  //   { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_HYPERDRIVE_ID" }
+  // ],
+
+  // --- Serve on your own domain (optional) -------------------------------------
+  // By default the Worker is served at https://shortlink.<subdomain>.workers.dev.
+  // To use a custom domain whose zone is on your Cloudflare account: set APP_URL
+  // above to it, then uncomment below (pattern = host only, no https://).
+  // Cloudflare manages its DNS + TLS certificate automatically.
+  // "routes": [
+  //   { "pattern": "go.yoursite.com", "custom_domain": true }
+  // ]
 }

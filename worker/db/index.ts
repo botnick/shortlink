@@ -21,6 +21,11 @@ interface DbHandle {
 }
 
 function pgClient(env: AppBindings) {
+  if (!env.HYPERDRIVE) {
+    throw new Error(
+      "DB_DRIVER=postgres but no HYPERDRIVE binding is configured (uncomment the hyperdrive block in wrangler.jsonc)",
+    );
+  }
   const client = postgres(env.HYPERDRIVE.connectionString, {
     max: 5,
     fetch_types: false,

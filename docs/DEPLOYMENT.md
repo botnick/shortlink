@@ -4,11 +4,42 @@ A complete, copy-paste walkthrough to take Shortlink from zero to a live site on
 own domain. It runs on the **Cloudflare Workers free plan** — no monthly cost for a
 normal-sized install.
 
-> **The short version:** provision KV + R2 + a database, put your domain in **two**
-> `wrangler.jsonc` fields, set **two** secrets, run the migration, `npm run deploy`,
-> turn on *Always Use HTTPS*, then open your domain and create the admin. That's it.
+> **The short version:** click the **Deploy to Cloudflare** button — it clones the repo,
+> auto-creates the D1 database + KV + R2, and sets up CI/CD. Add **two** secrets, let the
+> first deploy apply the schema, open the app, create the admin. Custom domain + Postgres
+> are optional steps below.
 
 If anything goes wrong, see **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**.
+
+---
+
+## Fastest path — the Deploy button (D1, one-click)
+
+The repo ships preconfigured for **D1** (Cloudflare's built-in SQL database), so there's
+nothing to provision by hand:
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/botnick/shortlink)
+
+Clicking it will:
+
+1. **Clone** this repo into your GitHub account.
+2. **Auto-provision** the D1 database, KV namespace and R2 bucket and bind them to your Worker
+   (the binding ids are written in the dashboard — `wrangler.jsonc` ships without them on purpose).
+3. **Configure Workers Builds (CI/CD)** — every push to your production branch builds + deploys.
+
+Then finish in three steps:
+
+1. **Add the two secrets** — in *Workers & Pages → your worker → Settings → Variables & Secrets*:
+   `SESSION_SECRET` (a long random value, **≥ 32 bytes** — `openssl rand -hex 32`) and `SETUP_TOKEN`.
+2. **Make sure the schema is applied.** `npm run deploy` applies the D1 migrations automatically
+   (`scripts/postdeploy.mjs`). If your Workers Builds **Deploy command** is a bare `wrangler deploy`,
+   set it to **`npm run deploy`**, or apply the schema once with `npm run db:migrate:d1`.
+3. **Open your `https://shortlink.<subdomain>.workers.dev` URL** and complete the **`/setup`** installer
+   (creates the admin). Then set **`APP_URL`** (in *Variables*, or `wrangler.jsonc`) to that URL — or your
+   custom domain — and redeploy, so every displayed short link shows the right address.
+
+Want your **own domain** or **Postgres** instead of D1? Follow the manual steps below — they cover
+both, plus *Always Use HTTPS* and member custom domains.
 
 ---
 
@@ -57,36 +88,31 @@ CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://USER:PASS@H
 
 ## Step 2 — Provision Cloudflare resources
 
-Every install needs **KV** (the redirect cache) and **R2** (the QR-logo store):
+**You can skip this step.** `wrangler.jsonc` ships the KV, R2 and D1 bindings **without ids**, so
+on your first `npm run deploy` Wrangler [auto-provisions](https://developers.cloudflare.com/workers/wrangler/configuration/#automatic-provisioning)
+them and links them to your Worker — same as the Deploy button.
+
+Prefer to create them by hand (e.g. to reuse existing resources)? Run:
 
 ```bash
-# KV namespace — the redirect edge cache
-npx wrangler kv namespace create LINKS_KV
-
-# R2 bucket — QR logo library (bound by name; nothing to paste)
-npx wrangler r2 bucket create shortlink-logos
+npx wrangler kv namespace create LINKS_KV       # paste the id into kv_namespaces[0].id
+npx wrangler r2 bucket create shortlink-logos   # bound by name; nothing to paste
 ```
 
-Copy the **KV id** the first command prints into `wrangler.jsonc`, replacing
-`REPLACE_WITH_KV_ID`. (Ids are not secrets — commit them.)
+(Ids are not secrets — commit them. Leaving them out and letting auto-provisioning fill them in
+is the recommended path.)
 
 ---
 
 ## Step 3 — Pick your database
 
-### Option A — Cloudflare D1 (simplest, fully on Cloudflare) **[D1]**
+### Option A — Cloudflare D1 (the default, fully on Cloudflare) **[D1]**
 
-```bash
-npx wrangler d1 create shortlink-db          # prints a database_id
-npx wrangler d1 migrations apply shortlink-db --remote
-```
+**Nothing to do — this is already configured** (`"DB_DRIVER": "d1"` + the `d1_databases` block).
+The database is auto-created on your first deploy, and `npm run deploy` applies the migrations for
+you via `scripts/postdeploy.mjs`. To apply the schema on its own, run `npm run db:migrate:d1`.
 
-Then in `wrangler.jsonc`:
-1. Set `"DB_DRIVER": "d1"`.
-2. Uncomment the `d1_databases` block and paste the `database_id`.
-
-That's it — no Hyperdrive, no external server. (You can leave the `hyperdrive` block; it's
-ignored when `DB_DRIVER` is `d1`.)
+No Hyperdrive, no external server.
 
 ### Option B — Postgres via Hyperdrive **[Postgres]**
 
@@ -97,8 +123,9 @@ npx wrangler hyperdrive create shortlink-db \
   --connection-string="postgres://USER:PASS@HOST:5432/DB?sslmode=require"
 ```
 
-Paste the returned **Hyperdrive id** into `wrangler.jsonc`, replacing
-`REPLACE_WITH_HYPERDRIVE_ID`. Keep `"DB_DRIVER": "postgres"`. Then create the schema:
+Then in `wrangler.jsonc`: set `"DB_DRIVER": "postgres"`, **uncomment the `hyperdrive` block** and
+paste the returned id. In `worker/env.ts`, flip the binding declarations as the note there says
+(make `HYPERDRIVE` required / add `DB?: D1Database` back), then `npm run cf-typegen`. Create the schema:
 
 ```bash
 npm run db:migrate     # reads .dev.vars, connects directly (not through Hyperdrive)
@@ -110,29 +137,32 @@ npm run db:migrate     # reads .dev.vars, connects directly (not through Hyperdr
 
 ---
 
-## Step 4 — Set your domain (the only domain config there is)
+## Step 4 — Set your domain (optional — defaults to `*.workers.dev`)
 
-Short links live at `https://<your-domain>/<slug>`. The domain is set in **exactly two
-places** in `wrangler.jsonc`, and they must be the **same value**:
+Out of the box the Worker is served at `https://shortlink.<subdomain>.workers.dev` and short links
+live at `…workers.dev/<slug>`. To use your **own domain**, set it in **two places** in
+`wrangler.jsonc` (the `routes` block is commented out by default — uncomment it), and they must be
+the **same value**:
 
 ```jsonc
 "vars": {
-  "APP_URL": "https://go.yoursite.com",   // ← your real domain
-  "DB_DRIVER": "postgres"
+  "APP_URL": "https://go.yoursite.com",   // ← your real domain (or your *.workers.dev URL)
+  "DB_DRIVER": "d1"
 },
 ...
 "routes": [
-  { "pattern": "go.yoursite.com", "custom_domain": true }   // ← same domain, no https://
+  { "pattern": "go.yoursite.com", "custom_domain": true }   // ← same host, no https://
 ]
 ```
 
 - **`APP_URL`** is the canonical origin the Worker uses for every displayed short URL, QR
   target, and API doc. (There is **no** separate "short domain" admin setting — `APP_URL` is
-  the single source of truth.)
+  the single source of truth.) Even on `*.workers.dev`, set `APP_URL` to that exact URL so links
+  display correctly.
 - **`routes[].pattern`** with `custom_domain: true` tells Cloudflare to serve the Worker on
   that hostname and manage its DNS + TLS certificate automatically.
 
-> The domain's **zone must be on your Cloudflare account**. Changing the served domain later
+> A custom domain's **zone must be on your Cloudflare account**. Changing the served domain later
 > means editing these two fields and redeploying — it can't be a runtime setting.
 
 ---

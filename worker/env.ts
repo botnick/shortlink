@@ -15,11 +15,15 @@ export interface AppBindings extends Env {
    *  here — it is intentionally NOT redeclared. `wrangler types` emits it as the
    *  literal `"20000"`, and widening it to `string` here breaks `extends Env`
    *  (TS2430). Read + clamped by `pbkdf2Iterations()`; see worker/lib/password.ts. */
-  /** Cloudflare D1 binding, present only when DB_DRIVER="d1" (otherwise absent
-   *  from the generated Env, so it's declared optional here). DB_DRIVER itself
-   *  comes from the generated Env (a wrangler var). Cloudflare-for-SaaS custom
-   *  domain credentials live in settings (configured via /admin), not env. */
-  DB?: D1Database;
+  /** Hyperdrive (Postgres) binding, present only when DB_DRIVER="postgres" and the
+   *  `hyperdrive` block in wrangler.jsonc is uncommented (otherwise absent from the
+   *  generated Env, so it's declared optional here). With the default DB_DRIVER="d1"
+   *  the `DB` (D1) binding comes straight from the generated Env (required); to
+   *  switch to Postgres, uncomment hyperdrive in wrangler.jsonc and add
+   *  `DB?: D1Database` back here. DB_DRIVER itself comes from the generated Env (a
+   *  wrangler var). Cloudflare-for-SaaS custom domain credentials live in settings
+   *  (configured via /admin), not env. */
+  HYPERDRIVE?: Hyperdrive;
   /** NOTE: `RATE_LIMITER` (exact rate-limit Durable Object, Phase F) is a wrangler
    *  binding, so it is in the generated `Env` and inherited here — NOT redeclared.
    *  `wrangler types` types it as `DurableObjectNamespace<RateLimiter>` (required);
