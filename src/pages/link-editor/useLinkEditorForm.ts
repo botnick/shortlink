@@ -70,6 +70,7 @@ export function useLinkEditorForm() {
   const [ogSource, setOgSource] = useState<"generate" | "upload">("generate");
   const [genDataUrl, setGenDataUrl] = useState(""); // live snapshot of the generated card
   const [submitting, setSubmitting] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   // Synchronous re-entry guard: the `submitting` state disables the button a
   // render late, so an Enter-key repeat or double-click could fire two saves.
   const submittingRef = useRef(false);
@@ -237,6 +238,53 @@ export function useLinkEditorForm() {
     if (kind === "random") return setAlias(randomSlug(longLen));
     const s = toSlug(slugSource, kind);
     setAlias(s.length >= 3 ? s : (s + randomSlug(4)).slice(0, 32));
+  }
+
+  // AI assistant: ask the server for slug + social-card suggestions from the
+  // destination page. Applies the first slug + OG title/description; on any
+  // fallback (disabled / capped / unavailable) it runs the offline optimizer so
+  // the button always does something useful.
+  async function aiAssist() {
+    const dest = destination.trim();
+    if (!dest) {
+      toast.error("Enter a destination first");
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const r = await api.post<{
+        slugs: string[];
+        ogTitle: string | null;
+        ogDescription: string | null;
+        source: "ai" | "fallback";
+      }>("/links/assist", { destination: dest });
+      let applied = false;
+      if (r.source === "ai" && r.slugs?.[0]) {
+        setAlias(r.slugs[0]);
+        setSlugStrategy("AI");
+        applied = true;
+      }
+      if (r.ogTitle) {
+        setPreviewMode((m) => (m === "off" ? "custom" : m));
+        setOgTitle(r.ogTitle);
+        applied = true;
+      }
+      if (r.ogDescription) {
+        setOgDescription(r.ogDescription);
+        applied = true;
+      }
+      if (r.source === "ai" && applied) {
+        toast.success("AI suggestions applied");
+      } else {
+        optimizeSlug("dash");
+        toast.message("AI is busy — used the offline optimizer");
+      }
+    } catch {
+      optimizeSlug("dash");
+      toast.message("AI unavailable — used the offline optimizer");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   // --- Social card rendering (same pipeline as before) ----------------------
@@ -621,6 +669,8 @@ export function useLinkEditorForm() {
     onDestinationChange,
     normalizeDestination,
     optimizeSlug,
+    aiAssist,
+    aiLoading,
     pickOgImage,
     addTag,
     commitPendingTag,

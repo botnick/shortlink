@@ -58,6 +58,7 @@ export const SETTING_KEYS = {
   cfZoneId: "cf_zone_id",
   cfFallbackHost: "cf_fallback_host",
   maxCustomHostnames: "max_custom_hostnames",
+  aiAssistantEnabled: "ai_assistant_enabled",
   domainUnverifiedDays: "domain_unverified_days",
   clicksRetentionDays: "clicks_retention_days",
   exportMaxRows: "export_max_rows",
@@ -621,6 +622,13 @@ export function cfFallbackHostFrom(map: Record<string, unknown>): string {
 export function maxCustomHostnamesFrom(map: Record<string, unknown>): number {
   const v = map[SETTING_KEYS.maxCustomHostnames];
   return typeof v === "number" && v >= 0 ? Math.floor(v) : 95;
+}
+
+/** Whether the opt-in AI link assistant (slug + social-card suggestions) is on.
+ *  Default true; the endpoint still degrades to the offline optimizer when the
+ *  Workers AI binding is absent or the daily cap is hit. */
+export function aiAssistantEnabledFrom(map: Record<string, unknown>): boolean {
+  return map[SETTING_KEYS.aiAssistantEnabled] !== false;
 }
 
 /** Days an unverified custom domain is kept before the cron removes it.

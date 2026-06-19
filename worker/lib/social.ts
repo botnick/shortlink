@@ -309,3 +309,61 @@ export async function fetchMeta(env: AppBindings, rawUrl: string): Promise<UrlMe
   await env.LINKS_KV.put(key, JSON.stringify(meta), { expirationTtl: 86_400 });
   return meta;
 }
+
+export interface AiPageContext {
+  domain: string;
+  title: string;
+  description: string;
+  /** Cleaned, capped page text — UNTRUSTED data; the model prompt says so. */
+  textExcerpt: string;
+}
+
+/** Strip a page to readable text: drop scripts/styles/chrome, tags, entities,
+ *  collapse whitespace. Used to feed the AI assistant a small, safe excerpt. */
+function htmlToText(html: string): string {
+  const stripped = html
+    .replace(/<(script|style|svg|nav|footer|header|noscript|template)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " ");
+  return decodeEntities(stripped).replace(/\s+/g, " ").trim();
+}
+
+/** Fetch a destination ONCE and return what the AI assistant needs: title /
+ *  description / domain plus a cleaned, capped text excerpt. SSRF-guarded via
+ *  `publicFetchUrl`; returns null only when the URL itself is unfetchable
+ *  (private/non-http) — a fetch failure still returns domain-only context. */
+export async function fetchAiPageContext(
+  env: AppBindings,
+  rawUrl: string,
+): Promise<AiPageContext | null> {
+  const u = publicFetchUrl(rawUrl);
+  if (!u) return null;
+  const domain = u.hostname.replace(/^www\./, "");
+  void env; // signature parity with the other fetchers; no env use needed here
+  try {
+    const res = await fetch(u.toString(), {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; LinkAssistant/1.0)" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok || !(res.headers.get("content-type") ?? "").includes("text/html")) {
+      return { domain, title: "", description: "", textExcerpt: "" };
+    }
+    const html = (await res.text()).slice(0, 200_000);
+    const title = decodeEntities(
+      pick(html, [
+        /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+        /<title[^>]*>([^<]+)<\/title>/i,
+      ]),
+    );
+    const description = decodeEntities(
+      pick(html, [
+        /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
+        /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
+      ]),
+    );
+    return { domain, title, description, textExcerpt: htmlToText(html).slice(0, 4000) };
+  } catch {
+    return { domain, title: "", description: "", textExcerpt: "" };
+  }
+}

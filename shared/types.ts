@@ -311,6 +311,8 @@ export interface SettingsDTO {
   /** Global cap on Cloudflare-for-SaaS custom hostnames — a cost guard (free tier
    *  is 100, then ~$0.10 each). Default 95 (buffer under the free tier); 0 = unlimited. */
   maxCustomHostnames: number;
+  /** Whether the opt-in AI link assistant is enabled (default true). */
+  aiAssistantEnabled: boolean;
   /** Live custom-hostname usage right now (what counts toward the cap / free tier),
    *  split by status. Present on GET /settings; omitted elsewhere. */
   customHostnameUsage?: { total: number; active: number; pending: number };

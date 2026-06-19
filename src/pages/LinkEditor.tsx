@@ -6,6 +6,7 @@ import {
   Loader2,
   Lock,
   Sparkles,
+  Wand2,
   X,
 } from "lucide-react";
 import { SLUG_OPTIONS } from "@/lib/linkForm";
@@ -56,6 +57,8 @@ export function LinkEditor() {
     shortLen,
     longLen,
     optimizeSlug,
+    aiAssist,
+    aiLoading,
     slugStatus,
     slugStrategy,
     aliases,
@@ -218,6 +221,21 @@ export function LinkEditor() {
                     }}
                   />
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 gap-1.5"
+                  onClick={() => void aiAssist()}
+                  disabled={aiLoading || !hasSlugSource}
+                  title="Suggest a slug + social card from the destination page"
+                >
+                  {aiLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="size-4" />
+                  )}
+                  AI
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button type="button" variant="outline" className="shrink-0 gap-1.5">

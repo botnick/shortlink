@@ -19,7 +19,8 @@
     "test:captcha": "tsx tests/captcha.ts",
     "test:captcha:flow": "node --env-file-if-exists=.dev.vars node_modules/tsx/dist/cli.mjs tests/captcha-flow.ts",
     "test:password": "tsx tests/password.ts",
-    "test:routing": "tsx tests/routing.ts"
+    "test:routing": "tsx tests/routing.ts",
+    "test:ai": "tsx tests/ai-assistant.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans-thai": "^5.2.8",

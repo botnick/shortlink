@@ -5,6 +5,7 @@ import type { AppContext, AppEnv, AppBindings } from "../env";
 import type { DB, DbSchema } from "../db";
 import type { LinkRow } from "../db/schema";
 import {
+  assistLinkSchema,
   bulkImportSchema,
   createLinkSchema,
   slugCheckSchema,
@@ -67,6 +68,7 @@ async function resolveOgImage(
   }
 }
 import {
+  aiAssistantEnabledFrom,
   blockedDomainsFrom,
   createRateLimitFrom,
   exportMaxRowsFrom,
@@ -78,7 +80,8 @@ import {
   slugLengthFrom,
 } from "../lib/settings";
 import { toCsv } from "../lib/csv";
-import { isRateLimited } from "../lib/ratelimit";
+import { counterBump, counterGet, isRateLimited } from "../lib/ratelimit";
+import { aiSuggest } from "../lib/aiAssistant";
 import { requireAuth } from "../middleware/auth";
 import { computeStats, parseRange, rangeStart } from "./stats";
 import type { LinkDTO, LinkListDTO } from "@shared/types";
@@ -530,6 +533,52 @@ route.get("/meta", async (c) => {
     return c.json({ error: "Enter a valid URL first" }, 400);
   }
   return c.json({ meta: await fetchMeta(c.env, url) });
+});
+
+// AI link assistant — suggest slugs + social-card title/description from the
+// destination page. Opt-in and hard-capped to stay on the free tier; every
+// guard (disabled / rate-limited / daily cap / no AI binding / model error)
+// returns source:"fallback" so the client runs the offline optimizer instead.
+const AI_USER_LIMIT = 10; // model calls per hour per user
+const AI_DAILY_CAP = 100; // global model calls per day (free-tier guard)
+route.post("/assist", zValidator("json", assistLinkSchema), async (c) => {
+  const user = c.var.user!;
+  const { destination } = c.req.valid("json");
+  const fallback = (reason: string) =>
+    c.json({ slugs: [], ogTitle: null, ogDescription: null, source: "fallback", reason });
+
+  const settings = await getAllSettings(c.var.db, c.var.schema);
+  if (!aiAssistantEnabledFrom(settings)) return fallback("disabled");
+
+  // A cache hit (same URL within 7 days) skips the caps entirely.
+  let cacheKey = "";
+  try {
+    const u = new URL(destination);
+    cacheKey = `aicache:v1:${u.host}${u.pathname}`.slice(0, 480);
+    const cached = await c.env.LINKS_KV.get(cacheKey, "json");
+    if (cached) return c.json({ ...(cached as object), source: "ai" });
+  } catch {
+    /* fall through */
+  }
+
+  if (await isRateLimited(c.env, `ai:user:${user.id}`, AI_USER_LIMIT, 3600)) {
+    return fallback("rate_limited");
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  if ((await counterGet(c.env, `aiassist:${day}`)) >= AI_DAILY_CAP) {
+    return fallback("daily_cap");
+  }
+
+  const suggestion = await aiSuggest(c.env, destination);
+  if (!suggestion) return fallback("unavailable");
+
+  await counterBump(c.env, `aiassist:${day}`, 48 * 3600);
+  if (cacheKey) {
+    await c.env.LINKS_KV.put(cacheKey, JSON.stringify(suggestion), {
+      expirationTtl: 7 * 86_400,
+    }).catch(() => {});
+  }
+  return c.json({ ...suggestion, source: "ai" });
 });
 
 // READ one

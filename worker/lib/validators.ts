@@ -159,6 +159,7 @@ export const settingsSchema = z
     cfZoneId: z.string().trim().max(64).optional(),
     cfFallbackHost: z.string().trim().max(253).optional(),
     maxCustomHostnames: z.number().int().min(0).max(100_000).optional(),
+    aiAssistantEnabled: z.boolean().optional(),
     domainUnverifiedDays: z.number().int().min(0).max(3650).optional(),
     clicksRetentionDays: z.number().int().min(0).max(3650).optional(),
     exportMaxRows: z.number().int().min(0).max(1_000_000).optional(),
@@ -395,6 +396,9 @@ const geoRulesField = z
     const seen = new Set<string>();
     return arr.filter((r) => (seen.has(r.country) ? false : seen.add(r.country)));
   });
+
+// AI link assistant: just needs the destination to scrape + suggest from.
+export const assistLinkSchema = z.object({ destination: httpUrl });
 
 export const createLinkSchema = z.object({
   destination: httpUrl,

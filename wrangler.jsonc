@@ -64,6 +64,10 @@
       "bucket_name": "shortlink-logos"
     }
   ],
+  // Workers AI — powers the optional AI link assistant (slug + social-card text
+  // suggestions). Free-tier friendly (a daily Neuron allowance); the feature is
+  // opt-in, admin-capped, and degrades to the offline "Optimize" if absent.
+  "ai": { "binding": "AI" },
   // Exact rate-limit counter for the human check (SQLite-backed Durable Object,
   // so it runs on the Workers FREE plan). The worker falls back to the KV limiter
   // if this binding is ever absent. Local dev simulates it automatically.
