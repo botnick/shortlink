@@ -59,7 +59,8 @@ Worker checks over public DNS-over-HTTPS, so it sees the record only once it has
 
 **Cause (SaaS mode):** no Cloudflare API token / zone id configured, so adds fail at the API call.
 **Fix:** in *admin → Settings → Custom domains*, set a token with *SSL and Certificates → Edit* and
-the zone id. See [DEPLOYMENT.md](DEPLOYMENT.md#letting-members-use-their-own-domains).
+the zone id — see [CLOUDFLARE-API-TOKEN.md](CLOUDFLARE-API-TOKEN.md) and
+[CUSTOM-DOMAINS.md](CUSTOM-DOMAINS.md#part-2--member-domains).
 
 ### A verified domain resolves but shows no certificate / won't load
 **Cause (DNS mode):** ownership is verified but the hostname isn't actually routed to the Worker.
@@ -82,9 +83,11 @@ migration hasn't run.
 edit **both** `schema.ts` and `schema.sqlite.ts` and generate both migrations.
 
 ### `DB_DRIVER=d1 but no D1 binding 'DB' is configured`
-**Cause:** you set `DB_DRIVER: "d1"` but didn't uncomment the `d1_databases` block (or its
-`database_id` is still the placeholder).
-**Fix:** uncomment it and paste the id from `wrangler d1 create shortlink-db`.
+**Cause:** `DB_DRIVER: "d1"` is set but the `d1_databases` block is missing the `DB` binding (e.g.
+you removed it, or switched a Postgres-edited config back to D1 without restoring it).
+**Fix:** make sure `d1_databases` has an entry with `"binding": "DB"` and `"database_name":
+"shortlink-db"`. **No `database_id` is needed** — Cloudflare auto-provisions the DB by name on the
+first `npm run deploy`.
 
 ### Postgres connection errors from the deployed Worker
 **Cause:** TLS/firewall. The Worker reaches Postgres through Hyperdrive.
@@ -101,10 +104,23 @@ purges older raw rows; per-link totals are preserved regardless.
 
 ## Deploy & limits
 
+### Deploy "succeeds" but the app 500s — every DB endpoint (`/api/config`, `/setup`'s data) fails **[D1]**
+**Cause:** the Worker deployed, but the **D1 migrations never ran**, so the tables (e.g.
+`settings`) don't exist. The usual culprit is the migrate step erroring with
+**`Found a database with name or binding shortlink-db but it is missing a database_id`** — a bare
+`wrangler d1 migrations apply … --remote` can't act on a remote DB when the one-click config omits
+the id (left out on purpose for auto-provisioning).
+**Fix:** apply the schema with **`npm run db:migrate:d1`** (it resolves the auto-provisioned id and
+applies `--remote`). On CI, make sure the **Deploy command is `npm run deploy`** (not a bare
+`wrangler deploy`) — it runs that migrate automatically. Confirm with
+`curl -s -o /dev/null -w '%{http_code}' https://<your-host>/api/config` → expect **200**.
+
 ### `npm run deploy` fails
-**Cause:** not logged in, or a binding id is still a placeholder.
-**Fix:** `npx wrangler login`, and make sure `REPLACE_WITH_KV_ID` / `REPLACE_WITH_HYPERDRIVE_ID`
-are replaced with real ids in `wrangler.jsonc`.
+**Cause:** not logged in / no API token, or **[Postgres]** the Hyperdrive id is still a placeholder.
+**Fix:** `npx wrangler login` (or set `CLOUDFLARE_API_TOKEN` — see
+[CLOUDFLARE-API-TOKEN.md](CLOUDFLARE-API-TOKEN.md)). KV/R2/D1 **auto-provision** on first deploy, so
+their ids are no longer placeholders. **[Postgres only]** if you uncommented the `hyperdrive` block,
+replace `REPLACE_WITH_HYPERDRIVE_ID` with the id from `wrangler hyperdrive create`.
 
 ### The site gets slow or some things stop caching under heavy traffic
 **Cause:** you're hitting a Cloudflare free-plan limit (most likely **100k Worker requests/day** or

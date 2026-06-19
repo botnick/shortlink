@@ -139,6 +139,9 @@ npm run db:migrate     # reads .dev.vars, connects directly (not through Hyperdr
 
 ## Step 4 — Set your domain (optional — defaults to `*.workers.dev`)
 
+> **Full walkthrough:** **[CUSTOM-DOMAINS.md](CUSTOM-DOMAINS.md)** covers this in depth, plus
+> giving *members* their own domains. This is the quick version.
+
 Out of the box the Worker is served at `https://shortlink.<subdomain>.workers.dev` and short links
 live at `…workers.dev/<slug>`. To use your **own domain**, set it in **two places** in
 `wrangler.jsonc` (the `routes` block is commented out by default — uncomment it), and they must be
@@ -235,6 +238,9 @@ All of these are live settings — **no redeploy**:
 
 ### Letting members use their own domains
 
+> **Full walkthrough:** **[CUSTOM-DOMAINS.md → Part 2](CUSTOM-DOMAINS.md#part-2--member-domains)**.
+> For the API token, see **[CLOUDFLARE-API-TOKEN.md](CLOUDFLARE-API-TOKEN.md)**.
+
 Members can serve links from `go.theirbrand.com`. Two modes, picked automatically:
 
 **Automatic — [Cloudflare for SaaS](https://developers.cloudflare.com/cloudflare-for-saas/) (recommended).**
@@ -287,8 +293,9 @@ The repo ships three workflows under `.github/workflows/`:
 - **`deploy.yml`** — builds and deploys on push to `main`; skips cleanly until secrets exist.
 
 Add repo secrets **`CLOUDFLARE_API_TOKEN`** (least-privilege: *Workers Scripts → Edit*) and
-**`CLOUDFLARE_ACCOUNT_ID`**. Migrations are **not** run in CI (your DB firewall may block the
-runner) — run `npm run db:migrate` yourself after a schema change.
+**`CLOUDFLARE_ACCOUNT_ID`** — step-by-step in **[CLOUDFLARE-API-TOKEN.md](CLOUDFLARE-API-TOKEN.md)**.
+Migrations are **not** run in CI (your DB firewall may block the runner) — run `npm run db:migrate`
+(Postgres) or `npm run db:migrate:d1` (D1) yourself after a schema change.
 
 ---
 
@@ -301,9 +308,14 @@ npm run db:generate            # Postgres migration
 npm run db:generate:sqlite     # D1/SQLite migration (always do both)
 
 # then apply to whichever DB you run:
-npm run db:migrate                                    # [Postgres]
-npx wrangler d1 migrations apply shortlink-db --remote # [D1]
+npm run db:migrate       # [Postgres] reads .dev.vars, connects directly
+npm run db:migrate:d1    # [D1] resolves the auto-provisioned id, applies --remote
 ```
+
+> **[D1]** Use `npm run db:migrate:d1` (not a bare `wrangler d1 migrations apply … --remote`).
+> Because the one-click config omits the `database_id` for auto-provisioning, the bare command
+> fails with *"missing a database_id"* — the script resolves the id for you. `npm run deploy`
+> already runs this automatically after deploying.
 
 Then `npm run deploy`. See [ARCHITECTURE.md → Database](ARCHITECTURE.md#database--dual-dialect)
 for why both schemas are kept in lockstep.

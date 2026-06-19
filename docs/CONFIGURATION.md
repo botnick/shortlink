@@ -19,16 +19,18 @@ Shortlink has **three** layers of configuration, from least to most flexible:
 | `vars.DB_DRIVER` | `postgres` or `d1` | Which database driver to use. |
 | `routes[].pattern` | `go.yoursite.com` | The hostname Cloudflare serves the Worker on. Must match `APP_URL`'s host. |
 
-Plus the resource **bindings** (ids are not secrets — commit them):
+Plus the resource **bindings**. KV, R2 and D1 **auto-provision by name** on your first
+`npm run deploy` (no ids to paste — the "Created with" column is only if you'd rather make them by
+hand). Ids are not secrets — if you do pin them, commit them.
 
-| Binding | Created with | Purpose |
-| --- | --- | --- |
-| `LINKS_KV` | `wrangler kv namespace create LINKS_KV` | Redirect edge cache |
-| `LOGO_BUCKET` (R2 `shortlink-logos`) | `wrangler r2 bucket create shortlink-logos` | QR logos + uploaded OG images |
-| `HYPERDRIVE` | `wrangler hyperdrive create …` | **[Postgres]** pooled DB connection |
-| `DB` (D1) | `wrangler d1 create shortlink-db` | **[D1]** the database |
-| `RATE_LIMITER` (Durable Object) | declared in `wrangler.jsonc` | Exact rate limiter. Optional — the Worker falls back to a KV limiter if absent. |
-| `ASSETS` | automatic | Serves the built SPA assets |
+| Binding | Auto-provisioned? | Created by hand with | Purpose |
+| --- | --- | --- | --- |
+| `LINKS_KV` | ✅ by name | `wrangler kv namespace create LINKS_KV` | Redirect edge cache |
+| `LOGO_BUCKET` (R2 `shortlink-logos`) | ✅ by name | `wrangler r2 bucket create shortlink-logos` | QR logos + uploaded OG images |
+| `DB` (D1 `shortlink-db`) | ✅ by name | `wrangler d1 create shortlink-db` | **[D1]** the database |
+| `HYPERDRIVE` | — (opt-in) | `wrangler hyperdrive create …` + paste the id | **[Postgres]** pooled DB connection |
+| `RATE_LIMITER` (Durable Object) | declared in `wrangler.jsonc` | — | Exact rate limiter. Optional — the Worker falls back to a KV limiter if absent. |
+| `ASSETS` | automatic | — | Serves the built SPA assets |
 
 ---
 
@@ -106,7 +108,7 @@ per-IP challenge/verify limits. See [human-check-v3.md](human-check-v3.md).
 ### Custom domains (Cloudflare for SaaS)
 | Setting | Meaning |
 | --- | --- |
-| Cloudflare API token | Permission *SSL and Certificates → Edit*. Enables automatic custom-hostname provisioning. Leave blank for $0 DNS-verification mode. |
+| Cloudflare API token | Permission *SSL and Certificates → Edit*. Enables automatic custom-hostname provisioning. Leave blank for $0 DNS-verification mode. See [CLOUDFLARE-API-TOKEN.md](CLOUDFLARE-API-TOKEN.md) + [CUSTOM-DOMAINS.md](CUSTOM-DOMAINS.md). |
 | Zone ID | Your Cloudflare zone id. |
 | Fallback host | What members CNAME to (defaults to the app's own host). |
 | Auto-remove unverified domains (days) | 90 (0 = never). A daily cron deletes domains left unverified this long and frees their Cloudflare custom hostname. |

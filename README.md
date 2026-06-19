@@ -43,6 +43,8 @@ Create short links on **your own domain** (`go.yoursite.com/<slug>`), track ever
 | Doc | What's inside |
 | --- | --- |
 | **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** | Step-by-step deploy to production — copy-paste friendly |
+| **[docs/CUSTOM-DOMAINS.md](docs/CUSTOM-DOMAINS.md)** | Put the app on your own domain + give members theirs (Workers Custom Domains / Cloudflare for SaaS) |
+| **[docs/CLOUDFLARE-API-TOKEN.md](docs/CLOUDFLARE-API-TOKEN.md)** | Create the API tokens this project uses, with least-privilege permissions |
 | **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** | Every setting: deploy-time (wrangler), secrets, and the admin knobs |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How it works: request pipeline, redirect hot path, data model, the $0 design |
 | **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** | Common errors and how to fix them |

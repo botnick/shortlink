@@ -8,10 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev                  # Vite + Worker together (HMR); Worker code hot-reloads too
 npm run typecheck            # tsc over client + worker + node configs — run before committing
 npm run build                # client → dist/client, worker → dist/shortlink
-npm run deploy               # build + wrangler deploy
+npm run deploy               # build + wrangler deploy + auto-apply D1 migrations (postdeploy.mjs)
 npm run db:generate          # Drizzle migration from worker/db/schema.ts (Postgres)
 npm run db:generate:sqlite   # the SAME change must also be generated for schema.sqlite.ts (D1)
 npm run db:migrate           # apply Postgres migrations (reads .dev.vars directly, not Hyperdrive)
+npm run db:migrate:d1        # apply D1 migrations --remote (resolves the auto-provisioned id)
 DBURL=… npm run test:e2e     # full-API integration test against a THROWAWAY Postgres
 
 # Dev seed helpers (hit the real Postgres from .dev.vars):

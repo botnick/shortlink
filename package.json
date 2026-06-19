@@ -13,7 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
     "db:migrate": "drizzle-kit migrate",
-    "db:migrate:d1": "wrangler d1 migrations apply shortlink-db --remote",
+    "db:migrate:d1": "node scripts/d1-migrate.mjs",
     "db:studio": "drizzle-kit studio",
     "test:e2e": "tsx tests/e2e.ts",
     "test:captcha": "tsx tests/captcha.ts",
