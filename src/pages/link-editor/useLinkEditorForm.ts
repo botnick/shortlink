@@ -257,6 +257,7 @@ export function useLinkEditorForm() {
         ogTitle: string | null;
         ogDescription: string | null;
         source: "ai" | "fallback";
+        reason?: string;
       }>("/links/assist", { destination: dest });
       let applied = false;
       if (r.source === "ai" && r.slugs?.[0]) {
@@ -277,7 +278,9 @@ export function useLinkEditorForm() {
         toast.success("AI suggestions applied");
       } else {
         optimizeSlug("dash");
-        toast.message("AI is busy — used the offline optimizer");
+        toast.message(
+          r.reason ? `AI unavailable (${r.reason}) — used the optimizer` : "AI unavailable — used the optimizer",
+        );
       }
     } catch {
       optimizeSlug("dash");

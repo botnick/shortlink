@@ -570,8 +570,9 @@ route.post("/assist", zValidator("json", assistLinkSchema), async (c) => {
     return fallback("daily_cap");
   }
 
-  const suggestion = await aiSuggest(c.env, destination);
-  if (!suggestion) return fallback("unavailable");
+  const res = await aiSuggest(c.env, destination);
+  if (!res.ok) return fallback(res.reason);
+  const suggestion = res.suggestion;
 
   await counterBump(c.env, `aiassist:${day}`, 48 * 3600);
   if (cacheKey) {
