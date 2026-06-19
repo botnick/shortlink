@@ -13,6 +13,7 @@ dist/
 # Generated
 worker-configuration.d.ts
 *.tsbuildinfo
+d1-migrate.generated.json
 
 # Editor / OS
 .DS_Store
