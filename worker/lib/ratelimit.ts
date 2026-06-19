@@ -107,8 +107,13 @@ function memoryFixedWindow(bucket: string, limit: number, windowSec: number): bo
 // (`deccount:*`). Same DO-first / KV-fallback split so a bot flood of failures or
 // honeypot hits can't burn the KV write budget.
 
-/** Current value of `key` (0 if unset/expired). */
-export async function counterGet(env: AppBindings, key: string): Promise<number> {
+/** Current value of `key` (0 if unset/expired). `noKv` skips the KV fallback
+ *  entirely (DO-only) so a counter adds ZERO KV read/write budget pressure. */
+export async function counterGet(
+  env: AppBindings,
+  key: string,
+  noKv = false,
+): Promise<number> {
   const ns = rateNs(env);
   if (ns) {
     try {
@@ -116,9 +121,10 @@ export async function counterGet(env: AppBindings, key: string): Promise<number>
       const res = await stub.fetch(`https://rl/counter?op=get&now=${Date.now()}`);
       return ((await res.json()) as { n: number }).n;
     } catch {
-      // fall through to KV
+      // fall through to KV (unless DO-only)
     }
   }
+  if (noKv) return 0;
   try {
     return Number(await env.LINKS_KV.get(key)) || 0;
   } catch {
@@ -126,11 +132,13 @@ export async function counterGet(env: AppBindings, key: string): Promise<number>
   }
 }
 
-/** Increment `key` by one and (re)set its expiry to `ttlSec` from now. */
+/** Increment `key` by one and (re)set its expiry to `ttlSec` from now. `noKv`
+ *  skips the KV fallback (DO-only, zero KV budget). */
 export async function counterBump(
   env: AppBindings,
   key: string,
   ttlSec: number,
+  noKv = false,
 ): Promise<void> {
   const ns = rateNs(env);
   if (ns) {
@@ -139,9 +147,10 @@ export async function counterBump(
       await stub.fetch(`https://rl/counter?op=bump&ttl=${ttlSec}&now=${Date.now()}`);
       return;
     } catch {
-      // fall through to KV
+      // fall through to KV (unless DO-only)
     }
   }
+  if (noKv) return;
   try {
     const n = Number(await env.LINKS_KV.get(key)) || 0;
     await env.LINKS_KV.put(key, String(n + 1), { expirationTtl: ttlSec });

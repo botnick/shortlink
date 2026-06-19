@@ -429,6 +429,7 @@ export async function submitChallenge(
   // they decide retry/block against the admin thresholds.
   const behavior = assessBehavior(evidence, {
     issueToSubmitMs: Date.now() - game.issuedAtMs,
+    gameType: game.type,
   });
   const reqSig = scoreRequest(reqEnv);
   const risk = {
@@ -505,14 +506,17 @@ export async function submitChallenge(
   }
 
   const nextIndex = row.gameIndex + 1;
-  if (nextIndex < row.gamesTotal) {
-    const next = generateGame(
-      cfg.games,
-      game.difficulty,
-      row.playedTypes as GameType[],
-    );
+  // A CORRECT answer that still scores MEDIUM risk earns one more game (up to the
+  // admin max) instead of a token — so a single benign-looking-but-uncertain
+  // solve is never enough on its own. riskHigh already hard-blocked above. This
+  // is pure state (no extra compute), so it stays free + within the CPU budget.
+  const wantExtra = risk.score >= cfg.riskMedium && row.gamesTotal < cfg.maxGames;
+  if (nextIndex < row.gamesTotal || wantExtra) {
+    const next = generateGame(cfg.games, game.difficulty, row.playedTypes as GameType[]);
+    const gamesTotal = wantExtra ? row.gamesTotal + 1 : row.gamesTotal;
     const won = await claimChallengeStep(db, schema, row.id, row.version, {
       gameIndex: nextIndex,
+      gamesTotal,
       retries: 0,
       game: next,
       playedTypes: [...row.playedTypes, next.type],
@@ -525,7 +529,7 @@ export async function submitChallenge(
       body: {
         status: "next",
         game: toGameDTO(next),
-        gamesTotal: row.gamesTotal,
+        gamesTotal,
         gameIndex: nextIndex,
         retriesLeft: cfg.maxRetries,
         expiresAt: row.expiresAt.getTime(),

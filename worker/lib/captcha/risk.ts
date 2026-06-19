@@ -40,9 +40,13 @@ interface Positioned {
   offsetMs: number;
 }
 
+// Games whose natural interaction is taps (no drag motion) vs a drag stream.
+const TAP_GAMES = new Set(["sort-3", "tap-match"]);
+const DRAG_GAMES = new Set(["slide", "drag-target", "rotate", "connect", "path-trace"]);
+
 export function assessBehavior(
   evidence: CaptchaEvidence,
-  opts: { issueToSubmitMs: number },
+  opts: { issueToSubmitMs: number; gameType?: string },
 ): RiskAssessment {
   const reasons: string[] = [];
   let score = 0;
@@ -98,6 +102,34 @@ export function assessBehavior(
     if (e.t === "pointer-move" && typeof e.x === "number" && typeof e.y === "number") {
       moves.push({ x: e.x, y: e.y, offsetMs: e.offsetMs });
     }
+  }
+
+  // Game-shape checks — the move-physics below only fire on a real drag stream,
+  // so a tap-only or teleport script would otherwise score ~0. All O(events),
+  // all soft (each < the block threshold), and gated on the game's natural input.
+  const gameType = opts.gameType ?? "";
+  if (TAP_GAMES.has(gameType)) {
+    // A human's taps jitter in BOTH the gap between them and how long each press
+    // is held; a scripted loop fires them on a fixed clock with equal hold times.
+    const downs = evidence.events.filter((e) => e.t === "pointer-down");
+    const ups = evidence.events.filter((e) => e.t === "pointer-up");
+    if (downs.length >= 3) {
+      const gaps = new Set<number>();
+      for (let i = 1; i < downs.length; i++) {
+        gaps.add(Math.round((downs[i].offsetMs - downs[i - 1].offsetMs) / 12));
+      }
+      if (gaps.size <= 1) add(18, "uniform-tap-cadence");
+    }
+    const n = Math.min(downs.length, ups.length);
+    if (n >= 3) {
+      const press = new Set<number>();
+      for (let i = 0; i < n; i++) press.add(Math.round((ups[i].offsetMs - downs[i].offsetMs) / 8));
+      if (press.size <= 1) add(18, "uniform-tap-press");
+    }
+  } else if (DRAG_GAMES.has(gameType) && evidence.events.length > 0 && moves.length < 4) {
+    // A genuine drag/slide/rotate/connect streams many moves; a script that just
+    // sends down→up (teleport) skipped the actual interaction it claims to have done.
+    add(35, "drag-without-motion");
   }
 
   // Per-segment geometry/kinematics — the heart of automation detection. Real
