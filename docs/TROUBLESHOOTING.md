@@ -139,6 +139,32 @@ that the visitor's host matches the link's domain (default host vs a custom doma
 
 ---
 
+## Analytics, AI & routing
+
+### Stats show "—" for unique visitors and the live feed is gone
+**Cause:** click logging is in **rollup** mode — clicks are aggregated hourly, so per-visitor hashes
+and a real-time feed don't exist.
+**Fix:** expected in rollup mode (totals/breakdowns stay accurate). Switch *Admin → Click logging*
+back to **raw** for uniques + live feed. Note modes don't merge history.
+
+### I switched click-logging mode and old stats disappeared
+**Cause:** raw clicks and rollups are separate stores; the dashboard reads whichever is active and
+they aren't back-filled into each other.
+**Fix:** pick the mode **before** heavy traffic. To keep older numbers, switch back to the mode that
+holds them (per-link totals in `links.click_count` are preserved either way).
+
+### The "AI" button just runs the plain optimizer
+**Cause:** the assistant degraded to fallback — AI assistant is off in admin, the daily/hourly cap is
+hit, the `AI` binding isn't present, or the model returned nothing usable.
+**Fix:** enable it in *Admin → AI link assistant*; confirm the `AI` binding is in `wrangler.jsonc`;
+wait out the cap. Fallback is by design, never an error.
+
+### Country routing isn't taking effect
+**Cause:** no rule matches the visitor's country, or `request.cf.country` is unknown (`XX`)/Tor
+(`T1`)/missing (local dev).
+**Fix:** use uppercase ISO-3166 alpha-2 codes; a country rule only fires on an exact match and takes
+precedence over the per-OS targets. Everyone else gets the default destination.
+
 ## Local development
 
 ### `npm run dev` can't reach the database

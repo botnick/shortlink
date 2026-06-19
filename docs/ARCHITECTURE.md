@@ -67,19 +67,27 @@ GET go.yoursite.com/promo
   │     └─ on miss: findLinkRow(DB) — live back-half, then retired alias — and warm the cache
   ├─ password gate?  → no-JS unlock page (CSP allows no inline scripts)
   ├─ safety interstitial?  → "you're leaving to …" page (admin-toggled)
-  ├─ routeDestination(payload, os/device)   per-OS deep link from the cached payload
+  ├─ routeDestination(payload, country, os/device)   geo rule → per-OS deep link, from the payload
   └─ 302 + Cache-Control: private, no-store          ◀── deliberately NOT a cacheable 301
         └─ logClick via waitUntil (off the response path)   bot UAs flagged + excluded
 ```
 
 Key decisions:
 
+- **Routing precedence (all from the cached payload, zero extra reads):** a matching per-country
+  rule (`request.cf.country`) wins first, then the per-OS deep links (iOS / Android / desktop),
+  then the canonical destination. Rules ride inside the KV link payload, so geo/OS routing stays a
+  pure in-memory pick on the hot path.
+
 - **`302` + `no-store`, never a cacheable `301`.** This guarantees complete analytics and makes
   destination edits apply on the *very next* click — worth one origin hit per redirect.
 - **The link lookup is a single KV read** on a warm cache. Everything else on the warm path is
   pure in-memory comparison. No crypto, no large JSON, well under the 10 ms CPU budget.
 - **Clicks are logged in `waitUntil`**, after the response is sent — redirect latency never pays
-  for analytics.
+  for analytics. Default **"raw"** mode writes one `clicks` row per click; the optional **"rollup"**
+  mode (D1 only) instead fires the click at the per-link `ClickAggregator` Durable Object, which
+  tallies hourly counts and flushes them to `click_rollups` in batches — so a very high-traffic
+  install stays under D1's daily write cap without an external analytics service or API token.
 - **Graceful degradation:** if KV is over quota, the lookup falls back to the database; if the
   database is down too, the visitor gets a branded 404, never a 500.
 
@@ -122,7 +130,10 @@ subquery so it works on both dialects and stays under D1's bound-parameter limit
 Stats (per link and admin-wide) are pure `GROUP BY` aggregates over `clicks`, bot-filtered, served
 from the `(link_id, created_at)` / `created_at` indexes — no extra writes. The time series uses an
 **adaptive bucket**: hourly for the 24h range (so the chart isn't a single point), daily otherwise;
-a `granularity` field tells the client how to format the axis. Raw clicks export as **CSV** — per
+a `granularity` field tells the client how to format the axis. In **rollup** logging mode the same
+shapes are computed from the pre-aggregated `click_rollups` instead (the hourly `bucket` is fed
+through the same time-bucket SQL so chart labels match); unique visitors and the live feed aren't
+available from aggregates, so the DTO sets `uniquesTracked: false` and the UI shows "—". Raw clicks export as **CSV** — per
 link (`/api/links/:id/clicks.csv`, owner-only) or across everything for admins
 (`/api/admin/export/clicks.csv`) — both range-scoped and capped by the admin **`exportMaxRows`**
 setting (default 10 k, so building the file stays within the free CPU budget; 0 disables it). The
@@ -160,6 +171,18 @@ the returned validation TXT records; Cloudflare issues a DV certificate and rout
 the Worker via the fallback origin. The Worker sees the original `Host` header, and `resolveScope`
 maps it to the domain bucket. Without API credentials the app falls back to **DNS-TXT ownership
 verification** (over DNS-over-HTTPS). See [DEPLOYMENT.md](DEPLOYMENT.md#letting-members-use-their-own-domains).
+
+## AI link assistant (optional)
+
+The editor's "AI" button calls `POST /api/links/assist`, which fetches the destination page
+(same SSRF-guarded fetch as the link preview), extracts a capped, untrusted text excerpt, and asks
+**Workers AI** for slug + social-card suggestions as strict JSON. The reply is parsed defensively —
+slugs slugified/deduped/reserved-filtered, OG fields length-clamped — and the page text is declared
+untrusted in the prompt so embedded instructions can't steer it. It's opt-in (admin switch), bounded
+by a per-user hourly limit + a global daily cap (an exact Durable-Object counter) + a 7-day per-URL
+cache, and **every** failure path (binding absent, cap hit, bad output) returns `source: "fallback"`
+so the client silently uses the offline optimizer. The model never persists anything — it only fills
+form fields that still pass the normal create/update validators.
 
 ## The $0 design (what keeps it free)
 

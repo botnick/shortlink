@@ -282,6 +282,11 @@ limits). No database choice changes this — it's a Workers limit.
 (the only table that grows with traffic) stays bounded, and keep the human check enabled (it
 throttles abuse at the edge via a Durable Object, never burning your KV budget).
 
+**Approaching the D1 write cap?** Flip *Admin → Click logging* to **rollup**: clicks are
+aggregated hourly through a Durable Object and flushed in batches, so a million clicks become a
+handful of D1 writes — no Analytics Engine, no API token, still $0. Trade-off: no unique-visitor
+counts or live feed. Pick it before the high-traffic period (modes don't merge history). **D1 only.**
+
 ---
 
 ## CI/CD (GitHub Actions)

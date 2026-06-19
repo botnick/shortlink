@@ -14,6 +14,8 @@ npm run db:generate:sqlite   # the SAME change must also be generated for schema
 npm run db:migrate           # apply Postgres migrations (reads .dev.vars directly, not Hyperdrive)
 npm run db:migrate:d1        # apply D1 migrations --remote (resolves the auto-provisioned id)
 DBURL=… npm run test:e2e     # full-API integration test against a THROWAWAY Postgres
+npm run test:routing         # pure unit test: redirect precedence (country → OS → destination)
+npm run test:ai              # pure unit test: AI assistant response parsing / injection guards
 
 # Dev seed helpers (hit the real Postgres from .dev.vars):
 npx tsx scripts/seed-verified-domain.ts <email> <hostname>   # verified custom domain

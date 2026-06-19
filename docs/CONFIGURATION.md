@@ -30,6 +30,8 @@ hand). Ids are not secrets — if you do pin them, commit them.
 | `DB` (D1 `shortlink-db`) | ✅ by name | `wrangler d1 create shortlink-db` | **[D1]** the database |
 | `HYPERDRIVE` | — (opt-in) | `wrangler hyperdrive create …` + paste the id | **[Postgres]** pooled DB connection |
 | `RATE_LIMITER` (Durable Object) | declared in `wrangler.jsonc` | — | Exact rate limiter. Optional — the Worker falls back to a KV limiter if absent. |
+| `CLICK_AGG` (Durable Object) | declared in `wrangler.jsonc` | — | Aggregates clicks for the optional "rollup" logging mode (D1 only). Unused in the default "raw" mode. |
+| `AI` (Workers AI) | declared in `wrangler.jsonc` | — | Powers the optional AI link assistant. No token; falls back to the offline optimizer if absent. |
 | `ASSETS` | automatic | — | Serves the built SPA assets |
 
 ---
@@ -111,7 +113,18 @@ per-IP challenge/verify limits. See [human-check-v3.md](human-check-v3.md).
 | Cloudflare API token | Permission *SSL and Certificates → Edit*. Enables automatic custom-hostname provisioning. Leave blank for $0 DNS-verification mode. See [CLOUDFLARE-API-TOKEN.md](CLOUDFLARE-API-TOKEN.md) + [CUSTOM-DOMAINS.md](CUSTOM-DOMAINS.md). |
 | Zone ID | Your Cloudflare zone id. |
 | Fallback host | What members CNAME to (defaults to the app's own host). |
+| Max custom hostnames | Cost cap on Cloudflare-for-SaaS hostnames (free tier is 100, then per-hostname billing). Default **95**; 0 = unlimited. Adding a domain is blocked once this many exist. |
 | Auto-remove unverified domains (days) | 90 (0 = never). A daily cron deletes domains left unverified this long and frees their Cloudflare custom hostname. |
+
+### AI link assistant
+| Setting | Meaning |
+| --- | --- |
+| AI assistant enabled | Master switch (default on). Powers the editor's "AI" button (slug + social-card suggestions from the destination page) on Workers AI. Per-user (10/hour) + global (100/day) caps and a 7-day per-URL cache keep it on the free tier; any failure falls back to the offline optimizer. Needs the `AI` binding. |
+
+### Click logging
+| Setting | Meaning |
+| --- | --- |
+| Click logging mode | **raw** (default) stores a row per click — exact, with unique visitors + a live feed. **rollup** aggregates hourly counts via the `CLICK_AGG` Durable Object so very high traffic stays under D1's write cap, at the cost of unique counts, the live feed and sub-hour detail. **D1 only.** Modes don't merge history — pick before heavy traffic. |
 
 ---
 

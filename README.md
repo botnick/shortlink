@@ -21,13 +21,21 @@ Create short links on **your own domain** (`go.yoursite.com/<slug>`), track ever
 ## What you get
 
 - **Links** — random or custom back-halves, expiry, pause, tags + search, per-OS deep links
-  (iOS / Android / desktop), password-protected links, a UTM builder, and bulk import (CSV, up to 500).
+  (iOS / Android / desktop), **per-country routing**, password-protected links, a UTM builder, and
+  bulk import (CSV, up to 500).
+- **Country routing** — send visitors from specific countries (ISO-3166) to different URLs; matched
+  at the edge from `request.cf.country`, ahead of the per-OS targets. No extra service, no cost.
+- **AI link assistant** — optional one-click slug + social-card (title/description) suggestions from
+  the destination page, on **Workers AI** (free-tier; opt-in, admin-capped, with an offline fallback).
 - **Per-domain back-halves** — slugs are unique *per domain*, so each member can run links on their
   own custom domain. Editing a back-half keeps the old one redirecting (Bitly-style retired aliases).
 - **QR studio** — frames, shapes, colors, gradients, logo library, saved presets, PNG/SVG/JPEG.
 - **Analytics** — totals, uniques, an adaptive time chart (hourly for 24h, daily otherwise), countries,
   referrers, device/browser/OS, live activity feed. Bot traffic is detected and excluded from every
   number. Export raw clicks as **CSV** (per link or, for admins, across everything) or the summary as JSON.
+- **Built to scale on $0** — an optional **rollup logging mode** aggregates clicks through a Durable
+  Object (hourly counts flushed to the DB) so a high-traffic install stays under D1's free write
+  limit — no Analytics Engine, no API token, no paid tier.
 - **SEO, server-rendered** — canonical, Open Graph / Twitter cards, and WebSite/Organization JSON-LD
   injected into the page `<head>`, plus `/sitemap.xml` and `/robots.txt` — all driven by the admin
   branding settings, with a one-switch indexing toggle.
@@ -35,8 +43,9 @@ Create short links on **your own domain** (`go.yoursite.com/<slug>`), track ever
   closure. A **self-hosted human check** (invisible proof-of-work + optional mini-games — no third party)
   guards sign-in / sign-up.
 - **Public REST API + API keys** and an **MCP server** (12 tools) so AI agents can manage links.
-- **Admin console** — branding/SEO, abuse limits, custom-domain setup, retention — **everything is
-  configured in the app; nothing needs a redeploy.**
+- **Admin console** — branding/SEO, abuse limits, custom-domain setup (with a free-tier cost cap),
+  AI assistant + click-logging mode toggles, retention — **everything is configured in the app;
+  nothing needs a redeploy.**
 
 ## Documentation
 
