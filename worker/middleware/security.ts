@@ -36,9 +36,30 @@ const devHeaders = secureHeaders({
   referrerPolicy: "strict-origin-when-cross-origin",
 });
 
-export const securityHeaders = createMiddleware<AppEnv>((c, next) => {
+// Public, embeddable assets: the brand favicon/OG image and per-link OG previews
+// exist precisely to be loaded BY OTHER ORIGINS — social-card scrapers (Facebook,
+// X, LINE, Slack, metatags.io), an <img> on any site, the browser fetching the
+// favicon. The global `Cross-Origin-Resource-Policy: same-origin` blocks exactly
+// that (browser/scraper reports ERR_BLOCKED_BY_RESPONSE.NotSameOrigin and the OG
+// preview shows nothing). These paths serve only public, non-sensitive imagery,
+// so they opt down to a cross-origin CORP + permissive CORS for the image bytes.
+function isPublicEmbeddableAsset(path: string): boolean {
+  return (
+    path === "/og" ||
+    path === "/icon" ||
+    path.startsWith("/ogimg/") ||
+    path.startsWith("/brand/") ||
+    path.startsWith("/qr/")
+  );
+}
+
+export const securityHeaders = createMiddleware<AppEnv>(async (c, next) => {
   const isHttps = new URL(c.req.url).protocol === "https:";
-  return (isHttps ? prodHeaders : devHeaders)(c, next);
+  await (isHttps ? prodHeaders : devHeaders)(c, next);
+  if (isPublicEmbeddableAsset(c.req.path)) {
+    c.res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+    c.res.headers.set("Access-Control-Allow-Origin", "*");
+  }
 });
 
 /**
