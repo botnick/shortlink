@@ -45,7 +45,8 @@ check("IDN: punycode entry vs unicode destination", isBlockedDestination(`https:
 check("IDN: subdomain of unicode entry", isBlockedDestination(`https://a.${unicodeHost}/x`, [unicodeHost]), true);
 check("IDN: unrelated unicode host allowed", isBlockedDestination("https://другой.example/x", [unicodeHost]), false);
 check("IDN: entry with ideographic full stop U+3002", isBlockedDestination(`https://${unicodeHost}/`, ["пример.example。"]), true);
-check("IDN: entry with fullwidth full stop U+FF0E", isBlockedDestination(`https://${unicodeHost}/`, ["пример．example"]), true);
+check("IDN: entry with trailing fullwidth full stop U+FF0E", isBlockedDestination(`https://${unicodeHost}/`, ["пример.example．"]), true);
+check("IDN: entry with interior fullwidth full stop U+FF0E", isBlockedDestination(`https://${unicodeHost}/`, ["пример．example"]), true);
 check("IDN: entry with halfwidth ideographic stop U+FF61", isBlockedDestination(`https://${unicodeHost}/`, ["пример.example｡"]), true);
 
 console.log(`\nblocklist: ${pass} passed, ${fail} failed`);
