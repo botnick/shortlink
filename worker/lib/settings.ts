@@ -676,7 +676,10 @@ export function isBlockedDestination(
     // Normalize IDN entries to punycode so a Unicode blocklist entry still
     // matches new URL()'s ASCII (punycode) destination host, and vice versa.
     try {
-      dom = new URL(`https://${dom}`).hostname;
+      // Strip AFTER IDNA conversion too: Unicode dot separators (U+3002/FF0E/FF61)
+      // only become ASCII dots here, so a trailing one would re-appear and break
+      // the match against the (dot-stripped) destination host.
+      dom = new URL(`https://${dom}`).hostname.replace(/\.+$/, "");
     } catch {
       // Not a parseable host — compare it literally.
     }
