@@ -335,6 +335,12 @@ route.post("/", zValidator("json", createLinkSchema), async (c) => {
   ) {
     return c.json({ error: "A country-routing destination domain isn’t allowed" }, 400);
   }
+  const blockedDeep = [input.iosUrl, input.androidUrl, input.desktopUrl].filter(
+    (u): u is string => typeof u === "string" && u.length > 0,
+  );
+  if (blockedDeep.some((u) => isBlockedDestination(u, blockedDomainsFrom(settings)))) {
+    return c.json({ error: "A device-specific destination domain isn’t allowed" }, 400);
+  }
   if (input.slug && extraReservedFrom(settings).includes(input.slug.toLowerCase())) {
     return c.json({ error: "That custom alias is reserved" }, 400);
   }
@@ -852,6 +858,18 @@ route.patch("/:id", zValidator("json", updateLinkSchema), async (c) => {
       )
     ) {
       return c.json({ error: "A country-routing destination domain isn’t allowed" }, 400);
+    }
+  }
+
+  {
+    const deep = [input.iosUrl, input.androidUrl, input.desktopUrl].filter(
+      (u): u is string => typeof u === "string" && u.length > 0,
+    );
+    if (deep.length > 0) {
+      settings ??= await getAllSettings(db, schema);
+      if (deep.some((u) => isBlockedDestination(u, blockedDomainsFrom(settings!)))) {
+        return c.json({ error: "A device-specific destination domain isn’t allowed" }, 400);
+      }
     }
   }
 

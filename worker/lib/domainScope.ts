@@ -14,7 +14,16 @@ interface DomainScope {
   domainId: string | null;
   /** Hostname to build this link's short URL on. */
   host: string;
+  /** Set when a custom host could not be resolved because the domain lookup
+   *  failed (KV miss/blip + DB error); the caller must fail closed (404)
+   *  instead of serving the host from the unrelated default bucket. */
+  unresolved?: boolean;
 }
+
+// Distinguishes a hard lookup failure (DB error) from a definitive "no such
+// custom domain" (null), so a custom host fails closed on an outage instead of
+// leaking default-host links. Deliberately NOT memoized (transient).
+const LOOKUP_FAILED: unique symbol = Symbol("domain-lookup-failed");
 
 /** The canonical default short host, derived from APP_URL. */
 function appHost(env: AppBindings): string {
@@ -59,6 +68,12 @@ export async function resolveScope(
     return { domainId: null, host: fallback };
   }
   const domainId = await resolveDomainId(c, host);
+  if (domainId === LOOKUP_FAILED) {
+    // Custom host whose domain lookup failed (KV miss + DB error). Fail CLOSED:
+    // do NOT fall back to the default bucket, or `custom.example/abc` could
+    // serve the unrelated default-host `/abc`.
+    return { domainId: null, host, unresolved: true };
+  }
   return domainId ? { domainId, host } : { domainId: null, host: fallback };
 }
 
@@ -66,7 +81,10 @@ export async function resolveScope(
  *  layer degrades to the next on failure, and a total failure falls back to the
  *  default bucket (null) so the redirect still resolves a default-host link
  *  rather than 500ing when KV or the DB is unavailable. */
-async function resolveDomainId(c: AppContext, host: string): Promise<string | null> {
+async function resolveDomainId(
+  c: AppContext,
+  host: string,
+): Promise<string | null | typeof LOOKUP_FAILED> {
   const now = Date.now();
   const memo = hostMemo.get(host);
   if (memo && memo.until > now) return memo.id;
@@ -103,10 +121,11 @@ async function resolveDomainId(c: AppContext, host: string): Promise<string | nu
       c.executionCtx.waitUntil(close());
     }
   } catch {
-    // DB also unavailable — fall back to the default bucket so default-host
-    // links keep resolving. (A custom-domain link can't resolve in this state,
-    // but the visitor gets a branded 404, never a 500.)
-    return null;
+    // The domain lookup failed (KV missed and the DB errored). We cannot tell
+    // whether this custom host maps to a real domain, so signal a hard failure
+    // and let the caller fail CLOSED (404) rather than serving it from the
+    // default bucket.
+    return LOOKUP_FAILED;
   }
 }
 
