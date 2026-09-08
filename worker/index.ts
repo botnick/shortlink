@@ -120,6 +120,10 @@ app.get("/api/qr/:slug", async (c) => {
   const slug = c.req.param("slug");
   if (!isValidCustomSlug(slug)) return c.json({ error: "Not found" }, 404);
   const scope = await resolveScope(c, c.req.header("host"));
+
+  // Custom host we couldn't resolve (lookup failed) — fail closed rather than
+  // serving an unrelated default-host link at this slug.
+  if (scope.unresolved) return c.json({ error: "Not found" }, 404);
   const { db, schema, close } = getDbHandle(c.env);
   const { projects } = schema;
   try {
@@ -167,6 +171,10 @@ app.post("/api/unlock/:slug", async (c) => {
   const body = await c.req.parseBody();
   const password = typeof body.password === "string" ? body.password : "";
   const scope = await resolveScope(c, c.req.header("host"));
+
+  // Custom host we couldn't resolve (lookup failed) — fail closed rather than
+  // serving an unrelated default-host link at this slug.
+  if (scope.unresolved) return linkErrorPage(c, "not-found");
   const { db, schema, close } = getDbHandle(c.env);
   try {
     // Throttle online password guessing: the no-JS unlock page has no human
@@ -264,6 +272,10 @@ app.get("/qr/:file", async (c) => {
   if (!m) return serveAssets(c); // not a .svg request → serve the SPA page
   const slug = m[1];
   const scope = await resolveScope(c, c.req.header("host"));
+
+  // Custom host we couldn't resolve (lookup failed) — fail closed rather than
+  // serving an unrelated default-host link at this slug.
+  if (scope.unresolved) return linkErrorPage(c, "not-found");
   const { db, schema, close } = getDbHandle(c.env);
   const { projects } = schema;
   try {
@@ -311,6 +323,10 @@ app.get("/:slug", async (c) => {
   // Which domain does this host map to? The same slug can exist on several
   // hosts, so every lookup is scoped to one domain bucket.
   const scope = await resolveScope(c, c.req.header("host"));
+
+  // Custom host we couldn't resolve (lookup failed) — fail closed rather than
+  // serving an unrelated default-host link at this slug.
+  if (scope.unresolved) return linkErrorPage(c, "not-found");
 
   // Social crawlers (FB/X/IG/Slack/…) get an OG-tagged preview instead of the
   // redirect, so a shared link can show a branded card. Bots don't run JS and

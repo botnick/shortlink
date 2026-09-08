@@ -663,13 +663,27 @@ export function isBlockedDestination(
   if (blocked.length === 0) return false;
   let host: string;
   try {
-    host = new URL(destination).hostname.toLowerCase();
+    // Strip trailing dot(s) ("evil.com." -> "evil.com") so a fully-qualified
+    // hostname can't slip past the blocklist. new URL() also lowercases and
+    // punycode-encodes IDN hosts, so the compared host is always ASCII.
+    host = new URL(destination).hostname.toLowerCase().replace(/\.+$/, "");
   } catch {
     return false;
   }
   return blocked.some((d) => {
-    const dom = d.trim().toLowerCase().replace(/^\*?\.?/, "");
-    return dom !== "" && (host === dom || host.endsWith(`.${dom}`));
+    let dom = d.trim().toLowerCase().replace(/^\*?\.?/, "").replace(/\.+$/, "");
+    if (dom === "") return false;
+    // Normalize IDN entries to punycode so a Unicode blocklist entry still
+    // matches new URL()'s ASCII (punycode) destination host, and vice versa.
+    try {
+      // Strip AFTER IDNA conversion too: Unicode dot separators (U+3002/FF0E/FF61)
+      // only become ASCII dots here, so a trailing one would re-appear and break
+      // the match against the (dot-stripped) destination host.
+      dom = new URL(`https://${dom}`).hostname.replace(/\.+$/, "");
+    } catch {
+      // Not a parseable host — compare it literally.
+    }
+    return host === dom || host.endsWith(`.${dom}`);
   });
 }
 
